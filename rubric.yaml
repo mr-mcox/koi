@@ -1,0 +1,315 @@
+# Job Screener Rubric — v1
+#
+# This file is the source of truth for evaluation criteria. Rubric text is
+# sliced verbatim into research prompts and review screens (R4). Any change
+# to a dimension definition, weight, anchor, tolerability range, or slug is
+# a versioned change: increment `version`, add a line to `revision_note`.
+#
+# Cross-references: DECISIONS.md (R4, D2, D6, D7, D10, D15, D16, D18, D19, D20).
+# Schema: `docs/features/steel-thread-intake-to-assertions/slices/03-baml-extract-assertions.md`.
+#
+# Privacy boundary: this file is public. Compensation baseline, résumé, and
+# contact details live in untracked config, not here.
+version: 1
+revision_note: "v1 — seeded from prototype rubric (docs/briefs/Job_Screener_Rubric.md). Compensation baseline removed to env config. Sanity-check section with real company names removed."
+
+# ---------------------------------------------------------------------------
+# Confidence tiers — apply everywhere (dimensions and constraints alike)
+# ---------------------------------------------------------------------------
+#
+# Confidence is a threshold gate on whether evidence counts at all.
+# It is never a multiplier on the evidence's value (D2).
+# Fit and confidence are stored as separate fields on every assertion; they
+# are never pre-blended into one number at collection time.
+
+confidence_tiers:
+  - tier: Low
+    definition: >
+      One uncorroborated source (a single Glassdoor review, a single blog
+      post). Stored, but excluded from every rollup. Automatically logged as
+      an open hypothesis — something to corroborate, not something to score.
+    counts_toward_score: false
+  - tier: Medium
+    definition: >
+      Two independent sources agreeing, or one primary/official source (the
+      company's own posting, funding press). Counts at full face value.
+  - tier: High
+    definition: >
+      Three or more independent sources agreeing, or one authoritative source
+      (official company statement, SEC filing, a direct interview answer).
+      Treated identically to Medium — there is no extra credit for High over
+      Medium. The tiers exist to separate "doesn't count yet" from "counts",
+      not to create a finer-grained scale.
+# ---------------------------------------------------------------------------
+# Constraints — tolerability discounts, multiplied against quality (D7)
+# ---------------------------------------------------------------------------
+#
+# Constraints are not gates and have no pass/fail states. Each resolves to a
+# tolerability factor in [0, 1] with its own uncertainty, and they multiply
+# against the quality rollup: overall = quality × Π(tolerability factors).
+#
+# Research proposes a situation label, not a number. The label maps to a
+# range in config. Evidence stays discrete; only the math is continuous.
+# Negotiability is variance, not a lower value.
+
+constraints:
+  - slug: location
+    label: "Location fit"
+    definition: >
+      Whether the role's location policy is compatible with the operator's
+      situation. Negotiability is represented as spread on the tolerability
+      range: a confident narrow kill versus a wide range with real upside.
+      The kill emerges from the arithmetic rather than a coded rule.
+    situations:
+      - label: "Remote, any location"
+        tolerability: "1.0"
+        notes: "No discount."
+      - label: "Hybrid/onsite, same metro (bikeable)"
+        tolerability: "1.0"
+        notes: "A genuine pass — satisfies the tolerable bar directly."
+      - label: "Hybrid/onsite, different metro"
+        tolerability: "0.15 – 0.95"
+        notes: "Wide: plausibly negotiable, real upside."
+      - label: "Relocation required, stated, no flexibility language"
+        tolerability: "0.02 – 0.10"
+        notes: "Confident kill; sorts to the bottom without being removed by rule."
+      - label: "Not examined"
+        tolerability: "0.0 – 1.0"
+        notes: "Penalized in the mean, rewarded in the variance — pulls toward research."
+
+  - slug: internal_culture
+    label: "Internal culture"
+    definition: >
+      Stack-ranking, extractive-toward-employees dynamics, or leadership
+      instability. Internal culture is distinct from mission fit — this
+      constraint captures how the company treats its own people, not its
+      customers or the world.
+    situations:
+      - label: "Researched, no negative evidence found"
+        tolerability: "1.0"
+        notes: ""
+      - label: "Negative evidence at Low confidence only"
+        tolerability: "1.0"
+        notes: "Logged as a hypothesis; doesn't discount (D2)."
+      - label: "Forced-ranking, punitive layoffs, or leadership whiplash at Medium/High confidence"
+        tolerability: "0.10 – 0.45"
+        notes: >
+          Heavy — at bar=0.60 a 0.45 ceiling can't clear it however strong
+          the rest of the record (D18).
+      - label: "Not examined"
+        tolerability: "0.0 – 1.0"
+        notes: >
+          'Nothing bad turned up' and 'nobody checked' are different states (D5).
+
+  - slug: extractive_business
+    label: "Extractive core business model"
+    definition: >
+      Extreme or obvious cases where the core business model extracts value
+      from users rather than creating it. Anything less obvious flows into
+      the Mission fit dimension, which is built for nuanced middle ground.
+      This constraint is for clear-cut anchor cases only.
+    situations:
+      - label: "No signal, having looked"
+        tolerability: "1.0"
+        notes: "The outcome of looking, not the starting state (D19)."
+      - label: "Clear-cut anchor case at Medium/High confidence"
+        tolerability: "0.02 – 0.10"
+        notes: "Near-certain, no real evidence-gathering needed."
+      - label: "Not examined"
+        tolerability: "0.0 – 1.0"
+        notes: >
+          The default. Reasoning from a company's mission that it is
+          generative rather than extractive is what promotes it to 1.0 (D19).
+
+# ---------------------------------------------------------------------------
+# Scored dimensions — weighted rollup (D6)
+# ---------------------------------------------------------------------------
+#
+# Fit vocabulary: Poor = −1, Mixed = 0, Strong = +1 (D2, D3).
+# Only Medium/High confidence assertions count; Low-confidence assertions
+# are excluded and logged to the hypothesis queue.
+#
+# Per-dimension distribution: mean n·m/(n+1), variance ⅓/(n+1).
+# Unexamined dimensions are Uniform(−1, +1) — same mean as confirmed Mixed,
+# far wider spread. They are not dropped from the denominator (D5, D6).
+#
+# Ranking sorts on P(overall > bar) by Monte Carlo, not on the mean (D10).
+# bar is a config value, not set here.
+
+dimensions:
+  - slug: stretch
+    label: "Stretch & Frontier"
+    weight: 3
+    definition: >
+      Distance from the edge of the operator's current ability — novelty
+      relative to what has already been done, not novelty in the abstract.
+      Industry-level novelty matters only insofar as it puts the work near
+      that edge. An inverted U: Poor at both tails (D15). More novelty is
+      not monotonically better.
+
+      Strong requires stretch AND a foundation to stretch from. This is what
+      separates the middle of the U from its right tail: growth opportunity
+      resting on something solid. A role where the operator would be the
+      foundation has real novelty but nothing to climb.
+
+      Anchor companies: Company A (greenfield, built it, plateaued — the
+      left plateau); Company B (still had runway at departure — the shape
+      to look for).
+    fit_anchors:
+      Poor: >
+        Either tail. Undershoot: senior-level scope; 'write code you won't
+        regret in six months'; a pattern with a strong track record on the
+        résumé already. Overshoot: no realistic path to being qualified.
+      Mixed: >
+        Something genuinely novel, but not the sweet spot. Novelty without
+        scaffolding (first-technical-hire roles). Also lands here when
+        organisational pace limits how often the edge actually gets
+        touched — large slow enterprises are Mixed or lower even when the
+        nominal problem is hard.
+      Strong: >
+        Visible growth opportunity on a solid foundation. Most genuinely
+        staff-level roles land here. Also roles where the engineering bar
+        itself is the stretch, independent of domain novelty.
+    look_for: >
+      Requisition level and scope (staff vs. senior is the strongest single
+      signal); stack and domain familiarity checked against résumé; whether
+      an established engineering bar exists to climb; organisational pace
+      and shipping cadence; years-of-experience requirements in unfamiliar
+      domains (overshoot signal).
+    notes: >
+      Expect overrides here (D16). Treat proposed ratings on this dimension
+      as the least trustworthy in the rubric.
+
+  - slug: peer
+    label: "Peer caliber"
+    weight: 2
+    definition: >
+      Real code review culture and mutual exchange — not being the only
+      qualified person by default.
+    fit_anchors:
+      Poor: >
+        Thin bench, no real pushback, or an explicit signal of reduced
+        expectations.
+      Mixed: >
+        Genuinely split evidence — corroborated positives and negatives
+        both present.
+      Strong: >
+        Consistent evidence of a real bar: structured review process,
+        senior engineers visibly engaged.
+    look_for: >
+      Engineering blog posts on review practices; Glassdoor/Blind mentions
+      of mentorship or review rigour; team seniority mix; any
+      'self-approve PRs' red flags.
+
+  - slug: trajectory
+    label: "Trajectory & Leverage"
+    weight: 2
+    definition: >
+      Two-part: is the company's trajectory actually healthy, AND would the
+      operator's specific work be load-bearing to it — not just 'fine, get
+      paid, learn something'. Poor trajectory always dominates regardless
+      of leverage.
+    fit_anchors:
+      Poor: >
+        Trajectory at risk regardless of individual effort — distress-framed
+        cuts, leadership instability, no coherent strategic answer. A sinking
+        ship is a sinking ship whether or not the work would matter.
+      Mixed: >
+        Healthy company, but unclear whether this specific role is the thing
+        driving outcomes.
+      Strong: >
+        Healthy trajectory AND the role is demonstrably load-bearing to a
+        stated strategy.
+    look_for: >
+      Funding recency/stage; headcount direction; layoff framing (strategic
+      vs. distress); whether the role sits on a stated strategic critical path.
+
+  - slug: mission
+    label: "Mission fit"
+    weight: 2
+    definition: >
+      Does the business win when the customer wins, or by extracting from
+      them — plus whether any 'AI-powered' claim is real product leverage
+      or investor decoration. Internal culture is NOT part of this dimension;
+      that is the internal_culture constraint above.
+    fit_anchors:
+      Poor: >
+        Wins by extracting from the customer, or AI claims read as decoration.
+      Mixed: >
+        Ambiguous, or props up a systemic problem rather than disrupting it —
+        non-predatory but not clearly value-creating either.
+      Strong: >
+        Demonstrably wins when the customer wins; AI usage, if any, is
+        instrumental.
+    look_for: >
+      Revenue mechanics; business model description; company statements about
+      AI usage; comparison against anchor companies.
+
+  - slug: agentic
+    label: "Agentic/AI Engineering Culture"
+    weight: 2
+    definition: >
+      Does engineering actually work with agentic tooling and
+      provider-agnostic experimentation, or is 'AI-forward' a Copilot
+      license.
+    fit_anchors:
+      Poor: >
+        Copilot-tier autocomplete is the ceiling, or visibly behind.
+      Mixed: >
+        Individual engineers can use agentic tools; no org-level culture
+        or investment around it.
+      Strong: >
+        Real investment — dedicated tooling, provider-agnostic
+        experimentation, discussed as genuine practice.
+    look_for: >
+      Engineering blog posts on tooling/practice; posting language about
+      AI-tooling expectations; whether tooling is single-vendor-locked or
+      genuinely experimental.
+
+  - slug: compensation
+    label: "Compensation"
+    weight: 2
+    definition: >
+      A plain comparison against the configured baseline
+      (SCREEN_COMPENSATION_BASELINE). No justification branching —
+      domain coolness handles the 'would justify a below-baseline offer'
+      case through the weighted average.
+    fit_anchors:
+      Poor: "Notably below baseline."
+      Mixed: "Roughly at baseline."
+      Strong: "Above baseline."
+    look_for: >
+      Posted range (best signal); Levels.fyi/comparable benchmarks;
+      recruiter-stated range.
+
+  - slug: domain
+    label: "Domain coolness"
+    weight: 1
+    definition: >
+      Genuine personal fascination with the subject matter itself,
+      independent of the business's mission ethics. This is what would
+      justify a below-baseline offer without special-case logic anywhere
+      else, since the weighted average handles the tradeoff naturally.
+    fit_anchors:
+      Poor: "Flat, no pull."
+      Mixed: "Neutral, no strong pull either direction — most roles land here."
+      Strong: "The domain itself excites regardless of mission story."
+    look_for: >
+      Operator's own reaction to the domain; overlap with known interests
+      (creative/music/audio, novel technical domains).
+
+# ---------------------------------------------------------------------------
+# Non-scoring targets
+# ---------------------------------------------------------------------------
+#
+# Assertions about these topics are stored and surfaced but never enter the
+# scoring rollup. The `non_scoring:` namespace prefix prevents accidental
+# confusion with a scoring slug (Wall 3).
+
+non_scoring:
+  - slug: "non_scoring:obtainability"
+    label: "Obtainability"
+    definition: >
+      Warm-path access, referral potential, recruiter source, inbound vs.
+      outbound. Relevant to urgency and application strategy but never to
+      the fit score. Never enters standing (Wall 4).

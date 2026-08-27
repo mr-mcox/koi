@@ -1,0 +1,197 @@
+"""Pydantic model tests — Company, Opening, IdentificationResult, Assertion, Citation.
+Schema and Wall cross-references: `docs/architecture/domain-model.md`.
+"""
+
+import json
+
+import pytest
+from pydantic import ValidationError
+
+from screen.types import Assertion, Citation, Company, Opening
+
+
+def _company(**overrides) -> dict:
+    base = {
+        "id": "anthropic",
+        "name": "Anthropic",
+        "created_at": "2026-08-22T12:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def _opening(**overrides) -> dict:
+    base = {
+        "id": "anthropic--applied-ai-lead-a54c1e",
+        "company_id": "anthropic",
+        "title": "Applied AI Lead",
+        "url": "https://www.anthropic.com/careers/applied-ai-lead",
+        "transcript_id": "tx0123456789abcdef",
+        "created_at": "2026-08-22T12:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_company_round_trip_minimum_valid() -> None:
+    raw = _company()
+    company = Company.model_validate(raw)
+    dumped = company.model_dump(mode="json")
+    assert json.loads(json.dumps(dumped)) == raw
+    assert company.id == "anthropic"
+    assert company.name == "Anthropic"
+
+
+def test_opening_round_trip_minimum_valid() -> None:
+    raw = _opening()
+    opening = Opening.model_validate(raw)
+    dumped = opening.model_dump(mode="json")
+    assert json.loads(json.dumps(dumped)) == raw
+    assert opening.company_id == "anthropic"
+    assert opening.transcript_id == "tx0123456789abcdef"
+
+
+def test_company_rejects_unknown_field() -> None:
+    """Frozen schema, extra=forbid. Score-like names must be rejected at
+    validation time (Wall 1/2)."""
+    with pytest.raises(ValidationError):
+        Company.model_validate({**_company(), "score": 7.5})
+
+
+def test_opening_rejects_unknown_field() -> None:
+    with pytest.raises(ValidationError):
+        Opening.model_validate({**_opening(), "weighted_score": 6.7})
+
+
+def test_company_is_frozen() -> None:
+    company = Company.model_validate(_company())
+    with pytest.raises(ValidationError):
+        company.name = "Renamed Co"
+
+
+def test_opening_is_frozen() -> None:
+    opening = Opening.model_validate(_opening())
+    with pytest.raises(ValidationError):
+        opening.title = "Other Title"
+
+
+# ---------------------------------------------------------------------------
+# Slice 3: Citation
+# ---------------------------------------------------------------------------
+
+
+def _citation(**overrides: object) -> dict:  # type: ignore[type-arg]
+    base = {
+        "url": "https://example.com/jobs/42",
+        "quote": "Build and own the platform.",
+        "host": "example.com",
+        "source_provenance": "official",
+        "independent": True,
+        "source_date": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def _assertion(**overrides: object) -> dict:  # type: ignore[type-arg]
+    base = {
+        "target": "stretch",
+        "fit": "Strong",
+        "provenance": "model_proposed",
+        "chunk": "10+ years in platform or infrastructure engineering.",
+        "citations": [_citation()],
+        "created_at": "2026-08-26T12:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_citation_round_trip_minimum_valid() -> None:
+    raw = _citation()
+    citation = Citation.model_validate(raw)
+    dumped = citation.model_dump(mode="json")
+    assert dumped["url"] == raw["url"]
+    assert dumped["quote"] == raw["quote"]
+    assert dumped["independent"] is True
+    assert dumped["source_date"] is None
+
+
+def test_assertion_round_trip_minimum_valid() -> None:
+    raw = _assertion()
+    assertion = Assertion.model_validate(raw)
+    assert assertion.target == "stretch"
+    assert assertion.fit == "Strong"
+    assert assertion.provenance == "model_proposed"
+    assert len(assertion.citations) == 1
+
+
+def test_assertion_is_frozen() -> None:
+    assertion = Assertion.model_validate(_assertion())
+    with pytest.raises(ValidationError):
+        assertion.fit = "Poor"  # type: ignore[misc]
+
+
+def test_assertion_rejects_unknown_field() -> None:
+    """Wall 1/2: no score or scoring field may land on an Assertion."""
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({**_assertion(), "score": 7.5})
+
+
+def test_assertion_rejects_weighted_score() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({**_assertion(), "weighted_score": 6.7})
+
+
+def test_assertion_rejects_confidence_score() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate({**_assertion(), "confidence_score": 0.8})
+
+
+# ---------------------------------------------------------------------------
+# Wall 3: closed Target Literal
+# ---------------------------------------------------------------------------
+
+
+def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
+    for slug in ["stretch", "peer", "trajectory", "mission", "agentic", "compensation", "domain"]:
+        a = Assertion.model_validate(_assertion(target=slug))
+        assert a.target == slug
+
+
+def test_assertion_accepts_constraint_slugs() -> None:
+    for slug in ["location", "internal_culture", "extractive_business"]:
+        a = Assertion.model_validate(_assertion(target=slug))
+        assert a.target == slug
+
+
+def test_assertion_accepts_non_scoring_obtainability() -> None:
+    a = Assertion.model_validate(_assertion(target="non_scoring:obtainability"))
+    assert a.target == "non_scoring:obtainability"
+
+
+def test_assertion_rejects_bare_obtainability() -> None:
+    """Wall 3: `obtainability` without the namespace prefix must be rejected."""
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(_assertion(target="obtainability"))
+
+
+def test_assertion_rejects_unknown_target() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(_assertion(target="made_up"))
+
+
+def test_assertion_rejects_invalid_fit() -> None:
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(_assertion(fit="7.5"))
+
+
+def test_assertion_rejects_empty_citations() -> None:
+    """citations must be non-empty (min_length=1)."""
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(_assertion(citations=[]))
+
+
+def test_citation_is_frozen() -> None:
+    citation = Citation.model_validate(_citation())
+    with pytest.raises(ValidationError):
+        citation.url = "https://other.com"  # type: ignore[misc]

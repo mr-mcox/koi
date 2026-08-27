@@ -24,17 +24,17 @@ outcomes. It is deliberately *not* a to-do generator, an application tracker, or
 auto-apply bot.
 
 This repo is a clean build seeded from a working prototype. The prototype's code was
-discarded; its learnings and decisions were kept. That inheritance lives in `docs/agent-briefs`:
+discarded; its learnings and decisions were kept. That inheritance lives in `docs/architecture`:
 
 | Doc | What it holds |
 |---|---|
-| `DOMAIN-MODEL.md` | Entities, bounded contexts, the seven walls (invariants), steel-thread order |
-| `DECISIONS.md` | Durable decisions with status tags and the rejected alternatives |
-| `LEARNINGS.md` | Prototype findings by pivot question, each claim evidence-graded |
-| `OPEN-QUESTIONS.md` | Deliberately deferred questions, each with what would settle it |
-| `PROTOTYPE-DECISIONS.md` | Appendix: the prototype's full decision record (D-numbers) |
+| `domain-model.md` | Entities, bounded contexts, the seven walls (invariants), steel-thread order |
+| `decisions.md` | Durable decisions with status tags and the rejected alternatives |
+| `learnings.md` | Prototype findings by pivot question, each claim evidence-graded |
+| `open-questions.md` | Deliberately deferred questions, each with what would settle it |
+| `prototype-decisions.md` | Appendix: the prototype's full decision record (D-numbers) |
 
-**Reading order for a new session:** DOMAIN-MODEL → DECISIONS → whatever the task touches.
+**Reading order for a new session:** domain-model → decisions → whatever the task touches.
 
 ## Orientation — how work is done here
 
@@ -50,7 +50,7 @@ discarded; its learnings and decisions were kept. That inheritance lives in `doc
   scoring, read the S-decisions — confidence-as-multiplier has been rejected three times
   and gates-as-weights was killed by measurement. Record new decisions in the same form:
   what, why, what was rejected, status tag.
-- **The walls are tests.** The invariants in `DOMAIN-MODEL.md` (raw positions never reach
+- **The walls are tests.** The invariants in `domain-model.md` (raw positions never reach
   the scorer, non-scoring targets never enter standing, reach never sorts, …) are asserted
   structurally in the test suite. A change that breaks one should break a test, not
   silently change the model.
@@ -60,6 +60,29 @@ discarded; its learnings and decisions were kept. That inheritance lives in `doc
 - **The operator stays in the loop by design.** Route to them only what needs their
   judgment; batch what can be batched; never auto-close a judgment call on their behalf
   (precedent retrieves and shows, it does not decide).
+- **monkeypatch rarely; DI almost always.** Tests plug dependencies in via the constructor
+  or argument list, not via `monkeypatch.setattr`. If a test needs a deterministic value for
+  a clock, an env var, a setup fixture, the production code takes a parameter for it and the
+  test passes a literal. monkeypatch is acceptable only when the seam is fixed (a third-party
+  class with no injection point, a `CliRunner.invoke` that won't swap a module global) and
+  refactoring for testability would distort the implementation; document the reason inline
+  and revisit when a DI hook appears.
+- **Tests catch named regressions; invented tests are removed.** A test that passes against
+  a deliberately broken version of its subject is a test of the harness, not of the
+  behavior. The check is mechanical: when reviewing a test, name one regression it would
+  catch. If you can't, delete it.
+- **Comments describe product state, not journey.** A comment should explain the non-obvious
+  *why* — invariants the next reader can't derive, constraints imposed by external
+  dependencies, the shape of required caller behavior. It should not narrate how the code
+  came to be, what was considered and rejected, which slice introduced the function, or the
+  rationale trace leading to the current form.
+- **Every item here earns its space.** This file is read at the start of every agent session;
+  size is paid per read, not per author. Each entry must either prevent a failure mode the
+  agent would repeat without it, or preserve a constraint the agent can't derive. Entries
+  that don't earn their space are removed. The standard is the formula
+  `quality = correctness² × completeness / size` — correctness squared because a small
+  correctness drop in operator-facing outputs is catastrophic; completeness replacing the
+  spec with the actual product; size as cost paid.
 
 ## Privacy — this repo is public
 
@@ -73,21 +96,13 @@ Never commit, and keep gitignored from day one:
 - API keys and all runtime secrets.
 
 Real names of companies under evaluation never enter committed files. Docs use the
-Company A–D pseudonyms defined in `docs/PROTOTYPE-DECISIONS.md`; committed examples and
+Company A–D pseudonyms defined in `docs/prototype-decisions.md`; committed examples and
 test fixtures use synthetic or pseudonymized companies only. When in doubt, it goes in
 untracked config or the data directory, not in git.
+## Ready to commit
+`uv run python scripts/check.py` runs the project gates. On failure
+each gate prints its iterate-from-fix command.
 
 ## Current phase
-
-Walking skeleton, riskiest parts first. The steel thread (see `DOMAIN-MODEL.md`): one
-opening entered by link → research pass writes assertions at company and opening level →
-scorer bands it from provenance-widened distributions → the operator rules on entries →
-re-score shows ratification narrowing. It exercises the three least-proven decisions —
-the company/opening split, provenance-as-variance (S8), and the research-pass contract —
-before anything is layered on them. Then: a few one-offs end-to-end, then batching to see
-the ranking behave, then routing, precedent lookup, intake adapters, and the holding-area
-view, in that order.
-
-Build increments so problems surface immediately, not three layers up: each increment
-should be exercised with real use (the operator screening a real opening) before the next
+Walking skeleton, riskiest parts first.
 begins.

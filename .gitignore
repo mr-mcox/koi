@@ -1,0 +1,16 @@
+# uv state — keep out of repo
+.venv/
+uv.lock
+
+# Secrets
+.env
+
+# Runtime artifacts (every slice writes here)
+data/
+
+# Code artifacts
+*.pyc
+
+# Coverage artifacts (raw .coverage data and JSON report)
+coverage/
+*.pyc

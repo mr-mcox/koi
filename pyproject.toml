@@ -1,0 +1,110 @@
+[project]
+name = "screen"
+version = "0.0.0"
+description = "Steel-thread intake-to-assertions for the job screener."
+requires-python = ">=3.14"
+dependencies = [
+    "baml-py>=0.226.1",
+    "click>=8.1",
+    "pydantic>=2.0",
+    "pyyaml>=6.0.3",
+    "tavily-python>=0.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=24.0",
+    "pyright>=1.1.411",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "radon>=6.0",
+    "ruff>=0.4",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/screen"]
+data_file = "coverage/.coverage"
+omit = [
+    "src/screen/__main__.py",
+    # Live BAML adapter: calls external LLM service, no unit test coverage by design.
+    "src/screen/extract/baml_extractor.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.black]
+line-length = 100
+target-version = ["py314"]
+extend-exclude = '''/(src/screen/baml_client)/'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+extend-exclude = ["src/__about__.py", "src/screen/baml_client/"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "PL",   # pylint (subset)
+    "PLC",  # pylint-conventions (incl. PLC0415 inline imports)
+    "PLE",  # pylint errors
+    "PLR",  # pylint refactor (statements, branches, args)
+    "PLW",  # pylint warnings
+    "C90",  # mccabe complexity
+    "RET",
+]
+ignore = [
+    "E501",   # black handles line length
+    "PLR0913", # too-many-arguments: Pydantic models trigger this
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 7
+
+[tool.ruff.lint.pylint]
+max-statements = 50
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "PLR2004",   # magic values OK in test assertions
+    "B011",      # assert False is fine in tests
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.pyright]
+# Strict mode turns on the full set of checks. We exclude the generated
+# BAML client (BAML emits `Any`-typed adapters) and the project skeleton
+# (no source lives there). Stub files in `stubs/` cover `tavily`, which
+# ships without PEP 484 annotations.
+include = ["src/screen"]
+exclude = [
+    "src/screen/baml_client",
+    "src/__about__.py",
+]
+stubPath = "stubs"
+reportMissingTypeStubs = "warning"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/screen"]
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = ["tests"]
