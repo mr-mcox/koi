@@ -45,6 +45,7 @@ def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_propose
 # strictly between 0 and 1 rather than saturating at an extreme.
 PARTIALLY_RESEARCHED = [
     _assertion("stretch", "Strong", "ratified"),
+    _assertion("schematic", "Strong", "ratified"),
     _assertion("peer", "Strong", "ratified"),
     _assertion("trajectory", "Strong", "ratified"),
     _assertion("mission", "Strong", "ratified"),

@@ -122,6 +122,12 @@ dimensions:
       resting on something solid. A role where the operator would be the
       foundation has real novelty but nothing to climb.
 
+      Ability-indexed only, not shape-indexed — whether the operator would be
+      stretched, independent of whether the work involves originating structure
+      or mastering a fixed one (that's `schematic`). A protocol-mastery
+      role can be stretch-Strong while schematic-Poor, and the reverse also
+      holds.
+
       Anchor companies: Company A (greenfield, built it, plateaued — the
       left plateau); Company B (still had runway at departure — the shape
       to look for).
@@ -149,6 +155,47 @@ dimensions:
     notes: >
       Expect overrides here (D16). Treat proposed ratings on this dimension
       as the least trustworthy in the rubric.
+
+  - slug: schematic
+    label: "Schematic"
+    weight: 3
+    definition: >
+      Whether the role's central work is originating the shape of a solution —
+      decomposition, mechanism design, structure that didn't exist before —
+      versus achieving depth within a structure, protocol, or spec someone
+      else already fixed.
+      structure is still being decided, as distinct from construction
+      documents or construction administration, when a design is executed
+      and detailed to spec.
+
+      Independent of `stretch` — shape of the work, not distance from
+      the operator's ability. Expected to correlate in practice
+      (architecturally ambiguous roles tend to also be unfamiliar) but not
+      redundant; the divergent cases are the ones worth catching.
+    fit_anchors:
+      Poor: >
+        The ceiling is depth within a fixed frame: protocol or spec
+        mastery, becoming the internal expert on an existing product,
+        implementing to a design set elsewhere.
+      Mixed: >
+        Some room to shape implementation details, but the overall frame
+        (architecture, protocol, product boundary) is set elsewhere.
+      Strong: >
+        The role's core work is inventing structure: decomposition,
+        mechanism design, building the thing that resolves the question —
+        whether that shows up as system or bounded-context design, or as
+        creative algorithmic/mechanism design outside a structural
+        register.
+    look_for: >
+      Posting language distinguishing "design the approach" from
+      "implement to spec"; whether the team owns architecture decisions or
+      inherits them from a platform/vendor; interview questions about how
+      past ambiguous problems were resolved, asked to originate vs. asked
+      to recall.
+    notes: >
+      Anchors describe the role's shape only, not operator fit — the
+      over/underqualified judgment emerges from combining this with `stretch`
+      in the rollup, not from baking it into these anchors.
 
   - slug: peer
     label: "Peer caliber"

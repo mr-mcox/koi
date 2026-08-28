@@ -1,1 +1,1 @@
-Next slice of review-ux: the rating surface is display-only (review-shell, done) — decide the Ruling data model (F6/F18: dimension-level Ruling as an independent object, "squish" aggregation) before or alongside rating-VOI triage (F3). Orient on review-ux/scouting.md.
+docs/features/review-ux/scouting.md

@@ -45,6 +45,7 @@ class IdentificationResult(BaseModel):
 # Scoring dimension slugs (domain-model.md §Scored dimensions)
 _SCORING_TARGETS = [
     "stretch",
+    "schematic",
     "peer",
     "trajectory",
     "mission",
@@ -70,6 +71,7 @@ _NON_SCORING_TARGETS = [
 # validation time, not by scorer logic.
 Target = Literal[
     "stretch",
+    "schematic",
     "peer",
     "trajectory",
     "mission",

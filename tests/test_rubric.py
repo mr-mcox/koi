@@ -1,8 +1,9 @@
 """rubric.yaml structural tests.
-
-Verifies that the committed rubric has the right shape, carries all seven
-dimensions, does not contain private data, and is consistent with the
-closed Target vocabulary in screen.types.
+Verifies that the committed rubric has a well-formed shape, does not
+contain private data, and stays in sync with the closed Target vocabulary
+in screen.types. Dimension/constraint/non-scoring membership is not pinned
+here — test_rubric_slugs_match_target_literal is the sync check; adding a
+rubric slug only requires updating screen.types alongside rubric.yaml.
 """
 
 import typing
@@ -16,18 +17,6 @@ from screen.extract.prompt import all_constraint_slugs, all_dimension_slugs, all
 from screen.types import Target
 
 RUBRIC_PATH = Path(__file__).resolve().parents[1] / "rubric.yaml"
-
-EXPECTED_DIMENSION_SLUGS = {
-    "stretch",
-    "peer",
-    "trajectory",
-    "mission",
-    "agentic",
-    "compensation",
-    "domain",
-}
-EXPECTED_CONSTRAINT_SLUGS = {"location", "internal_culture", "extractive_business"}
-EXPECTED_NON_SCORING_SLUGS = {"non_scoring:obtainability"}
 
 # These names must not appear in any rubric text field (privacy boundary).
 PRIVATE_PATTERNS = [
@@ -53,19 +42,19 @@ def test_rubric_has_no_version_field(rubric: dict) -> None:  # type: ignore[type
     assert "revision_note" not in rubric
 
 
-def test_rubric_has_all_dimensions(rubric: dict) -> None:  # type: ignore[type-arg]
-    slugs = {d["slug"] for d in rubric.get("dimensions", [])}
-    assert slugs == EXPECTED_DIMENSION_SLUGS, f"dimension slug mismatch: {slugs}"
+def test_rubric_dimension_slugs_are_unique(rubric: dict) -> None:  # type: ignore[type-arg]
+    slugs = [d["slug"] for d in rubric.get("dimensions", [])]
+    assert len(slugs) == len(set(slugs)), f"duplicate dimension slugs: {slugs}"
 
 
-def test_rubric_has_all_constraints(rubric: dict) -> None:  # type: ignore[type-arg]
-    slugs = {c["slug"] for c in rubric.get("constraints", [])}
-    assert slugs == EXPECTED_CONSTRAINT_SLUGS, f"constraint slug mismatch: {slugs}"
+def test_rubric_constraint_slugs_are_unique(rubric: dict) -> None:  # type: ignore[type-arg]
+    slugs = [c["slug"] for c in rubric.get("constraints", [])]
+    assert len(slugs) == len(set(slugs)), f"duplicate constraint slugs: {slugs}"
 
 
-def test_rubric_has_non_scoring_target(rubric: dict) -> None:  # type: ignore[type-arg]
-    slugs = {n["slug"] for n in rubric.get("non_scoring", [])}
-    assert slugs == EXPECTED_NON_SCORING_SLUGS
+def test_rubric_non_scoring_slugs_carry_namespace_prefix(rubric: dict) -> None:  # type: ignore[type-arg]
+    for entry in rubric.get("non_scoring", []):
+        assert entry["slug"].startswith("non_scoring:"), entry["slug"]
 
 
 def test_rubric_compensation_dimension_has_no_baseline_number(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -91,17 +80,22 @@ def test_no_private_data_in_any_text_field(rubric: dict) -> None:  # type: ignor
 
 def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore[type-arg]
     """prompt.py helper functions must return the same slugs the YAML file declares."""
-    assert set(all_dimension_slugs()) == EXPECTED_DIMENSION_SLUGS
-    assert set(all_constraint_slugs()) == EXPECTED_CONSTRAINT_SLUGS
-    assert set(all_non_scoring_slugs()) == EXPECTED_NON_SCORING_SLUGS
+    assert set(all_dimension_slugs()) == {d["slug"] for d in rubric["dimensions"]}
+    assert set(all_constraint_slugs()) == {c["slug"] for c in rubric["constraints"]}
+    assert set(all_non_scoring_slugs()) == {n["slug"] for n in rubric["non_scoring"]}
 
 
-def test_rubric_slugs_match_target_literal() -> None:
+def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignore[type-arg]
     """Every slug in the rubric must appear in the closed Target Literal,
-    and vice versa — the two must stay in sync."""
+    and vice versa — the two must stay in sync. This is the drift detector for
+    Wall 3 (Target is hand-listed in screen.types, not generated from the
+    rubric): it is the sole guard, so a new dimension/constraint/non-scoring
+    slug must land in both places or this fails."""
     literal_values: set[str] = set(typing.get_args(Target))
     rubric_slugs: set[str] = (
-        EXPECTED_DIMENSION_SLUGS | EXPECTED_CONSTRAINT_SLUGS | EXPECTED_NON_SCORING_SLUGS
+        {d["slug"] for d in rubric["dimensions"]}
+        | {c["slug"] for c in rubric["constraints"]}
+        | {n["slug"] for n in rubric["non_scoring"]}
     )
     assert literal_values == rubric_slugs, (
         f"Target Literal and rubric slugs diverged.\n"

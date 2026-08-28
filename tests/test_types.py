@@ -176,7 +176,16 @@ def test_assertion_rejects_confidence_score() -> None:
 
 
 def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
-    for slug in ["stretch", "peer", "trajectory", "mission", "agentic", "compensation", "domain"]:
+    for slug in [
+        "stretch",
+        "schematic",
+        "peer",
+        "trajectory",
+        "mission",
+        "agentic",
+        "compensation",
+        "domain",
+    ]:
         a = Assertion.model_validate(_assertion(target=slug))
         assert a.target == slug
 
