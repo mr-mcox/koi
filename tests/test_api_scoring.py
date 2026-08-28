@@ -58,7 +58,7 @@ def test_score_opening_matches_direct_scorer_calls(config: ScoringConfig) -> Non
 
 
 def test_score_opening_handles_empty_assertions(config: ScoringConfig) -> None:
-    """An opening with zero assertions (transcript only, nothing extracted yet)
+    """An opening with zero assertions (a research trace only, nothing extracted yet)
     must score, not raise — every target enters at its unexamined prior."""
     result = score_opening([], config)
     assert 0.0 <= result.standing <= 1.0

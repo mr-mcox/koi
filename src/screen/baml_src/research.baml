@@ -1,4 +1,4 @@
-// DecidePlan — the one LLM-shaped decision in the dispatcher loop.
+// DecidePlan — the one LLM-shaped decision in the research dispatch pass.
 //
 // Shape 1 invariant: BAML generates the plan; the hand-written
 // dispatcher owns every tool call and all state mutation.
@@ -247,7 +247,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 }
 
 // Fixture: search context with uncovered targets — model should fetch or search,
-// not stop. This is the loop-search criterion smoke test.
+// not stop. This is the search-continuation smoke test.
 test DecidePlan_SearchContextWithUncoveredTargets {
   functions [DecidePlan]
   args {

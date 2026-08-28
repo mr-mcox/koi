@@ -1,4 +1,4 @@
-"""Pydantic model for transcript events."""
+"""Pydantic model for research trace events."""
 
 from datetime import datetime
 from typing import Annotated, Any, Literal, TypedDict
@@ -22,7 +22,7 @@ class TavilyExtractResponse(TypedDict, total=False):
     failed_results: list[dict[str, Any]]
 
 
-class TranscriptEvent(BaseModel):
+class ResearchTraceEvent(BaseModel):
     """A single event recorded while a tool call ran.
 
     Shape (ts, tool, request, response) is the stable core; new fields

@@ -11,10 +11,15 @@ for known inputs" is mechanically verified.
 import pytest
 
 from screen.browser import SearchHit
-from screen.loop.actions import FetchAction, SearchAction, StopAction
-from screen.loop.baml_planner import _coerce, _targets_covered, coverage_summary, last_context_text
-from screen.loop.context import FetchContext, SearchContext
-from screen.loop.state import LoopState
+from screen.research.actions import FetchAction, SearchAction, StopAction
+from screen.research.baml_planner import (
+    _coerce,
+    _targets_covered,
+    coverage_summary,
+    last_context_text,
+)
+from screen.research.context import FetchContext, SearchContext
+from screen.research.state import LoopState
 from screen.types import Assertion, Citation
 
 

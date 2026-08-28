@@ -1,14 +1,14 @@
 """Live BAML adapter for the DecidePlan function.
 
 Coerces the generated `baml_client.types.StopAction` into the canonical
-`screen.loop.actions.StopAction`. Field names match field-for-field;
+`screen.research.actions.StopAction`. Field names match field-for-field;
 `test_loop_baml_shape.py` pins this at test time.
 """
 
-from screen.baml_client.baml_client.sync_client import b
-from screen.loop.actions import Action, FetchAction, SearchAction, StopAction
-from screen.loop.context import FetchContext, SearchContext
-from screen.loop.state import LoopState
+from screen.baml_client.sync_client import b
+from screen.research.actions import Action, FetchAction, SearchAction, StopAction
+from screen.research.context import FetchContext, SearchContext
+from screen.research.state import LoopState
 from screen.types import Assertion
 
 
@@ -101,5 +101,5 @@ def _coerce(generated: object) -> Action:
 
     raise RuntimeError(
         f"BAMLPlanner received unrecognized action tag '{tag}' from DecidePlan. "
-        "Update loop.baml and add a coercion branch here."
+        "Update research.baml and add a coercion branch here."
     )

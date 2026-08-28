@@ -1,5 +1,5 @@
 """Shared fixtures/helpers for `tests/cli/*` — the CLI entry point's test suite,
-split by seam (smoke, full-pipeline, `_identify_transcript`, `_extract_assertions`)
+split by seam (smoke, full-pipeline, `_identify_research_trace`, `_extract_assertions`)
 now that a single `test_cli.py` had grown past the file-length tripwire.
 """
 
@@ -15,8 +15,8 @@ import pytest
 from screen.extract.fakes import FakeExtractor
 from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeIdentifier
-from screen.loop.actions import StopAction
-from screen.loop.fakes import FakePlanner
+from screen.research.actions import StopAction
+from screen.research.fakes import FakePlanner
 from screen.types import Assertion, Citation, IdentificationResult
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -30,9 +30,9 @@ def env_for(tmp_path: Path) -> dict[str, str]:
     return env
 
 
-def seed_transcript(transcript_path: Path, raw_content: str, url: str) -> None:
-    """Write a transcript file with a single tavily_extract event."""
-    transcript_path.parent.mkdir(parents=True, exist_ok=True)
+def seed_research_trace(research_trace_path: Path, raw_content: str, url: str) -> None:
+    """Write a research trace file with a single tavily_extract event."""
+    research_trace_path.parent.mkdir(parents=True, exist_ok=True)
     event = {
         "ts": datetime.now(UTC).isoformat(),
         "tool": "tavily_extract",
@@ -42,7 +42,7 @@ def seed_transcript(transcript_path: Path, raw_content: str, url: str) -> None:
             "failed_results": [],
         },
     }
-    transcript_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    research_trace_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
 
 
 def canned_citation() -> Citation:

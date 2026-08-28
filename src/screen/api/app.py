@@ -9,7 +9,6 @@ this keeps the two concerns separate.
 from __future__ import annotations
 
 import contextlib
-import os
 import sqlite3
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -17,14 +16,10 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from screen.api.routes import router as api_router
+from screen.paths import data_dir
 from screen.store.db import connect as db_connect
 from screen.web.routes import router as web_router
 from screen.web.routes import static_files
-
-
-def _data_dir() -> Path:
-    env = os.environ.get("SCREEN_DATA_DIR")
-    return Path(env).resolve() if env else Path("data").resolve()
 
 
 class Database:
@@ -39,7 +34,7 @@ class Database:
 
     @classmethod
     def default(cls) -> Database:
-        return cls(_data_dir() / "screen.db")
+        return cls(data_dir() / "screen.db")
 
 
 def create_app(db_path: Path | None = None) -> FastAPI:

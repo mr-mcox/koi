@@ -49,7 +49,7 @@ def test_connect_enforces_foreign_keys(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     try:
         conn.execute(
-            "INSERT INTO openings (id, company_id, title, url, transcript_id, created_at) "
+            "INSERT INTO openings (id, company_id, title, url, research_trace_id, created_at) "
             "VALUES ('op1', 'no-such-company', 'Eng', 'https://x', 'tx1', '2026-01-01T00:00:00+00:00')"
         )
         conn.commit()

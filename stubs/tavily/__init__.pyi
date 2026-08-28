@@ -7,7 +7,6 @@ declared here; we never call it.
 
 from typing import Any
 
-
 class TavilyClient:
     def __init__(self, api_key: str, **kwargs: Any) -> None: ...
     def extract(

@@ -10,9 +10,9 @@ Pins the contracts the dispatcher and CLI rely on:
 import pytest
 from pydantic import ValidationError
 
-from screen.loop.actions import StopAction
-from screen.loop.context import FetchContext, SearchContext
-from screen.loop.state import LoopState, PassSummary
+from screen.research.actions import StopAction
+from screen.research.context import FetchContext, SearchContext
+from screen.research.state import LoopState, PassSummary
 from screen.types import Assertion, Citation
 
 # ---------------------------------------------------------------------------

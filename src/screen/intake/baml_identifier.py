@@ -1,6 +1,6 @@
 """Live BAML adapter for the intake identification seam."""
 
-from screen.baml_client.baml_client.sync_client import b
+from screen.baml_client.sync_client import b
 from screen.types import IdentificationResult
 
 

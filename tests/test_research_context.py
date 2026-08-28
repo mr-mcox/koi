@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from screen.browser import SearchHit
-from screen.loop.context import FetchContext, SearchContext
+from screen.research.context import FetchContext, SearchContext
 
 
 def _search_hit(url: str = "https://example.com/page") -> SearchHit:

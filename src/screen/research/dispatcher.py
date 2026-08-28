@@ -14,11 +14,11 @@ from datetime import UTC, datetime
 from screen.browser import BrowserProtocol
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import ExtractorProtocol
-from screen.intake.events import TranscriptEvent
-from screen.loop.actions import Action, FetchAction, SearchAction, StopAction
-from screen.loop.context import FetchContext, SearchContext
-from screen.loop.protocol import PlannerProtocol
-from screen.loop.state import LoopState, PassSummary
+from screen.intake.events import ResearchTraceEvent
+from screen.research.actions import Action, FetchAction, SearchAction, StopAction
+from screen.research.context import FetchContext, SearchContext
+from screen.research.protocol import PlannerProtocol
+from screen.research.state import LoopState, PassSummary
 
 
 def _targets_covered(state: LoopState) -> list[str]:
@@ -67,7 +67,7 @@ def dispatch(
         request = _plan_request(current)
         actions = planner.plan(current)
         on_event(
-            TranscriptEvent(
+            ResearchTraceEvent(
                 ts=datetime.now(UTC),
                 tool="decide_plan",
                 request=request,
@@ -141,7 +141,7 @@ def _handle_search(
     hits = browser.search(action.query)
 
     on_event(
-        TranscriptEvent(
+        ResearchTraceEvent(
             ts=datetime.now(UTC),
             tool="tavily_search",
             request={"query": action.query},
@@ -186,7 +186,7 @@ def _handle_fetch(
     raw_content: str = hit.get("raw_content") or ""
 
     on_event(
-        TranscriptEvent(
+        ResearchTraceEvent(
             ts=datetime.now(UTC),
             tool="tavily_extract",
             request={"urls": [action.url]},

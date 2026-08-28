@@ -54,12 +54,12 @@ def test_opening_insert_and_select_round_trips_through_the_real_schema() -> None
         company_id="acme",
         title="Staff Engineer",
         url="https://example.com/jobs/1",
-        transcript_id="tx0123456789abcdef",
+        research_trace_id="tx0123456789abcdef",
         created_at=datetime.now(UTC),
     )
     conn.execute(
-        """INSERT INTO openings (id, company_id, title, url, transcript_id, created_at)
-           VALUES (:id, :company_id, :title, :url, :transcript_id, :created_at)""",
+        """INSERT INTO openings (id, company_id, title, url, research_trace_id, created_at)
+           VALUES (:id, :company_id, :title, :url, :research_trace_id, :created_at)""",
         opening_to_row(opening),
     )
     row = conn.execute("SELECT * FROM openings WHERE id = 'acme--eng-abc123'").fetchone()

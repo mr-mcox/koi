@@ -9,10 +9,10 @@
 import pytest
 
 from screen.browser import BrowserError, BrowserProtocol
-from screen.loop.actions import FetchAction, SearchAction, StopAction
-from screen.loop.fakes import FakeBrowser, FakePlanner
-from screen.loop.protocol import PlannerProtocol
-from screen.loop.state import LoopState
+from screen.research.actions import FetchAction, SearchAction, StopAction
+from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.protocol import PlannerProtocol
+from screen.research.state import LoopState
 from screen.types import Assertion, Citation
 
 

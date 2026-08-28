@@ -20,15 +20,16 @@ from screen.extract.prompt import rubric_text_for_baml
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.company_id import derive_company_id
-from screen.intake.events import TavilyExtractResponse, TranscriptEvent
+from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
 from screen.intake.identify import IdentifierProtocol, identify_opening
 from screen.intake.opening_id import derive_opening_id
-from screen.intake.transcript_id import derive_transcript_id
-from screen.intake.transcript_io import append_line
-from screen.loop.baml_planner import BAMLPlanner
-from screen.loop.dispatcher import dispatch
-from screen.loop.protocol import PlannerProtocol
-from screen.loop.state import LoopState
+from screen.intake.research_trace_id import derive_research_trace_id
+from screen.intake.research_trace_io import append_line
+from screen.paths import data_dir
+from screen.research.baml_planner import BAMLPlanner
+from screen.research.dispatcher import dispatch
+from screen.research.protocol import PlannerProtocol
+from screen.research.state import LoopState
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
@@ -37,11 +38,6 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Assertion, Company, IdentificationResult, Opening
-
-
-def _data_dir() -> Path:
-    env = os.environ.get("SCREEN_DATA_DIR")
-    return Path(env).resolve() if env else (Path("data").resolve())
 
 
 def _db_path_for(data_dir: Path) -> Path:
@@ -69,22 +65,22 @@ def _noop_on_event(_event: object) -> None:
     """Placeholder on_event used until a real subscriber is injected."""
 
 
-def _record_event(transcript_path: Path, event: TranscriptEvent) -> None:
-    append_line(transcript_path, event.model_dump_json())
+def _record_event(research_trace_path: Path, event: ResearchTraceEvent) -> None:
+    append_line(research_trace_path, event.model_dump_json())
 
 
-def _transcript_path_for(data_dir: Path, transcript_id: str) -> Path:
-    return data_dir / "transcripts" / f"{transcript_id}.jsonl"
+def _research_trace_path_for(data_dir: Path, research_trace_id: str) -> Path:
+    return data_dir / "research_traces" / f"{research_trace_id}.jsonl"
 
 
-def _read_page_content(transcript_path: Path) -> tuple[str, str]:
+def _read_page_content(research_trace_path: Path) -> tuple[str, str]:
     """Return (raw_content, url) from the first tavily_extract event."""
-    if not transcript_path.exists():
-        raise click.ClickException(f"transcript missing at {transcript_path}")
-    for raw_line in transcript_path.read_text(encoding="utf-8").splitlines():
+    if not research_trace_path.exists():
+        raise click.ClickException(f"research trace missing at {research_trace_path}")
+    for raw_line in research_trace_path.read_text(encoding="utf-8").splitlines():
         if not raw_line:
             continue
-        event = TranscriptEvent.model_validate_json(raw_line)
+        event = ResearchTraceEvent.model_validate_json(raw_line)
         if event.tool != "tavily_extract":
             continue
         response = cast(TavilyExtractResponse, event.response)
@@ -95,14 +91,14 @@ def _read_page_content(transcript_path: Path) -> tuple[str, str]:
         url = first.get("url") or (event.request.get("urls") or [""])[0]
         raw_content = first.get("raw_content", "")
         return str(raw_content), str(url)
-    raise click.ClickException(f"no tavily_extract event with raw_content in {transcript_path}")
+    raise click.ClickException(f"no tavily_extract event with raw_content in {research_trace_path}")
 
 
 def _persist_company_and_opening(
     conn: sqlite3.Connection,
     identification: IdentificationResult,
     url: str,
-    transcript_id: str,
+    research_trace_id: str,
     now: datetime,
 ) -> tuple[Company, Opening]:
     company_id = derive_company_id(identification.company_name, url)
@@ -117,7 +113,7 @@ def _persist_company_and_opening(
         company_id=company_id,
         title=identification.opening_title,
         url=url,
-        transcript_id=transcript_id,
+        research_trace_id=research_trace_id,
         created_at=now,
     )
     upsert_company(conn, company)
@@ -129,48 +125,48 @@ def _persist_company_and_opening(
 @click.argument("url")
 def intake(url: str) -> None:
     """Fetch a job posting URL and persist Company + Opening + Assertion rows."""
-    data_dir = _data_dir()
+    data_root = data_dir()
     client = _build_client()
-    transcript_path = _fetch_url(url, client, data_dir)
-    _identify_transcript(transcript_path, data_dir)
+    research_trace_path = _fetch_url(url, client, data_root)
+    _identify_research_trace(research_trace_path, data_root)
 
 
 def _fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
-    """Run the URL → transcript step. On transport failure, record the
-    partial transcript and re-raise as a ClickException."""
-    transcript_id = derive_transcript_id(url)
-    transcript_path = _transcript_path_for(data_dir, transcript_id)
+    """Run the URL → research trace step. On transport failure, record the
+    partial research trace and re-raise as a ClickException."""
+    research_trace_id = derive_research_trace_id(url)
+    research_trace_path = _research_trace_path_for(data_dir, research_trace_id)
     started = datetime.now(UTC)
     request_payload = {"urls": [url]}
     try:
         response = client.extract([url])
     except BrowserError as exc:
-        event = TranscriptEvent(
+        event = ResearchTraceEvent(
             ts=started,
             tool="tavily_extract",
             request=request_payload,
             response={"error": str(exc)},
         )
-        _record_event(transcript_path, event)
+        _record_event(research_trace_path, event)
         raise click.ClickException(f"intake failed for {url}: {exc}") from exc
-    event = TranscriptEvent(
+    event = ResearchTraceEvent(
         ts=started,
         tool="tavily_extract",
         request=request_payload,
         response=dict(response),
     )
-    _record_event(transcript_path, event)
-    return transcript_path
+    _record_event(research_trace_path, event)
+    return research_trace_path
 
 
-def _identify_transcript(transcript_path: Path, data_dir: Path) -> None:
-    """Run the transcript → Company + Opening + Assertions step."""
-    page_content, url = _read_page_content(transcript_path)
+def _identify_research_trace(research_trace_path: Path, data_dir: Path) -> None:
+    """Run the research trace → Company + Opening + Assertions step."""
+    page_content, url = _read_page_content(research_trace_path)
     identification = identify_opening(page_content, identifier=_build_identifier())
-    transcript_id = transcript_path.stem
+    research_trace_id = research_trace_path.stem
     conn = connect(_db_path_for(data_dir))
     company, opening = _persist_company_and_opening(
-        conn, identification, url, transcript_id, datetime.now(UTC)
+        conn, identification, url, research_trace_id, datetime.now(UTC)
     )
     click.echo(f"wrote company {company.id}")
     click.echo(f"wrote opening {opening.id}")
@@ -184,7 +180,7 @@ def _identify_transcript(transcript_path: Path, data_dir: Path) -> None:
         page_content=page_content,
         company_name=identification.company_name,
         opening_title=identification.opening_title,
-        on_event=lambda event: _record_event(transcript_path, event),
+        on_event=lambda event: _record_event(research_trace_path, event),
     )
 
 
