@@ -46,8 +46,11 @@ def test_rubric_file_exists() -> None:
     assert RUBRIC_PATH.exists(), f"rubric.yaml not found at {RUBRIC_PATH}"
 
 
-def test_rubric_has_version(rubric: dict) -> None:  # type: ignore[type-arg]
-    assert rubric.get("version") == 1
+def test_rubric_has_no_version_field(rubric: dict) -> None:  # type: ignore[type-arg]
+    """Dropped deliberately: git history is the change log, and there is no scenario yet
+    where multiple rubric versions are live at once."""
+    assert "version" not in rubric
+    assert "revision_note" not in rubric
 
 
 def test_rubric_has_all_dimensions(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -116,14 +119,13 @@ def test_rubric_text_for_baml_empty_sections_do_not_crash(
         prompt_module,
         "_load",
         lambda: {
-            "confidence_tiers": [],
             "dimensions": [],
             "constraints": [],
             "non_scoring": [],
         },
     )
     result = prompt_module.rubric_text_for_baml()
-    assert "Confidence tiers" in result
+    assert "Scored dimensions" in result
 
 
 def test_rubric_text_for_baml_dimension_without_look_for(
@@ -134,7 +136,6 @@ def test_rubric_text_for_baml_dimension_without_look_for(
         prompt_module,
         "_load",
         lambda: {
-            "confidence_tiers": [],
             "dimensions": [
                 {
                     "slug": "domain",

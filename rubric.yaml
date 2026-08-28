@@ -1,45 +1,15 @@
-# Job Screener Rubric — v1
+# Job Screener Rubric
 #
 # This file is the source of truth for evaluation criteria. Rubric text is
-# sliced verbatim into research prompts and review screens (R4). Any change
-# to a dimension definition, weight, anchor, tolerability range, or slug is
-# a versioned change: increment `version`, add a line to `revision_note`.
+# sliced verbatim into research prompts and review screens (R4). Git history
+# is the change log — no in-file version/revision_note; this isn't a schema
+# with multiple versions live at once.
 #
-# Cross-references: DECISIONS.md (R4, D2, D6, D7, D10, D15, D16, D18, D19, D20).
+# Cross-references: docs/architecture/decisions.md (R4, S1-S8, D15, D16, D18).
 # Schema: `docs/features/steel-thread-intake-to-assertions/slices/03-baml-extract-assertions.md`.
 #
 # Privacy boundary: this file is public. Compensation baseline, résumé, and
 # contact details live in untracked config, not here.
-version: 1
-revision_note: "v1 — seeded from prototype rubric (docs/briefs/Job_Screener_Rubric.md). Compensation baseline removed to env config. Sanity-check section with real company names removed."
-
-# ---------------------------------------------------------------------------
-# Confidence tiers — apply everywhere (dimensions and constraints alike)
-# ---------------------------------------------------------------------------
-#
-# Confidence is a threshold gate on whether evidence counts at all.
-# It is never a multiplier on the evidence's value (D2).
-# Fit and confidence are stored as separate fields on every assertion; they
-# are never pre-blended into one number at collection time.
-
-confidence_tiers:
-  - tier: Low
-    definition: >
-      One uncorroborated source (a single Glassdoor review, a single blog
-      post). Stored, but excluded from every rollup. Automatically logged as
-      an open hypothesis — something to corroborate, not something to score.
-    counts_toward_score: false
-  - tier: Medium
-    definition: >
-      Two independent sources agreeing, or one primary/official source (the
-      company's own posting, funding press). Counts at full face value.
-  - tier: High
-    definition: >
-      Three or more independent sources agreeing, or one authoritative source
-      (official company statement, SEC filing, a direct interview answer).
-      Treated identically to Medium — there is no extra credit for High over
-      Medium. The tiers exist to separate "doesn't count yet" from "counts",
-      not to create a finer-grained scale.
 # ---------------------------------------------------------------------------
 # Constraints — tolerability discounts, multiplied against quality (D7)
 # ---------------------------------------------------------------------------

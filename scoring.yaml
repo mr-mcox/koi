@@ -1,0 +1,51 @@
+# Scoring dials — operator-owned config, not versioned rubric content.
+#
+# rubric.yaml owns dimension/constraint definitions and dimension weights (R4: rubric text
+# and weights are load-bearing, versioned). This file owns the Monte Carlo mechanics: `bar`
+# is explicitly called out in rubric.yaml as "a config value, not set here" (rubric.yaml
+# line ~137); band thresholds and provenance-rung widths are dials expected to move with use,
+# not decisions worth a version bump each time they're retuned.
+#
+# See docs/architecture/open-questions.md OQ1 (provenance-rung widths) and OQ9
+# (bar/band thresholds) — everything below is a named placeholder, not a measurement.
+
+# The queue sorts on P(overall > bar). `overall` lives in [0, 1].
+bar: 0.60
+
+# Monte Carlo. `seed` makes a ranking reproducible run-to-run — without it, two openings
+# whose P differs by less than sampling noise would swap places between runs.
+seed: 20260821
+samples: 200000
+
+# Effective sample-weight per provenance rung. Each scoring/constraint target's distribution
+# is Uniform(mean - half_width, mean + half_width) with
+#     n = sum(provenance_weight[a.provenance] for a in that target's assertions)
+#     mean = n * sample_mean / (n + 1)
+#     half_width = 1 / sqrt(n + 1)
+# — the same shrinkage the prototype used for counted (Medium/High) evidence, generalized so
+# provenance sets the effective weight instead of a binary confidence gate (S8, and E3's
+# raw-gesture-kept/snap-scores split, in docs/architecture/decisions.md).
+#
+# `unexamined` = 0.0: an assertion whose own provenance is literally "unexamined" contributes
+# nothing, equivalent to being absent. A *target* reads as unexamined (Uniform(-1, +1) prior)
+# when the assertions attached to it sum to zero effective weight — not from a special-cased
+# branch, just n = 0 in the formula above.
+#
+# `model_proposed` = 1.0 is chosen so today's seed data (all real assertions collected so
+# far are model_proposed) scores identically to the pre-provenance prototype formula, where
+# every counted entry had implicit weight 1. `precedent_matched` and `ratified` are first-cut,
+# uncalibrated placeholders — narrower than model_proposed, never zero (OQ1).
+provenance_weight:
+  unexamined: 0.0
+  model_proposed: 1.0
+  precedent_matched: 3.0
+  ratified: 8.0
+
+# Queue band thresholds (S5, docs/architecture/decisions.md). Ported directly from the
+# prototype's config.toml — a settled placeholder, not unmeasured (OQ9): expected to move
+# with real ranking use, same as `bar`.
+bands:
+  reach_wide: 0.50
+  reach_capped: 0.05
+  contender: 0.15
+  settled: 0.02

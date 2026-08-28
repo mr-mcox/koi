@@ -8,7 +8,10 @@ from screen.baml_client.baml_client.types import Assertion as BAMLAssertion
 from screen.baml_client.baml_client.types import Citation as BAMLCitation
 from screen.types import Assertion, Citation
 
-_ASSERTION_FIELDS = set(Assertion.model_fields.keys())
+# `id` is domain-only: assigned by `Assertion`'s default factory after BAML emits,
+# never part of what the model is asked to produce (assigned-after-emit, not
+# overwritten-after-emit like `created_at`). Excluded from the parity check.
+_ASSERTION_FIELDS = set(Assertion.model_fields.keys()) - {"id"}
 _CITATION_FIELDS = set(Citation.model_fields.keys())
 
 

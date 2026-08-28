@@ -6,6 +6,7 @@ The closed `Target` Literal enforces Wall 3 (no unknown targets).
 
 from datetime import datetime
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -133,6 +134,7 @@ class Assertion(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
     target: Target
     fit: Fit
     provenance: Provenance

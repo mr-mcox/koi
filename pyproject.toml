@@ -6,14 +6,18 @@ requires-python = ">=3.14"
 dependencies = [
     "baml-py>=0.226.1",
     "click>=8.1",
+    "fastapi>=0.115.0",
+    "numpy>=2.5.2",
     "pydantic>=2.0",
     "pyyaml>=6.0.3",
     "tavily-python>=0.7.0",
+    "uvicorn>=0.34.0",
 ]
 
 [dependency-groups]
 dev = [
     "black>=24.0",
+    "httpx2>=0.28.0",
     "pyright>=1.1.411",
     "pytest>=8.0",
     "pytest-cov>=5.0",

@@ -1,1 +1,1 @@
-docs/features/loop-search/planner-grounding-bearing.md
+docs/features/review-ux/scouting.md

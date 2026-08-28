@@ -99,6 +99,15 @@ Real names of companies under evaluation never enter committed files. Docs use t
 Company A–D pseudonyms defined in `docs/prototype-decisions.md`; committed examples and
 test fixtures use synthetic or pseudonymized companies only. When in doubt, it goes in
 untracked config or the data directory, not in git.
+
+## Data — the operator's live store is off-limits
+
+`./run` (operator-only — do not invoke it in an agent session) points the CLI/API at
+`data/live/`, the DB holding the operator's real ratings. Everything an agent runs —
+`uv run python -m screen <url>`, `uv run uvicorn screen.api.app:app`, the test suite —
+defaults to `./data` instead (or a `tmp_path` in tests), a disposable scratch DB safe to
+delete. Never set `SCREEN_DATA_DIR` to `data/live` or otherwise target it.
+
 ## Ready to commit
 `uv run python scripts/check.py` runs the project gates. On failure
 each gate prints its iterate-from-fix command.

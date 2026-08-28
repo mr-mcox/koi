@@ -108,7 +108,11 @@ accumulated cases.**
   precedent and against further rubric-polishing. Caveat recorded before the result: all
   seven were answered in one batch in one sitting, and unanimity is what an anchoring
   artifact looks like. The next company's overrides, in a separate sitting, either
-  replicate this or they don't.
+  replicate this or they don't. (The batch-after-review sitting and the per-override
+  remediation vocabulary were instrumentation built to answer this pivot question, not a
+  review pattern the operator found efficient or wants reproduced — `decisions.md` W4.
+  The 7/7 example-only result stands as evidence about rubric encodability; nothing about
+  *how* the questions were delivered is a carried-forward design decision.)
 - `measured once` — the prediction "Stretch will need learned calibration" was right and
   too narrow (agentic, peer, and internal-culture overrides were also example-only).
 - `demonstrated` — the confound stands: a low override rate on an unexamined dimension is

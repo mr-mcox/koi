@@ -3,6 +3,7 @@ Schema and Wall cross-references: `docs/architecture/domain-model.md`.
 """
 
 import json
+import uuid
 
 import pytest
 from pydantic import ValidationError
@@ -95,6 +96,7 @@ def _citation(**overrides: object) -> dict:  # type: ignore[type-arg]
 
 def _assertion(**overrides: object) -> dict:  # type: ignore[type-arg]
     base = {
+        "id": "00000000-0000-0000-0000-000000000001",
         "target": "stretch",
         "fit": "Strong",
         "provenance": "model_proposed",
@@ -123,6 +125,27 @@ def test_assertion_round_trip_minimum_valid() -> None:
     assert assertion.fit == "Strong"
     assert assertion.provenance == "model_proposed"
     assert len(assertion.citations) == 1
+
+
+def test_assertion_has_id() -> None:
+    raw = _assertion()
+    assertion = Assertion.model_validate(raw)
+    assert assertion.id == raw["id"]
+    assert len(assertion.id) >= 32
+
+
+def test_assertion_id_defaults_to_uuid() -> None:
+    raw = {k: v for k, v in _assertion().items() if k != "id"}
+    assertion = Assertion.model_validate(raw)
+    # uuid.UUID validates the string format; ValueError if malformed.
+    uuid.UUID(assertion.id)
+
+
+def test_assertion_ids_differ_by_default() -> None:
+    raw = {k: v for k, v in _assertion().items() if k != "id"}
+    a = Assertion.model_validate(raw)
+    b = Assertion.model_validate(raw)
+    assert a.id != b.id
 
 
 def test_assertion_is_frozen() -> None:

@@ -1,6 +1,7 @@
 """Click commands for the intake pipeline."""
 
 import os
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,12 +29,23 @@ from screen.loop.baml_planner import BAMLPlanner
 from screen.loop.dispatcher import dispatch
 from screen.loop.protocol import PlannerProtocol
 from screen.loop.state import LoopState
+from screen.store.db import connect
+from screen.store.repo import (
+    append_assertions,
+    assertions_for_opening,
+    upsert_company,
+    upsert_opening,
+)
 from screen.types import Assertion, Company, IdentificationResult, Opening
 
 
 def _data_dir() -> Path:
     env = os.environ.get("SCREEN_DATA_DIR")
     return Path(env).resolve() if env else (Path("data").resolve())
+
+
+def _db_path_for(data_dir: Path) -> Path:
+    return data_dir / "screen.db"
 
 
 def _build_client() -> BrowserProtocol:
@@ -62,7 +74,7 @@ def _record_event(transcript_path: Path, event: TranscriptEvent) -> None:
 
 
 def _transcript_path_for(data_dir: Path, transcript_id: str) -> Path:
-    return data_dir / transcript_id / "transcript.jsonl"
+    return data_dir / "transcripts" / f"{transcript_id}.jsonl"
 
 
 def _read_page_content(transcript_path: Path) -> tuple[str, str]:
@@ -86,13 +98,13 @@ def _read_page_content(transcript_path: Path) -> tuple[str, str]:
     raise click.ClickException(f"no tavily_extract event with raw_content in {transcript_path}")
 
 
-def _write_company_and_opening(
-    data_dir: Path,
+def _persist_company_and_opening(
+    conn: sqlite3.Connection,
     identification: IdentificationResult,
     url: str,
     transcript_id: str,
     now: datetime,
-) -> tuple[Path, Path]:
+) -> tuple[Company, Opening]:
     company_id = derive_company_id(identification.company_name, url)
     opening_id = derive_opening_id(identification.opening_title, url)
     company = Company(
@@ -108,23 +120,15 @@ def _write_company_and_opening(
         transcript_id=transcript_id,
         created_at=now,
     )
-    company_dir = data_dir / company_id
-    company_dir.mkdir(parents=True, exist_ok=True)
-    opening_dir = company_dir / "openings" / opening_id
-    opening_dir.mkdir(parents=True, exist_ok=True)
-    (company_dir / "company.json").write_text(
-        company.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
-    (opening_dir / "opening.json").write_text(
-        opening.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
-    return company_dir, opening_dir
+    upsert_company(conn, company)
+    upsert_opening(conn, opening)
+    return company, opening
 
 
 @click.command()
 @click.argument("url")
 def intake(url: str) -> None:
-    """Fetch a job posting URL and persist Company + Opening records."""
+    """Fetch a job posting URL and persist Company + Opening + Assertion rows."""
     data_dir = _data_dir()
     client = _build_client()
     transcript_path = _fetch_url(url, client, data_dir)
@@ -160,68 +164,60 @@ def _fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
 
 
 def _identify_transcript(transcript_path: Path, data_dir: Path) -> None:
-    """Run the transcript → Company + Opening + Assertions step and move
-    the transcript into its permanent opening directory."""
+    """Run the transcript → Company + Opening + Assertions step."""
     page_content, url = _read_page_content(transcript_path)
     identification = identify_opening(page_content, identifier=_build_identifier())
-    transcript_id = transcript_path.parent.name
-    staging_dir = transcript_path.parent
-    company_dir, opening_dir = _write_company_and_opening(
-        data_dir, identification, url, transcript_id, datetime.now(UTC)
+    transcript_id = transcript_path.stem
+    conn = connect(_db_path_for(data_dir))
+    company, opening = _persist_company_and_opening(
+        conn, identification, url, transcript_id, datetime.now(UTC)
     )
-    # Path.replace is atomic on POSIX; bytes unchanged, so Wall 6 is preserved.
-    final_transcript_path = opening_dir / "transcript.jsonl"
-    transcript_path.replace(final_transcript_path)
-    if not any(staging_dir.iterdir()):
-        staging_dir.rmdir()
-    click.echo(f"wrote {company_dir / 'company.json'}")
-    click.echo(f"wrote {opening_dir / 'opening.json'}")
-    all_assertions = _extract_assertions(opening_dir, url, page_content)
+    click.echo(f"wrote company {company.id}")
+    click.echo(f"wrote opening {opening.id}")
+    all_assertions = _extract_assertions(conn, opening.id, page_content)
     _run_dispatch(
-        opening_dir,
+        conn,
+        opening.id,
         url,
-        page_content,
         all_assertions,
+        company_id=company.id,
+        page_content=page_content,
         company_name=identification.company_name,
         opening_title=identification.opening_title,
-        on_event=lambda event: _record_event(final_transcript_path, event),
+        on_event=lambda event: _record_event(transcript_path, event),
     )
 
 
 def _extract_assertions(
-    opening_dir: Path,
-    url: str,
+    conn: sqlite3.Connection,
+    opening_id: str,
     chunk: str,
     *,
     extractor: ExtractorProtocol | None = None,
 ) -> list[Assertion]:
-    """Extract assertions from `chunk`, append to assertions.jsonl, return all.
-
+    """Extract assertions from `chunk`, append to the DB, return all for the opening.
     Returns existing + new so the caller can build LoopState without re-reading
-    from disk (bearing Agreed: no disk re-read). Append-only (Wall 6).
+    from disk.
     """
-    assertions_path = opening_dir / "assertions.jsonl"
-    existing: list[Assertion] = []
-    if assertions_path.exists():
-        for raw in assertions_path.read_text(encoding="utf-8").splitlines():
-            if raw.strip():
-                existing.append(Assertion.model_validate_json(raw))
+    existing = assertions_for_opening(conn, opening_id)
 
     rubric = rubric_text_for_baml()
     xt = extractor if extractor is not None else _build_extractor()
     new_assertions = extract_assertions(chunk, rubric, existing, extractor=xt)
-    for assertion in new_assertions:
-        append_line(assertions_path, assertion.model_dump_json())
-    click.echo(f"wrote {len(new_assertions)} assertion(s) → {assertions_path}")
+    if new_assertions:
+        append_assertions(conn, new_assertions, opening_id=opening_id)
+    click.echo(f"wrote {len(new_assertions)} assertion(s) for opening {opening_id}")
     return existing + new_assertions
 
 
 def _run_dispatch(
-    opening_dir: Path,
+    conn: sqlite3.Connection,
+    opening_id: str,
     url: str,
-    page_content: str,
     assertions: list[Assertion],
     *,
+    company_id: str,
+    page_content: str,
     company_name: str,
     opening_title: str,
     planner: PlannerProtocol | None = None,
@@ -231,11 +227,11 @@ def _run_dispatch(
 ) -> None:
     """Build LoopState from in-memory values and run one dispatch cycle.
     The CLI echoes the stop reason. No disk re-read: assertions list
-    comes from the caller.
+    comes from the caller. Assertions the dispatch loop's own fetch actions
+    add are not persisted here or by dispatch itself — unchanged from prior
+    behavior, tracked by test_cli_dispatch_does_not_re_extract.
     """
     rubric = rubric_text_for_baml()
-    opening_id = opening_dir.name
-    company_id = opening_dir.parent.parent.name
     state = LoopState(
         opening_id=opening_id,
         company_id=company_id,

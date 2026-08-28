@@ -14,16 +14,6 @@ def _load() -> dict[str, Any]:
     return yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
 
 
-def _render_confidence_tiers(data: dict[str, Any]) -> list[str]:
-    lines: list[str] = ["## Confidence tiers"]
-    for tier in data.get("confidence_tiers", []):
-        counts = tier.get("counts_toward_score", True)
-        lines.append(
-            f"- {tier['tier']}: {tier['definition'].strip()} " f"(counts toward score: {counts})"
-        )
-    return lines
-
-
 def _render_dimensions(data: dict[str, Any]) -> list[str]:
     lines: list[str] = ["\n## Scored dimensions"]
     for dim in data.get("dimensions", []):
@@ -65,7 +55,6 @@ def rubric_text_for_baml() -> str:
     """
     data = _load()
     parts: list[list[str]] = [
-        _render_confidence_tiers(data),
         _render_dimensions(data),
         _render_constraints(data),
         _render_non_scoring(data),

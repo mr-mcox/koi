@@ -136,3 +136,55 @@ compare against precedent, and whether that's a dedicated non-scoring target (e.
 transcript is a real design choice to make then, with a real consumer in front of it —
 not a guess to make now.
 
+## 13 · Should `Target`/BAML schema derive from `rubric.yaml`, rather than hand-sync?
+
+Rubric dimension/constraint slugs currently need matching-by-hand updates in three places:
+`rubric.yaml` itself, `screen.types.Target` (closed Literal, wall 3), and the BAML
+`Assertion` schema (`baml_src/extract.baml`). A first rubric revision (v2, draft, splitting
+`schematic` out of `stretch`) already surfaced the gap: the YAML can describe a dimension
+nothing downstream can produce or validate yet, with nothing forcing the sync.
+
+**Settled by:** whether this recurs. One instance is a hand-off note, not a pattern; if a
+second rubric revision hits the same gap, that's evidence the sync should be generated
+rather than maintained by hand.
+
+## 14 · Should constraints collect a situation label instead of `Fit`?
+
+The Scorer (docs/architecture/domain-model.md, Scorer section) scores constraints
+(location, internal_culture, extractive_business) by affine-mapping an assertion's `Fit`
+(Poor/Mixed/Strong) onto the constraint's `rubric.yaml`-declared tolerability range, shrunk
+toward the sample mean the same way a scoring dimension is. This works, is order-independent,
+and passes every acceptance test — but it's a translation the operator hasn't confirmed
+reads correctly. The prototype's constraint model read a discrete *situation label* per
+constraint directly (`config.toml`'s `[constraints.location.situations]`, e.g.
+"different_metro" → tolerability range `[0.15, 0.95]`); `screen.types.Assertion` has no
+situation-label field, only `target`/`fit`, so today's Scorer treats a constraint's `Fit`
+as if it meant the same thing a dimension's `Fit` means — "how far the model got with a
+rented apartment 40 minutes away" doesn't obviously reduce to Poor/Mixed/Strong the way a
+dimension's evidence does.
+
+Operator's read: worth asking whether `rubric.yaml`'s constraint situations should become
+the collected vocabulary directly — a research pass proposes a situation label, not a
+`Fit`, for constraint targets — so this translation step isn't needed at all. Current
+behavior is an acceptable interim bridge, not the destination.
+
+**Settled by:** looking at real constraint assertions once a few more openings are
+researched, and judging whether `Fit`-as-situation-proxy is producing tolerability numbers
+that match the operator's own read of the constraint. If it visibly misreads a real case,
+that's the evidence to switch constraints to collecting a situation label instead of `Fit`.
+
+## 15 · When does migration tooling (e.g. Alembic against SQLAlchemy Core) earn its keep over hand-written SQL migrations?
+
+score-persistence chose raw `sqlite3` + hand-mapped Pydantic models + a small numbered-`.sql`
+migration runner over an ORM, deliberately: `screen.types` is already the domain model
+(Wall 1/2/3 tested against it), and an ORM (SQLModel or similar) would make that model do
+double duty as the persistence model too, plus tends to shape endpoints around tables
+rather than the domain question being asked. Three tables, read-only endpoints — the
+machinery isn't earning anything yet.
+
+**Settled by:** either (a) migrations start needing real downgrade paths / branching
+schema changes that hand-written SQL makes error-prone, or (b) the table count and join
+complexity grow past what mapper functions stay cheap to hand-write for. First sign is
+likely a migration that's hard to write correctly by hand, not a growing table count
+alone — that's the trigger to revisit, not general unease about boilerplate.
+

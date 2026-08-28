@@ -113,8 +113,10 @@ injected at runtime, never committed (D23).
 
 ### Scorer
 
-A pure domain service: `(assertions, rubric) → per-target distributions → Monte Carlo →
-standing, reach, ceiling, band`. Stateless, deterministic given a seed.
+A pure domain service: `(assertions, rubric) → per-target distributions → Monte Carlo trace
+→ standing, reach, ceiling, band`. Stateless, deterministic given a seed. The trace is the
+source of truth — standing, hits, and sampling noise are computed from it on read, not
+stored as separately-frozen fields that could drift out of agreement with it.
 
 The new modeling decision, steel-threaded first because it is the least proven:
 **an assertion is a noisy measurement of what the operator would conclude, and provenance
@@ -122,18 +124,50 @@ sets the noise.** Unexamined → maximal width (D5). Model-proposed → wide.
 Precedent-matched → narrower. Ratified → narrowest, not zero. This amends the letter of
 the prototype's D2 (Medium/High identical — the rung-less ladder the plane data complained
 about) while keeping its spirit: **provenance widens a distribution; it never multiplies
-fit.** Blending the two axes into one number is the thrice-rejected mistake.
+fit.** Blending the two axes into one number is the thrice-rejected mistake. The Scorer
+consumes `Assertion.provenance` as an already-assigned input; how a Ruling or
+PrecedentLookup match comes to set that value is the Ruling mechanism's concern, not the
+Scorer's (see Ruling, below).
 
-Outputs and their roles (D20, D21): `standing` is the only sort key; `reach` names the band
-and never sorts (it saturates — an empty record out-reaches a researched good one);
-the cliff is analytic, not sampled; within-noise neighbors are marked as such.
+`standing` and `reach` are not two fields of one result — they are the same result type
+scored against two different assertion sets. `standing` scores the assertions as they
+actually exist; `reach` scores a counterfactual where every unexamined target has received
+one hypothetical good research pass. Comparing the two pairs is what names the band
+(D20, D21): `standing` is the only sort key; `reach` never sorts (it saturates — an empty
+record out-reaches a researched good one); the cliff is analytic, not sampled; within-noise
+neighbors are marked as such.
+
+Implemented in `src/screen/score/` (`types.py`, `scorer.py`, `band.py`, `loader.py`),
+verified against real seed data.
+One open tension surfaced during implementation: constraints (location, internal_culture,
+extractive_business) are scored by affine-mapping an assertion's `Fit` onto the
+constraint's tolerability range, shrunk the same way a dimension is — but the prototype's
+constraint model read a discrete *situation label* per constraint, not `Fit`, and
+`screen.types.Assertion` has no situation-label field. This passes every acceptance test
+but is an interpretive bridge nobody has confirmed reads correctly (→ open-questions.md
+OQ14).
 
 ### Ruling
 
-The operator's review event: proposed vs. final labels, the raw click, remediation path —
-**asked in a batch after the entries are done (D27), never demanded per entry**. The
+The operator's review event: proposed vs. final labels, the raw click, remediation path.
+Granularity is open (→ `docs/features/review-ux/scouting.md` F6/F18): whether a Ruling is
+always assertion-level, or whether a dimension-level Ruling is also a first-class object,
+is undecided pending that feature's bearing. What's settled: reviews are not required to
+be worked in a fixed batch-then-generalize shape (D27's batch screen was prototype
+instrumentation for one pivot question, not a UX pattern — see `decisions.md` W4). The
 accumulating corpus is the calibration data for everything: confidence-ladder geometry,
 precedent matching, the encodability answer.
+
+**Open tension, not yet resolved:** provenance may belong to Ruling rather than being a
+field Assertion carries directly. Candidate mechanism: an assertion's rung is *derived*
+from whether and how it links to the Ruling corpus — no link → `unexamined`; a
+model-proposed assertion with no Ruling → `model_proposed`; a `PrecedentLookup` match to a
+Ruling on a *different* assertion → `precedent_matched`; a direct Ruling *on this
+assertion* → `ratified`. This is consistent with `PrecedentLookup`'s sketch below but isn't built —
+neither `Ruling` nor `PrecedentLookup` exist as code yet, and today `Assertion.provenance`
+is simply asserted by whatever wrote the assertion (always `model_proposed` from the
+current extraction pipeline). Whoever builds `Ruling` needs to settle this before
+provenance can be treated as anything but an opaque input.
 
 ### PrecedentLookup
 

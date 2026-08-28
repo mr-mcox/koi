@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Operator-only entry point. Runs the CLI or API against the live data
+# store (data/live/), not the disposable default (./data) that manual
+# testing and agent sessions use.
+#
+# Agents: do not invoke this script — see AGENTS.md.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCREEN_DATA_DIR="${SCREEN_DATA_DIR:-$REPO_ROOT/data/live}"
+PORT="${SCREEN_API_PORT:-8420}"
+
+cmd="${1:-serve}"
+shift || true
+
+case "$cmd" in
+  serve)
+    exec uv run uvicorn screen.api.app:app --port "$PORT" "$@"
+    ;;
+  intake)
+    exec uv run python -m screen "$@"
+    ;;
+  *)
+    echo "usage: ./run [serve|intake <url>]" >&2
+    exit 1
+    ;;
+esac

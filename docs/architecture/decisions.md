@@ -207,14 +207,16 @@ anything, act. Costs are **configured numbers the operator owns** — no duratio
 (the one measured cost showed guesses off 2–4×; configured-but-owned beats
 measured-but-fussy for a single-user tool).
 
-### W4 · Generalization questions are asked in batches · `demonstrated` (D27)
+### W4 · Batched "does this override generalize?" screen — retired, not carried forward
 
-"Does this override generalize?" cannot be answered at entry 1 of 12 — a forced answer is
-worse data than a missing one. Remediation paths are collected batch-wise after review,
-with the debt carried visibly. (Prototype friction postscript, worth its weight: four
-distinct friction causes arrived before a single entry was reviewed, and all four were
-*design* friction, none volume friction.)
-
+The prototype's D27 asked a batch-wise generalization question (`rubric-edit` /
+`example-only` / `one-off`) after a sit-down review of all entries. That was
+instrumentation for the prototype's own Q5 ("is the rubric durable, or does accuracy
+come from accumulated cases?") — a question about closing the prototype phase, not a
+review interaction the operator found efficient and wants reproduced. **Do not build
+this pattern.** The review UX is undecided and open for the clean build to design from
+what's actually efficient for the operator — see `docs/features/*/scouting.md` for the
+live exploration.
 ### W5 · Precedent retrieves and shows; it never decides · `demonstrated`-adjacent (O8)
 
 "You rated a similar claim Mixed at Company A" — the operator agrees or not. Auto-closing
