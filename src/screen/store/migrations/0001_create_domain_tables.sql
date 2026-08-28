@@ -9,7 +9,7 @@ CREATE TABLE openings (
     company_id TEXT NOT NULL REFERENCES companies (id),
     title TEXT NOT NULL,
     url TEXT NOT NULL,
-    transcript_id TEXT NOT NULL,
+    research_trace_id TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
 

@@ -11,8 +11,8 @@ by the caller, not the model.
 import json
 from datetime import UTC, datetime
 
-from screen.baml_client.baml_client.sync_client import b
-from screen.baml_client.baml_client.types import Assertion as BAMLAssertion
+from screen.baml_client.sync_client import b
+from screen.baml_client.types import Assertion as BAMLAssertion
 from screen.types import Assertion
 
 

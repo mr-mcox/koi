@@ -34,7 +34,7 @@ def opening_to_row(opening: Opening) -> dict[str, object]:
         "company_id": opening.company_id,
         "title": opening.title,
         "url": opening.url,
-        "transcript_id": opening.transcript_id,
+        "research_trace_id": opening.research_trace_id,
         "created_at": opening.created_at.isoformat(),
     }
 
@@ -45,7 +45,7 @@ def opening_from_row(row: dict[str, object]) -> Opening:
         company_id=str(row["company_id"]),
         title=str(row["title"]),
         url=str(row["url"]),
-        transcript_id=str(row["transcript_id"]),
+        research_trace_id=str(row["research_trace_id"]),
         created_at=datetime.fromisoformat(str(row["created_at"])),
     )
 

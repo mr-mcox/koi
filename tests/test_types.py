@@ -27,7 +27,7 @@ def _opening(**overrides) -> dict:
         "company_id": "anthropic",
         "title": "Applied AI Lead",
         "url": "https://www.anthropic.com/careers/applied-ai-lead",
-        "transcript_id": "tx0123456789abcdef",
+        "research_trace_id": "tx0123456789abcdef",
         "created_at": "2026-08-22T12:00:00Z",
     }
     base.update(overrides)
@@ -49,7 +49,7 @@ def test_opening_round_trip_minimum_valid() -> None:
     dumped = opening.model_dump(mode="json")
     assert json.loads(json.dumps(dumped)) == raw
     assert opening.company_id == "anthropic"
-    assert opening.transcript_id == "tx0123456789abcdef"
+    assert opening.research_trace_id == "tx0123456789abcdef"
 
 
 def test_company_rejects_unknown_field() -> None:

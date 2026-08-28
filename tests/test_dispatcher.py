@@ -16,11 +16,11 @@ import pytest
 from pydantic import ConfigDict
 
 from screen.extract.fakes import FakeExtractor
-from screen.intake.events import TranscriptEvent
-from screen.loop.actions import Action, FetchAction, SearchAction, StopAction
-from screen.loop.dispatcher import dispatch
-from screen.loop.fakes import FakeBrowser, FakePlanner
-from screen.loop.state import LoopState, PassSummary
+from screen.intake.events import ResearchTraceEvent
+from screen.research.actions import Action, FetchAction, SearchAction, StopAction
+from screen.research.dispatcher import dispatch
+from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.state import LoopState, PassSummary
 from screen.types import Assertion, Citation
 
 
@@ -112,7 +112,9 @@ def test_decide_plan_event_records_request_and_response() -> None:
         on_event=events.append,
     )
 
-    plan_events = [e for e in events if isinstance(e, TranscriptEvent) and e.tool == "decide_plan"]
+    plan_events = [
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "decide_plan"
+    ]
     assert len(plan_events) == 1
     event = plan_events[0]
 
@@ -208,7 +210,7 @@ def test_search_action_happy_path() -> None:
 
     # tavily_search event was recorded (alongside decide_plan audit events)
     search_events = [
-        e for e in events if isinstance(e, TranscriptEvent) and e.tool == "tavily_search"
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_search"
     ]
     assert len(search_events) == 1
     event = search_events[0]
@@ -297,7 +299,7 @@ def test_fetch_action_happy_path() -> None:
 
     # tavily_extract event was recorded (alongside decide_plan audit events)
     extract_events = [
-        e for e in events if isinstance(e, TranscriptEvent) and e.tool == "tavily_extract"
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
     ]
     assert len(extract_events) == 1
     event = extract_events[0]
@@ -341,7 +343,7 @@ def test_fetch_action_duplicate_skipped() -> None:
     assert browser.fetch_calls == []
     # no tavily_extract event was recorded (decide_plan audit events still are)
     extract_events = [
-        e for e in events if isinstance(e, TranscriptEvent) and e.tool == "tavily_extract"
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
     ]
     assert extract_events == []
     # summary still valid

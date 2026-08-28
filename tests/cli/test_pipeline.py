@@ -51,7 +51,7 @@ def test_cli_writes_domain_rows_to_sqlite_not_json_files(
     assert list(tmp_path.rglob("assertions.jsonl")) == []
 
 
-def test_cli_records_partial_transcript_on_failed_extract(
+def test_cli_records_partial_research_trace_on_failed_extract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When `extract` returns failed_results, the pipeline writes the partial event
@@ -70,14 +70,14 @@ def test_cli_records_partial_transcript_on_failed_extract(
     runner = CliRunner()
     result = runner.invoke(cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False)
     assert result.exit_code != 0
-    transcripts = list(tmp_path.rglob("*.jsonl"))
-    assert len(transcripts) == 1
-    lines = transcripts[0].read_text(encoding="utf-8").splitlines()
+    research_traces = list(tmp_path.rglob("*.jsonl"))
+    assert len(research_traces) == 1
+    lines = research_traces[0].read_text(encoding="utf-8").splitlines()
     parsed = json.loads(lines[0])
     assert parsed["response"]["failed_results"]
 
 
-def test_cli_records_partial_transcript_on_search_client_error(
+def test_cli_records_partial_research_trace_on_search_client_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When `client.extract(...)` raises BrowserError, the pipeline writes a
@@ -96,9 +96,9 @@ def test_cli_records_partial_transcript_on_search_client_error(
         catch_exceptions=False,
     )
     assert result.exit_code != 0
-    transcripts = list(tmp_path.rglob("*.jsonl"))
-    assert len(transcripts) == 1
-    lines = transcripts[0].read_text(encoding="utf-8").splitlines()
+    research_traces = list(tmp_path.rglob("*.jsonl"))
+    assert len(research_traces) == 1
+    lines = research_traces[0].read_text(encoding="utf-8").splitlines()
     parsed = json.loads(lines[0])
     assert "error" in parsed["response"]
 

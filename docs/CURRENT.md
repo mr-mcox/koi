@@ -1,1 +1,1 @@
-docs/features/review-shell/bearing.md
+docs/features/intake-loop-cleanup/scouting.md

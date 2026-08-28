@@ -23,7 +23,7 @@ def _seed_opening(conn: sqlite3.Connection) -> None:
             company_id="co",
             title="Eng",
             url="https://example.com/jobs/42",
-            transcript_id="t1",
+            research_trace_id="t1",
             created_at=datetime.now(UTC),
         ),
     )

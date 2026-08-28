@@ -64,7 +64,7 @@ def test_upsert_opening_then_select(tmp_path: Path) -> None:
         company_id="acme",
         title="Staff Engineer",
         url="https://example.com/jobs/1",
-        transcript_id="tx0123456789abcdef",
+        research_trace_id="tx0123456789abcdef",
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
@@ -82,7 +82,7 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
             company_id="acme",
             title="Staff Engineer",
             url="https://example.com/jobs/1",
-            transcript_id="tx0123456789abcdef",
+            research_trace_id="tx0123456789abcdef",
             created_at=_NOW,
         ),
     )
@@ -105,7 +105,7 @@ def test_assertions_for_opening_returns_empty_list_when_none_exist(tmp_path: Pat
             company_id="acme",
             title="Staff Engineer",
             url="https://example.com/jobs/1",
-            transcript_id="tx0123456789abcdef",
+            research_trace_id="tx0123456789abcdef",
             created_at=_NOW,
         ),
     )
@@ -137,7 +137,7 @@ def test_get_opening_returns_the_row(tmp_path: Path) -> None:
         company_id="acme",
         title="Staff Engineer",
         url="https://example.com/jobs/1",
-        transcript_id="tx0123456789abcdef",
+        research_trace_id="tx0123456789abcdef",
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
@@ -152,7 +152,7 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         company_id="acme",
         title="Staff Engineer",
         url="https://example.com/jobs/1",
-        transcript_id="tx0123456789abcdef",
+        research_trace_id="tx0123456789abcdef",
         created_at=_NOW,
     )
     second = Opening(
@@ -160,7 +160,7 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         company_id="acme",
         title="Product Manager",
         url="https://example.com/jobs/2",
-        transcript_id="tx9876543210fedcba",
+        research_trace_id="tx9876543210fedcba",
         created_at=_NOW.replace(hour=13),
     )
     upsert_opening(conn, second)

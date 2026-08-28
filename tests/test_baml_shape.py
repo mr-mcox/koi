@@ -8,7 +8,7 @@ silently coerce wrong fields to None. These tests pin the contract.
 
 from pydantic import BaseModel
 
-from screen.baml_client.baml_client import types as baml_types
+from screen.baml_client import types as baml_types
 from screen.types import IdentificationResult
 
 

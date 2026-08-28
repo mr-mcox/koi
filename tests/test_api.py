@@ -59,7 +59,7 @@ def _seed_opening(
             company_id=company_id,
             title=f"{opening_id} title",
             url=f"https://example.com/{opening_id}",
-            transcript_id=f"tx-{opening_id}",
+            research_trace_id=f"tx-{opening_id}",
             created_at=_NOW,
         ),
     )

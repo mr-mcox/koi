@@ -1,1 +1,1 @@
-"""screen intake context: URL -> transcript recording."""
+"""screen intake context: URL -> research trace recording."""

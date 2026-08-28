@@ -4,8 +4,8 @@ from collections.abc import Iterable
 from typing import Any
 
 from screen.browser import BrowserError, SearchHit
-from screen.loop.actions import Action, StopAction
-from screen.loop.state import LoopState
+from screen.research.actions import Action, StopAction
+from screen.research.state import LoopState
 
 
 class FakePlanner:

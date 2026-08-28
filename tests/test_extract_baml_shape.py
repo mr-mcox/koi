@@ -4,8 +4,8 @@ If field names diverge, `baml_extractor.py` will fail at runtime. This test
 makes that a CI failure instead of a production surprise.
 """
 
-from screen.baml_client.baml_client.types import Assertion as BAMLAssertion
-from screen.baml_client.baml_client.types import Citation as BAMLCitation
+from screen.baml_client.types import Assertion as BAMLAssertion
+from screen.baml_client.types import Citation as BAMLCitation
 from screen.types import Assertion, Citation
 
 # `id` is domain-only: assigned by `Assertion`'s default factory after BAML emits,

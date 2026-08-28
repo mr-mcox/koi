@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.loop.context import FetchContext, SearchContext
+from screen.research.context import FetchContext, SearchContext
 from screen.types import Assertion
 
 

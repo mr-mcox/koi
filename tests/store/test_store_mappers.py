@@ -42,7 +42,7 @@ def test_opening_round_trips_through_row() -> None:
         company_id="acme",
         title="Staff Engineer",
         url="https://example.com/jobs/1",
-        transcript_id="tx0123456789abcdef",
+        research_trace_id="tx0123456789abcdef",
         created_at=_CREATED_AT,
     )
     row = opening_to_row(opening)
