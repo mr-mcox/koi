@@ -7,7 +7,9 @@ date: 2026-08-26
 
 Screening pipeline: a job posting URL becomes typed Assertions about a Company and an
 Opening, which a Scorer later turns into a ranked queue. Judgment is agentic; dispatch is
-deterministic. Flat files, no database, backend only.
+deterministic. Storage and delivery shape (SQLite vs. flat files, API vs. server-rendered
+UI) are implementation choices tracked in `decisions.md`/`open-questions.md`, not restated
+here — this line goes stale the moment it names one.
 
 **Read this before scouting any feature.** It classifies the ground. The documents it
 points at hold the detail — this file never restates them, so that adding to them doesn't

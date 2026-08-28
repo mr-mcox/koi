@@ -148,3 +148,32 @@ walks every assertion. Key requirements surfaced in conversation:
   to compute "no signal despite searching" per target, or needs a small additive change
   (e.g., logging which target a search was assigned to explore) to make that computable
   after the fact.
+
+## Frontend shape (added mid-stream)
+
+F19–F24 fed `../review-shell/bearing.md` (the delivery-shell slice of this feature) —
+see that bearing's Approach/Agreed for where each landed.
+
+- **F19** — operator — the queue is the central view but not the only one; a separate
+  surface (sidebar or distinct screen) for presenting items to rate is expected, and the
+  domain model may surface further views beyond these two.
+- **F20** — operator — the concrete bar for "modern, not janky": submitting a rating
+  re-sorts the queue without a full page reload. This is the load-bearing UX criterion,
+  not a general aesthetic preference.
+- **F21** — `src/screen/api/routes.py:1-24` — routes already separate domain computation
+  (`score_opening`, `assertions_for_opening`) from response shaping (`_to_response`); an
+  HTML-rendering route calls the same domain functions and shapes a template instead of a
+  `ScoreResponse`, so adding server-rendered views doesn't touch the domain layer.
+- **F22** — operator — the regret being avoided is asymmetric: an HTMX/server-rendered UI
+  carries no client-side API contract to keep in sync with a still-moving domain model
+  (Ruling granularity, F6/F18); a typed Svelte+API split would require committing to that
+  contract now. Reversal cost favors starting server-rendered.
+- **F23** — operator — client-side-only interactions (keyboard-driven triage, drag-reorder,
+  undo-before-commit, live cross-panel state) are not on the near-term roadmap; explicitly
+  out of scope for this bearing rather than a hedge to design around.
+- **F24** — `job-screener-prototype/templates/*.html`, `static/app.css` — prototype was
+  Jinja2 server-rendered with hand-written CSS (no HTMX, no JS framework); band/fit are the
+  only elements styled with semantic intent (`.chip.band-*`, `.fit-*`). Confirms this
+  shape's viability for the same queue/company-review content and gives a starting visual
+  vocabulary, not a UX pattern to reproduce wholesale (per W4, don't carry prototype UX
+  forward uncritically).

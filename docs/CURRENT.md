@@ -1,1 +1,1 @@
-docs/features/review-ux/scouting.md
+docs/features/review-shell/bearing.md
