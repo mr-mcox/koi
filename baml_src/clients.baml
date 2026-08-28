@@ -15,7 +15,7 @@ client<llm> Fireworks {
   provider "openai-generic"
   options {
     base_url "https://api.fireworks.ai/inference/v1"
-    model "accounts/fireworks/models/inkling"
+    model "accounts/fireworks/models/nemotron-3-ultra-nvfp4"
     api_key env.FIREWORKS_API_KEY
   }
 }
