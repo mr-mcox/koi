@@ -16,8 +16,10 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from screen.api.routes import router
+from screen.api.routes import router as api_router
 from screen.store.db import connect as db_connect
+from screen.web.routes import router as web_router
+from screen.web.routes import static_files
 
 
 def _data_dir() -> Path:
@@ -54,7 +56,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database
-    app.include_router(router)
+    app.include_router(web_router)
+    app.include_router(api_router)
+    app.mount("/static", static_files, name="static")
 
     @app.get("/health")
     def health() -> dict[str, str]:

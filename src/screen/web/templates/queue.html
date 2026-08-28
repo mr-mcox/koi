@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Queue{% endblock %}
+{% block content %}
+  <h1>Queue</h1>
+  <ol class="queue">
+    {% for item in items %}
+    <li class="band-{{ item.band.replace(' ', '-') }}">
+      <span class="title">{{ item.company_name }} — {{ item.opening_title }}</span>
+      <span class="chip band">{{ item.band }}</span>
+      <span class="score">standing {{ "%.3f"|format(item.standing) }}</span>
+      <a class="rate-link" href="/openings/{{ item.opening_id }}/rate">rate</a>
+    </li>
+    {% endfor %}
+  </ol>
+{% endblock %}

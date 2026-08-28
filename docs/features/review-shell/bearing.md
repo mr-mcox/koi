@@ -5,7 +5,7 @@ date: 2026-08-28
 commit: 56567fa5253ae6bc73fa867bdf6f4bd152301950
 branch: main
 parent: ../review-ux/scouting.md
-status: orienting
+status: done
 scouting: ../review-ux/scouting.md
 ---
 
@@ -13,30 +13,28 @@ scouting: ../review-ux/scouting.md
 
 review-ux (→ `../review-ux/scouting.md`) is the whole operator-review surface: triage,
 rating, precedent, the eventual leverage/VOI-style rating signal. This bearing is its
-first slice — the delivery shell everything else renders through: a queue view, a
-separate rating surface, resort-without-reload. Not the Ruling data model (F6/F18 stay
-open, see Not Doing).
+first slice — the delivery shell everything else renders through: a queue view and a
+separate rating surface. Not the Ruling data model (F6/F18 stay open, see Not Doing) and
+not rating submission/HTMX resort (deferred until a ruling store exists).
 
 ## Done When
 
-- [ ] `GET /` (or equivalent) renders the ranked queue as HTML, computed from the same
+- [x] `GET /` (or equivalent) renders the ranked queue as HTML, computed from the same
       `score_opening`/`list_openings` calls `routes.py` already uses (→ F21)
       → new route returns 200 with `text/html`, queue order matches `GET /queue`'s JSON
-- [ ] Submitting a rating on one opening re-sorts the visible queue without a full page
-      navigation (→ F20) → browser network tab (or an HTMX-fragment integration test)
-      shows a partial response, not a full-document GET
-- [ ] The rating surface is a distinct route/template from the queue, not a modal bolted
+- [x] The rating surface is a distinct route/template from the queue, not a modal bolted
       onto it (→ F19) → two templates exist, reachable by two paths
-- [ ] Existing JSON routes (`/openings/{id}/score`, `/queue`) are unchanged and still pass
+- [x] Existing JSON routes (`/openings/{id}/score`, `/queue`) are unchanged and still pass
       `tests/test_api.py`/`test_api_scoring.py` → test suite green
 
 ## Approach
 
 - Server-rendered HTML via FastAPI's own `Jinja2Templates`/`HTMLResponse`, no second
-  runtime — not a Svelte/Node stack, because HTMX needs no client-held API contract while
-  the domain model (Ruling granularity) is still moving (→ scouting F22)
-- Partial-response resort via HTMX (`hx-post` the rating form, swap the queue fragment or
-  the moved row) — the concrete mechanism for F20's no-reload requirement (→ scouting F20)
+  runtime — not a Svelte/Node stack, because this surface carries no client-side API
+  contract while the domain model (Ruling granularity) is still moving (→ scouting F22)
+- The rating surface is reachable as a distinct route/template; it is read-only for now
+  because the Ruling data model is not landed (F6/F18) and the operator is not yet asking
+  to capture rulings (→ scouting F19)
 - New routes live under `src/screen/web/` (templates + view routes), separate from
   `src/screen/api/` (JSON) even though both may call the same domain functions — keeps the
   physical split "backend vs. presentation" visible without inventing a second package
@@ -67,8 +65,8 @@ Test-first by default. Exempt:
 - A rating interaction needs state that must survive across two visible panels
   simultaneously (queue + rating surface on screen at once, not sequential pages) — HTMX
   alone doesn't model this (→ scouting F22)
-- The Ruling bearing work (F6/F18) lands and changes what a "rating submission" payload
-  looks like enough to invalidate the route shape drafted here
+- The Ruling data model lands (F6/F18) and we add submission/HTMX resort; the read-only
+  route shape from this bearing should be reused, not re-built from scratch
 
 ## Agreed
 

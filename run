@@ -15,6 +15,7 @@ shift || true
 
 case "$cmd" in
   serve)
+    echo "Queue: http://localhost:${PORT}/" >&2
     exec uv run uvicorn screen.api.app:app --port "$PORT" "$@"
     ;;
   intake)

@@ -1,0 +1,123 @@
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+  color: #222;
+  background: #fff;
+}
+
+h1, h2 {
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.queue {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.queue li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.queue .title {
+  flex: 1;
+}
+
+.score {
+  font-variant-numeric: tabular-nums;
+  color: #666;
+}
+
+.rate-link {
+  font-size: 0.9rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.band-no-path {
+  background: #e5e5e5;
+  color: #444;
+}
+
+.band-contender {
+  background: #fff3cd;
+  color: #664d03;
+}
+
+.band-established {
+  background: #d1e7dd;
+  color: #0f5132;
+}
+
+.band-capped {
+  background: #f8d7da;
+  color: #842029;
+}
+
+.band-wide-open {
+  background: #cfe2ff;
+  color: #084298;
+}
+
+.fit-strong {
+  color: #0f5132;
+  background: #d1e7dd;
+}
+
+.fit-mixed {
+  color: #664d03;
+  background: #fff3cd;
+}
+
+.fit-poor {
+  color: #842029;
+  background: #f8d7da;
+}
+
+.score-summary {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.assertions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.assertions li {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.assertions .target {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.assertions blockquote {
+  margin: 0.5rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid #ccc;
+  color: #555;
+  font-style: italic;
+}
