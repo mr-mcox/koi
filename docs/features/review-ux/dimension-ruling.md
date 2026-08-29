@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-30
 commit: dafddc0
 branch: main
-status: implementing
+status: done
 parent: ./scouting.md
 scouting: ./dimension-ruling-scouting.md
 ---
@@ -19,24 +19,24 @@ rulings, 5 openings). Terrain: [dimension-ruling-scouting.md](./dimension-ruling
 
 ## Done When
 
-- [ ] `DimensionRuling` type and table exist: `opening_id`, `target`, continuous `fit`
+- [x] `DimensionRuling` type and table exist: `opening_id`, `target`, continuous `fit`
       (mean, `[-1,1]`), continuous `settledness` (`[0,1]`, 0 = loose opinion, 1 =
       strongest stated conviction), `created_at` — sibling to `AssertionRuling`, not a
       shared type (→ scouting F41, review-ux/scouting F25/F28)
-- [ ] The rating page shows, per dimension group, a **compact single-click control** to
+- [x] The rating page shows, per dimension group, a **compact single-click control** to
       submit a `(fit, settledness)` pin and displays any existing pin distinctly from the
       digest and the assertion list beneath it (→ scouting F39)
-- [ ] The dimension-ruling control sits in a compact row with the digest text
+- [x] The dimension-ruling control sits in a compact row with the digest text
       right-justified against it, and the assertion controls (provenance glyph + fit
       buttons) sit on one line (layout regression from the unstyled form)
-- [ ] Submitting a pin writes/updates the `DimensionRuling` for that `(opening_id,
+- [x] Submitting a pin writes/updates the `DimensionRuling` for that `(opening_id,
       target)` — HTMX partial swap, no full reload (→ review-ux/scouting F20)
-- [ ] `score()` accepts an optional dimension-ruling override; when present for a target,
+- [x] `score()` accepts an optional dimension-ruling override; when present for a target,
       it substitutes the whole computed `_TargetStats(mean, half_width)` for that target,
       superseding any per-assertion rulings underneath — test: pinning a dimension changes
       its target's contribution to `standing` independent of the assertions filed against
       it (→ scouting F35, F36, F37)
-- [ ] Existing JSON scoring routes and assertion-ruling behavior are unchanged and still
+- [x] Existing JSON scoring routes and assertion-ruling behavior are unchanged and still
       pass their tests
 
 ## Approach

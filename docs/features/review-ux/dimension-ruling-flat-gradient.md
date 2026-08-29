@@ -6,7 +6,6 @@ commit: dafddc0
 branch: main
 status: proposed
 parent: ./dimension-ruling.md
-scouting: ./dimension-ruling-flat-gradient-scouting.md
 ---
 
 ## Problem
