@@ -29,6 +29,12 @@ class LlmResponseParser:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DecidePlan", llm_response=llm_response, mode="request")
         return typing.cast(typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]], __result__)
 
+    def DigestDimension(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> str:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DigestDimension", llm_response=llm_response, mode="request")
+        return typing.cast(str, __result__)
+
     def ExtractAssertions(
         self, llm_response: str, baml_options: BamlCallOptions = {},
     ) -> typing.List["types.Assertion"]:
@@ -54,6 +60,12 @@ class LlmStreamParser:
     ) -> typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]]:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DecidePlan", llm_response=llm_response, mode="stream")
         return typing.cast(typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], __result__)
+
+    def DigestDimension(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> str:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DigestDimension", llm_response=llm_response, mode="stream")
+        return typing.cast(str, __result__)
 
     def ExtractAssertions(
         self, llm_response: str, baml_options: BamlCallOptions = {},

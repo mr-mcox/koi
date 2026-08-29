@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-29
 commit: 4ed61f7
 branch: main
-status: orienting
+status: implementing
 scouting: ./scouting.md
 parent: ./bearing.md
 ---
@@ -19,11 +19,11 @@ assertions land, not recomputed per page view. Terrain: [scouting.md](./scouting
 
 - [ ] A digest can be generated for (opening_id, target) from its current assertions
       → new unit test against a `FakeDigester`, no live model call
-- [ ] The digest text never contains a Fit word (Poor/Mixed/Strong) or a bare number
-      → test asserts this on generated output
-- [ ] The digest never restates that it is a summary ("N assertions show...") — style
-      test against a banned-phrase list seeded from the operator's own examples
-      (→ scouting "What We're Doing")
+- [ ] The digest text never contains a Fit word (Poor/Mixed/Strong) or a bare number, and
+      never restates that it is a summary ("N assertions show...") → carried by the
+      `DigestDimension` prompt, not enforced in code — no reliable automated style check
+      exists yet (operator decision this session); operator reads live-generated output and
+      tunes the prompt by hand if violations appear (Recalibrate)
 - [ ] Calling generation twice with an unchanged assertion set returns the cached value,
       not a fresh model call → test with a fake digester asserting call count
 - [ ] Adding a new assertion to a target invalidates its cached digest → test: cache after
@@ -63,9 +63,9 @@ Test-first by default. Exempt:
 
 ## Recalibrate When
 
-- The banned-phrase/style test can't reliably catch bad output — the operator's read of
-  live-generated digests is the real signal; if several read badly despite passing tests,
-  stop and revisit the prompt with them directly rather than iterating on the test alone.
+- Style violations show up repeatedly in live-generated output despite prompt edits — stop
+  hand-tuning the prompt and revisit whether an automated guard is worth the false-positive
+  risk after all.
 - A dimension has zero assertions — digest must degrade to explicit "not yet examined"
   text, not an empty or hallucinated summary.
 - Assertion count proves an unreliable staleness signal in practice (e.g. a future

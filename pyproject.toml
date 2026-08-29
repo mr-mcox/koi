@@ -34,6 +34,7 @@ omit = [
     "src/screen/__main__.py",
     # Live BAML adapter: calls external LLM service, no unit test coverage by design.
     "src/screen/extract/baml_extractor.py",
+    "src/screen/digest/baml_digester.py",
 ]
 
 [tool.coverage.report]
