@@ -8,14 +8,16 @@ from screen.store.repo import (
     append_assertions,
     assertion_rulings_for_opening,
     assertions_for_opening,
+    dimension_rulings_for_opening,
     get_company,
     get_opening,
     list_openings,
     upsert_assertion_ruling,
     upsert_company,
+    upsert_dimension_ruling,
     upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -283,4 +285,79 @@ def test_upsert_assertion_ruling_replaces_prior_ruling_for_same_assertion(
     upsert_assertion_ruling(conn, second)
 
     result = assertion_rulings_for_opening(conn, "acme--eng-abc123")
+    assert result == [second]
+
+
+def test_dimension_rulings_for_opening_returns_empty_list_when_none_exist(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed_opening_with_assertion(conn)
+    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == []
+
+
+def test_upsert_dimension_ruling_then_read_back(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed_opening_with_assertion(conn)
+    ruling = DimensionRuling(
+        opening_id="acme--eng-abc123", target="stretch", mean=0.5, settledness=0.8, created_at=_NOW
+    )
+
+    upsert_dimension_ruling(conn, ruling)
+
+    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == [ruling]
+
+
+def test_dimension_rulings_for_opening_excludes_other_openings(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed_opening_with_assertion(conn)
+    upsert_opening(
+        conn,
+        Opening(
+            id="acme--pm-def456",
+            company_id="acme",
+            title="Product Manager",
+            url="https://example.com/jobs/2",
+            research_trace_id="tx9876543210fedcba",
+            created_at=_NOW,
+        ),
+    )
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--pm-def456", target="peer", mean=-0.5, settledness=0.2, created_at=_NOW
+        ),
+    )
+
+    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == []
+
+
+def test_upsert_dimension_ruling_replaces_prior_ruling_for_same_target(
+    tmp_path: Path,
+) -> None:
+    """Re-rating the same dimension replaces the stored ruling, not appends —
+    pins are not revertable but resubmission still replaces the value (F46)."""
+    conn = connect(tmp_path / "screen.db")
+    _seed_opening_with_assertion(conn)
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--eng-abc123",
+            target="stretch",
+            mean=-0.5,
+            settledness=0.2,
+            created_at=_NOW,
+        ),
+    )
+    second = DimensionRuling(
+        opening_id="acme--eng-abc123",
+        target="stretch",
+        mean=0.9,
+        settledness=0.7,
+        created_at=_NOW.replace(hour=13),
+    )
+
+    upsert_dimension_ruling(conn, second)
+
+    result = dimension_rulings_for_opening(conn, "acme--eng-abc123")
     assert result == [second]

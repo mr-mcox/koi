@@ -20,7 +20,7 @@ from typing import cast
 import numpy as np
 
 from screen.score.types import FIT_VALUES, ScoreResult, ScoringConfig
-from screen.types import Assertion, Citation, Fit, Target
+from screen.types import Assertion, Citation, DimensionRuling, Fit, Target
 
 # Fixed, not `datetime.now()`: `resolve_favourably`'s hypothetical assertions must not read
 # the wall clock — the Scorer is stateless and deterministic given a seed (domain-model.md
@@ -91,10 +91,36 @@ def _sample_constraint(
     return rng.uniform(min(lo, hi), max(lo, hi), size)
 
 
+def _dimension_ruling_stats(ruling: DimensionRuling, config: ScoringConfig) -> _TargetStats:
+    """A `DimensionRuling` pin supersedes the whole computed `_TargetStats` for its target
+    (bearing Approach): `mean` comes straight from the pin, `half_width` is derived from
+    `settledness` via configured bounds so rising conviction narrows the distribution but
+    never reaches a point estimate (`hw_min > 0`)."""
+    hw_max, hw_min = config.dimension_ruling_hw_max, config.dimension_ruling_hw_min
+    half_width = hw_max - ruling.settledness * (hw_max - hw_min)
+    return _TargetStats(n=math.inf, mean=ruling.mean, half_width=half_width)
+
+
+def _stats_for_target(
+    assertions: list[Assertion],
+    config: ScoringConfig,
+    target: str,
+    rulings: dict[str, Fit] | None,
+    dimension_rulings: dict[str, DimensionRuling] | None,
+) -> _TargetStats:
+    """A dimension pin (if present for this target) replaces the assertion-derived stats
+    entirely, including any per-assertion rulings underneath it (bearing Done When:
+    "superseding any per-assertion rulings underneath")."""
+    if dimension_rulings is not None and target in dimension_rulings:
+        return _dimension_ruling_stats(dimension_rulings[target], config)
+    return _target_stats(assertions, config, target, rulings)
+
+
 def score(
     assertions: list[Assertion],
     config: ScoringConfig,
     rulings: dict[str, Fit] | None = None,
+    dimension_rulings: dict[str, DimensionRuling] | None = None,
 ) -> ScoreResult:
     """Score one assertion set. Deterministic given `config.seed` — reordering `assertions`
     never changes the result: every target's stats are a
@@ -103,12 +129,17 @@ def score(
     `rulings` is an optional assertion-id -> operator-ruled `Fit` mapping (bearing
     assertion-ruling-submit): where present, the ruled fit substitutes for the assertion's
     own `fit` when computing that target's stats. Provenance-weighting is untouched — a
-    ruling doesn't change how much an assertion counts, only what it says."""
+    ruling doesn't change how much an assertion counts, only what it says.
+
+    `dimension_rulings` is an optional target -> `DimensionRuling` mapping (bearing
+    dimension-ruling): where present for a target, it replaces that target's whole
+    computed `_TargetStats`, superseding `rulings` for any assertions filed against it."""
     rng = np.random.default_rng(config.seed)
     size = config.samples
 
     dim_stats = {
-        slug: _target_stats(assertions, config, slug, rulings) for slug in config.dimension_weights
+        slug: _stats_for_target(assertions, config, slug, rulings, dimension_rulings)
+        for slug in config.dimension_weights
     }
     weighted = np.zeros(size)
     for slug, weight in config.dimension_weights.items():
@@ -116,7 +147,8 @@ def score(
     quality = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
 
     con_stats = {
-        slug: _target_stats(assertions, config, slug, rulings) for slug in config.constraints
+        slug: _stats_for_target(assertions, config, slug, rulings, dimension_rulings)
+        for slug in config.constraints
     }
     overall = quality.copy()
     for slug, con in config.constraints.items():

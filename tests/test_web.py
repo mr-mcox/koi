@@ -17,11 +17,22 @@ from screen.store.mappers import assertion_ruling_to_row
 from screen.store.repo import (
     append_assertions,
     assertion_rulings_for_opening,
+    dimension_rulings_for_opening,
     upsert_company,
     upsert_dimension_digest,
+    upsert_dimension_ruling,
     upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, Fit, Opening, Target
+from screen.types import (
+    Assertion,
+    AssertionRuling,
+    Citation,
+    Company,
+    DimensionRuling,
+    Fit,
+    Opening,
+    Target,
+)
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -342,8 +353,9 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
 
 
 def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_path: Path) -> None:
-    """The per-assertion markup (target, fit control, provenance glyph, quote) stays
-    stable across dimension grouping."""
+    """The per-assertion markup (fit control, provenance glyph, quote) stays stable across
+    dimension grouping; the target itself isn't repeated per assertion since the dimension
+    heading above already names it."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -364,7 +376,6 @@ def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_p
     response = client.get("/openings/acme--eng/rate")
     body = response.text
 
-    assert '<span class="target">stretch</span>' in body
     assert "fit-strong active" in body
     assert 'title="ratified"' in body
     assert "<blockquote>verbatim source text</blockquote>" in body
@@ -612,6 +623,179 @@ def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) ->
 
     response = client.post(
         f"/openings/acme--eng/assertions/{assertion.id}/ruling", data={"fit": "Excellent"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_rate_opening_shows_dimension_ruling_control_per_group(
+    client: TestClient, db_path: Path
+) -> None:
+    """Each dimension group offers a single-click 2D control to submit a `(fit,
+    settledness)` pin (bearing Done When)."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    body = response.text
+    assert 'action="/openings/acme--eng/dimensions/stretch/ruling"' in body
+    assert "dimension-ruling-pad" in body
+    assert 'name="mean"' in body
+    assert 'name="settledness"' in body
+
+
+def test_rate_opening_shows_no_existing_dimension_ruling_by_default(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert "dimension-ruling-pin" not in response.text
+
+
+def test_rate_opening_shows_existing_dimension_ruling_distinctly(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--eng", target="stretch", mean=0.5, settledness=0.8, created_at=_NOW
+        ),
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert "dimension-ruling-pin" in response.text
+
+
+def test_submit_dimension_ruling_writes_and_swaps_partial(
+    client: TestClient, db_path: Path
+) -> None:
+    """POSTing a dimension pin writes a `DimensionRuling` and returns the rating-content
+    partial via HTMX swap (bearing Done When)."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling",
+        data={"mean": "0.5", "settledness": "0.8"},
+    )
+
+    assert response.status_code == 200
+    assert "<html" not in response.text
+    assert 'id="rating-content"' in response.text
+    assert "dimension-ruling-pin" in response.text
+
+    conn = connect(db_path)
+    rulings = dimension_rulings_for_opening(conn, "acme--eng")
+    assert len(rulings) == 1
+    assert rulings[0].target == "stretch"
+    assert rulings[0].mean == 0.5
+    assert rulings[0].settledness == 0.8
+
+
+def test_submit_dimension_ruling_replaces_prior_pin_for_same_target(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling", data={"mean": "-0.5", "settledness": "0.2"}
+    )
+    client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling", data={"mean": "0.9", "settledness": "0.7"}
+    )
+
+    conn = connect(db_path)
+    rulings = dimension_rulings_for_opening(conn, "acme--eng")
+    assert len(rulings) == 1
+    assert rulings[0].mean == 0.9
+    assert rulings[0].settledness == 0.7
+
+
+def test_submit_dimension_ruling_changes_standing(client: TestClient, db_path: Path) -> None:
+    config = load_scoring_config()
+    strong = [
+        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+
+    before = client.get("/openings/acme--eng/rate")
+    response = client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling",
+        data={"mean": "-1.0", "settledness": "1.0"},
+    )
+
+    assert response.status_code == 200
+    assert response.text != before.text
+
+
+def test_submit_dimension_ruling_404_when_opening_missing(client: TestClient) -> None:
+    response = client.post(
+        "/openings/no-such-opening/dimensions/stretch/ruling",
+        data={"mean": "0.5", "settledness": "0.8"},
+    )
+    assert response.status_code == 404
+
+
+def test_submit_dimension_ruling_rejects_out_of_range_mean(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling",
+        data={"mean": "1.5", "settledness": "0.8"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_submit_dimension_ruling_rejects_out_of_range_settledness(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling",
+        data={"mean": "0.5", "settledness": "1.5"},
     )
 
     assert response.status_code == 422

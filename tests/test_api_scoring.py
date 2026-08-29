@@ -11,7 +11,7 @@ from screen.score.band import band_for
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import resolve_favourably, score
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, Fit, Target
+from screen.types import Assertion, Citation, DimensionRuling, Fit, Target
 
 _CITATION = Citation(
     url="https://example.com/note",
@@ -73,5 +73,25 @@ def test_score_opening_applies_rulings(config: ScoringConfig) -> None:
 
     unruled = score_opening(assertions, config)
     ruled = score_opening(assertions, config, rulings={assertion.id: "Poor"})
+
+    assert ruled.standing != unruled.standing
+
+
+def test_score_opening_applies_dimension_rulings(config: ScoringConfig) -> None:
+    """A `DimensionRuling` pin changes `score_opening`'s standing and reach for the
+    pinned target, threaded through both calls the same way `rulings` already is
+    (bearing Approach)."""
+    assertion = _assertion("stretch", "Strong")
+    assertions = [assertion, _assertion("location", "Strong")]
+    pin = DimensionRuling(
+        opening_id="opening-1",
+        target="stretch",
+        mean=-1.0,
+        settledness=1.0,
+        created_at=datetime(2026, 8, 30, tzinfo=UTC),
+    )
+
+    unruled = score_opening(assertions, config)
+    ruled = score_opening(assertions, config, dimension_rulings={"stretch": pin})
 
     assert ruled.standing != unruled.standing

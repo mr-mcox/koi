@@ -15,6 +15,7 @@ from screen.types import (
     Citation,
     Company,
     DimensionDigest,
+    DimensionRuling,
     Opening,
 )
 
@@ -123,5 +124,29 @@ def dimension_digest_from_row(row: dict[str, object]) -> DimensionDigest:
             "digest": str(row["digest"]),
             "assertion_count": int(str(row["assertion_count"])),
             "computed_at": datetime.fromisoformat(str(row["computed_at"])),
+        }
+    )
+
+
+def dimension_ruling_to_row(ruling: DimensionRuling) -> dict[str, object]:
+    return {
+        "id": ruling.id,
+        "opening_id": ruling.opening_id,
+        "target": ruling.target,
+        "mean": ruling.mean,
+        "settledness": ruling.settledness,
+        "created_at": ruling.created_at.isoformat(),
+    }
+
+
+def dimension_ruling_from_row(row: dict[str, object]) -> DimensionRuling:
+    return DimensionRuling.model_validate(
+        {
+            "id": str(row["id"]),
+            "opening_id": str(row["opening_id"]),
+            "target": row["target"],
+            "mean": float(str(row["mean"])),
+            "settledness": float(str(row["settledness"])),
+            "created_at": datetime.fromisoformat(str(row["created_at"])),
         }
     )

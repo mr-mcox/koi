@@ -2,8 +2,9 @@
 
 The queue and a per-opening rating view both call the same domain functions
 (`score_opening`, `list_openings`, etc.) as the JSON routes in `screen.api.routes`.
-The rating view also accepts assertion-ruling submissions via HTMX partial swap
-(assertion-ruling-submit bearing) — the JSON routes stay read-only and untouched.
+The rating view also accepts assertion-ruling and dimension-ruling submissions via
+HTMX partial swap (assertion-ruling-submit, dimension-ruling bearings) — the JSON
+routes stay read-only and untouched.
 """
 
 from __future__ import annotations
@@ -32,12 +33,14 @@ from screen.score.types import FIT_VALUES, ScoringConfig
 from screen.store.repo import (
     assertion_rulings_for_opening,
     assertions_for_opening,
+    dimension_rulings_for_opening,
     get_company,
     get_opening,
     list_openings,
     upsert_assertion_ruling,
+    upsert_dimension_ruling,
 )
-from screen.types import Assertion, AssertionRuling, Company, Fit, Opening
+from screen.types import Assertion, AssertionRuling, Company, DimensionRuling, Fit, Opening, Target
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -51,6 +54,7 @@ class _DimensionGroup:
     target: str
     digest: str
     assertions: list[Assertion]
+    ruling: DimensionRuling | None
 
 
 def _company_for(conn: sqlite3.Connection, opening: Opening) -> Company:
@@ -68,6 +72,7 @@ def _dimension_groups(
     digester: DigesterProtocol,
     rubric_text: str,
     now: datetime,
+    dimension_rulings: dict[str, DimensionRuling],
 ) -> list[_DimensionGroup]:
     """Group assertions by rubric target and attach the cached digest for each group.
 
@@ -108,6 +113,7 @@ def _dimension_groups(
                 target=target,
                 digest=digest,
                 assertions=target_assertions,
+                ruling=dimension_rulings.get(target),
             )
         )
     return groups
@@ -146,6 +152,14 @@ def _latest_ruling_by_assertion(
     return {ruling.assertion_id: ruling for ruling in rulings}
 
 
+def _dimension_rulings_by_target(
+    rulings: list[DimensionRuling],
+) -> dict[str, DimensionRuling]:
+    """One row per `(opening_id, target)` by construction (upsert, migration 0005's
+    unique constraint) — no dedupe needed, just a lookup keyed by target."""
+    return {ruling.target: ruling for ruling in rulings}
+
+
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, conn: Conn) -> HTMLResponse:
     """The queue view: ranked openings as HTML."""
@@ -173,8 +187,13 @@ def _rating_context(
     ruled_fits: dict[str, Fit] = {
         assertion_id: ruling.fit for assertion_id, ruling in rulings.items()
     }
+    dimension_rulings = _dimension_rulings_by_target(
+        dimension_rulings_for_opening(conn, opening_id)
+    )
     config = load_scoring_config()
-    score = score_opening(assertions, config, rulings=ruled_fits)
+    score = score_opening(
+        assertions, config, rulings=ruled_fits, dimension_rulings=dimension_rulings
+    )
     groups = _dimension_groups(
         conn,
         opening_id=opening_id,
@@ -183,6 +202,7 @@ def _rating_context(
         digester=digester,
         rubric_text=rubric_text,
         now=now,
+        dimension_rulings=dimension_rulings,
     )
     return {
         "opening": opening,
@@ -194,18 +214,26 @@ def _rating_context(
     }
 
 
-@router.get("/openings/{opening_id}/rate", response_class=HTMLResponse)
-def rate_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
-    """The rating surface for one opening: its score, dimension-grouped assertions
-    (each with a cached digest), and any recorded rulings, with per-assertion
-    override controls."""
-    context = _rating_context(
+def _rating_context_for_request(
+    request: Request, conn: sqlite3.Connection, opening_id: str
+) -> dict[str, object]:
+    """Thin wrapper pulling the digester off `request.app.state` — shared by the GET
+    and both ruling-submit routes so each doesn't repeat the same three keyword args."""
+    return _rating_context(
         conn,
         opening_id,
         digester=request.app.state.digester,
         rubric_text=rubric_text_for_baml(),
         now=datetime.now(UTC),
     )
+
+
+@router.get("/openings/{opening_id}/rate", response_class=HTMLResponse)
+def rate_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
+    """The rating surface for one opening: its score, dimension-grouped assertions
+    (each with a cached digest), and any recorded rulings, with per-assertion
+    override controls."""
+    context = _rating_context_for_request(request, conn, opening_id)
     return templates.TemplateResponse(request, "rating.html", context)
 
 
@@ -228,13 +256,35 @@ def submit_ruling(
             id=str(uuid4()), assertion_id=assertion_id, fit=fit, created_at=datetime.now(UTC)
         ),
     )
-    context = _rating_context(
-        conn,
-        opening_id,
-        digester=request.app.state.digester,
-        rubric_text=rubric_text_for_baml(),
-        now=datetime.now(UTC),
+    context = _rating_context_for_request(request, conn, opening_id)
+    return templates.TemplateResponse(request, "_rating_content.html", context)
+
+
+@router.post("/openings/{opening_id}/dimensions/{target}/ruling", response_class=HTMLResponse)
+def submit_dimension_ruling(
+    *,
+    request: Request,
+    opening_id: str,
+    target: Target,
+    conn: Conn,
+    mean: Annotated[float, Form(ge=-1.0, le=1.0)],
+    settledness: Annotated[float, Form(ge=0.0, le=1.0)],
+) -> HTMLResponse:
+    """Upsert the operator's dimension-level pin, then return the rating-content partial
+    for an HTMX swap (bearing Done When). Pins are not revertable (F46): there is no
+    unset route, only resubmission via this same upsert."""
+    if get_opening(conn, opening_id) is None:
+        raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
+    ruling = DimensionRuling(
+        id=str(uuid4()),
+        opening_id=opening_id,
+        target=target,
+        mean=mean,
+        settledness=settledness,
+        created_at=datetime.now(UTC),
     )
+    upsert_dimension_ruling(conn, ruling)
+    context = _rating_context_for_request(request, conn, opening_id)
     return templates.TemplateResponse(request, "_rating_content.html", context)
 
 

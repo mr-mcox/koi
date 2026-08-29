@@ -16,7 +16,7 @@ from screen.score.band import band_for
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import resolve_favourably, score, unexamined_targets
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, Fit, Provenance, Target
+from screen.types import Assertion, Citation, DimensionRuling, Fit, Provenance, Target
 
 _CITATION = Citation(
     url="https://example.com/note",
@@ -26,6 +26,8 @@ _CITATION = Citation(
     independent=True,
     source_date=None,
 )
+
+_NOW = datetime(2026, 8, 27, tzinfo=UTC)
 
 
 def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_proposed") -> Assertion:
@@ -145,3 +147,66 @@ def test_ruling_override_changes_target_stats(config: ScoringConfig) -> None:
     ruled = score(PARTIALLY_RESEARCHED, config, rulings={target_assertion.id: "Poor"})
 
     assert ruled.standing != unruled.standing
+
+
+def test_dimension_ruling_override_changes_target_stats_independent_of_assertions(
+    config: ScoringConfig,
+) -> None:
+    """A `DimensionRuling` pin for a target supersedes the whole computed `_TargetStats`
+    for that target, regardless of what the underlying assertions say (bearing Done When:
+    pinning a dimension changes its target's contribution to standing independent of the
+    assertions filed against it)."""
+    unruled = score(PARTIALLY_RESEARCHED, config)
+    # PARTIALLY_RESEARCHED's stretch assertion is Strong/ratified — pin it to the worst
+    # possible fit with maximum stated conviction (should pull standing down sharply).
+    pin = DimensionRuling(
+        opening_id="opening-1", target="stretch", mean=-1.0, settledness=1.0, created_at=_NOW
+    )
+
+    ruled = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
+
+    assert ruled.standing < unruled.standing
+
+
+def test_dimension_ruling_override_ignores_assertion_level_rulings_for_same_target(
+    config: ScoringConfig,
+) -> None:
+    """A dimension pin is the aggregate judgment and supersedes assertion-level rulings
+    underneath it entirely (bearing Done When: "superseding any per-assertion rulings
+    underneath")."""
+    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    pin = DimensionRuling(
+        opening_id="opening-1", target="stretch", mean=1.0, settledness=1.0, created_at=_NOW
+    )
+
+    with_assertion_ruling_only = score(
+        PARTIALLY_RESEARCHED, config, rulings={target_assertion.id: "Poor"}
+    )
+    with_pin_and_assertion_ruling = score(
+        PARTIALLY_RESEARCHED,
+        config,
+        rulings={target_assertion.id: "Poor"},
+        dimension_rulings={"stretch": pin},
+    )
+
+    assert with_pin_and_assertion_ruling.standing != with_assertion_ruling_only.standing
+
+
+def test_dimension_ruling_settledness_maps_to_half_width_via_config_bounds(
+    config: ScoringConfig,
+) -> None:
+    """Higher settledness narrows half_width but never reaches zero, per
+    `hw_max`/`hw_min` in `scoring.yaml` (bearing Approach)."""
+    loose = DimensionRuling(
+        opening_id="opening-1", target="stretch", mean=0.5, settledness=0.0, created_at=_NOW
+    )
+    confident = DimensionRuling(
+        opening_id="opening-1", target="stretch", mean=0.5, settledness=1.0, created_at=_NOW
+    )
+
+    loose_result = score([], config, dimension_rulings={"stretch": loose})
+    confident_result = score([], config, dimension_rulings={"stretch": confident})
+
+    # Same mean, tighter half_width -> the confident pin's ceiling contribution for
+    # `stretch` should be closer to its mean than the loose pin's (narrower spread).
+    assert confident_result.ceiling <= loose_result.ceiling + 1e-9

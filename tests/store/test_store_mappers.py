@@ -13,10 +13,12 @@ from screen.store.mappers import (
     assertion_to_row,
     company_from_row,
     company_to_row,
+    dimension_ruling_from_row,
+    dimension_ruling_to_row,
     opening_from_row,
     opening_to_row,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
 
 _CREATED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -85,3 +87,15 @@ def test_assertion_ruling_round_trips_through_row() -> None:
     )
     row = assertion_ruling_to_row(ruling)
     assert assertion_ruling_from_row(row) == ruling
+
+
+def test_dimension_ruling_round_trips_through_row() -> None:
+    ruling = DimensionRuling(
+        opening_id="acme--staff-engineer-abc123",
+        target="stretch",
+        mean=0.5,
+        settledness=0.8,
+        created_at=_CREATED_AT,
+    )
+    row = dimension_ruling_to_row(ruling)
+    assert dimension_ruling_from_row(row) == ruling

@@ -58,6 +58,8 @@ class ScoringConfig:
     bands: Bands
     dimension_weights: dict[str, int]
     constraints: dict[str, ConstraintRange]
+    dimension_ruling_hw_max: float
+    dimension_ruling_hw_min: float
 
     @property
     def total_weight(self) -> int:

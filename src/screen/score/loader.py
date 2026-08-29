@@ -70,4 +70,6 @@ def load_scoring_config(
         ),
         dimension_weights=dimension_weights,
         constraints=constraints,
+        dimension_ruling_hw_max=float(scoring["dimension_ruling"]["hw_max"]),
+        dimension_ruling_hw_min=float(scoring["dimension_ruling"]["hw_min"]),
     )

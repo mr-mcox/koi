@@ -49,3 +49,13 @@ bands:
   reach_capped: 0.05
   contender: 0.15
   settled: 0.02
+
+# DimensionRuling half-width bounds (review-ux/dimension-ruling bearing). The operator's
+# `settledness` (0 = loose opinion, 1 = strongest stated conviction) maps to half_width via
+#     half_width = hw_max - settledness * (hw_max - hw_min)
+# — rising conviction narrows the distribution but never to a point estimate (hw_min > 0):
+# the operator may be noisy even at maximum stated confidence. Unmeasured placeholders,
+# same status as bar/bands above.
+dimension_ruling:
+  hw_max: 1.0
+  hw_min: 0.05

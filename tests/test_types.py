@@ -8,7 +8,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
 
 
 def _company(**overrides) -> dict:
@@ -270,3 +270,57 @@ def test_assertion_ruling_rejects_unknown_field() -> None:
 def test_assertion_ruling_rejects_invalid_fit() -> None:
     with pytest.raises(ValidationError):
         AssertionRuling.model_validate(_assertion_ruling(fit="7.5"))
+
+
+# ---------------------------------------------------------------------------
+# DimensionRuling — operator's continuous placement for one dimension/opening
+# ---------------------------------------------------------------------------
+
+
+def _dimension_ruling(**overrides: object) -> dict:  # type: ignore[type-arg]
+    base = {
+        "opening_id": "opening-1",
+        "target": "stretch",
+        "mean": 0.5,
+        "settledness": 0.8,
+        "created_at": "2026-08-30T12:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_dimension_ruling_round_trip_minimum_valid() -> None:
+    raw = _dimension_ruling()
+    ruling = DimensionRuling.model_validate(raw)
+    assert ruling.opening_id == raw["opening_id"]
+    assert ruling.target == "stretch"
+    assert ruling.mean == 0.5
+    assert ruling.settledness == 0.8
+
+
+def test_dimension_ruling_is_frozen() -> None:
+    ruling = DimensionRuling.model_validate(_dimension_ruling())
+    with pytest.raises(ValidationError):
+        ruling.mean = 0.1  # type: ignore[misc]
+
+
+def test_dimension_ruling_rejects_unknown_field() -> None:
+    with pytest.raises(ValidationError):
+        DimensionRuling.model_validate({**_dimension_ruling(), "fit": "Strong"})
+
+
+@pytest.mark.parametrize("mean", [-1.001, 1.001])
+def test_dimension_ruling_rejects_mean_out_of_range(mean: float) -> None:
+    with pytest.raises(ValidationError):
+        DimensionRuling.model_validate(_dimension_ruling(mean=mean))
+
+
+@pytest.mark.parametrize("settledness", [-0.001, 1.001])
+def test_dimension_ruling_rejects_settledness_out_of_range(settledness: float) -> None:
+    with pytest.raises(ValidationError):
+        DimensionRuling.model_validate(_dimension_ruling(settledness=settledness))
+
+
+def test_dimension_ruling_accepts_boundary_values() -> None:
+    DimensionRuling.model_validate(_dimension_ruling(mean=-1.0, settledness=0.0))
+    DimensionRuling.model_validate(_dimension_ruling(mean=1.0, settledness=1.0))

@@ -15,10 +15,19 @@ from screen.store.mappers import (
     company_to_row,
     dimension_digest_from_row,
     dimension_digest_to_row,
+    dimension_ruling_from_row,
+    dimension_ruling_to_row,
     opening_from_row,
     opening_to_row,
 )
-from screen.types import Assertion, AssertionRuling, Company, DimensionDigest, Opening
+from screen.types import (
+    Assertion,
+    AssertionRuling,
+    Company,
+    DimensionDigest,
+    DimensionRuling,
+    Opening,
+)
 
 
 def upsert_company(conn: sqlite3.Connection, company: Company) -> None:
@@ -152,3 +161,28 @@ def upsert_dimension_digest(
         dimension_digest_to_row(record),
     )
     conn.commit()
+
+
+def upsert_dimension_ruling(conn: sqlite3.Connection, ruling: DimensionRuling) -> None:
+    """Upsert by `(opening_id, target)` (Approach: pins are not revertable, but
+    resubmission still replaces the value) — relies on the unique constraint from
+    migration 0005."""
+    conn.execute(
+        """INSERT INTO dimension_rulings (id, opening_id, target, mean, settledness, created_at)
+           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at)
+           ON CONFLICT (opening_id, target) DO UPDATE SET
+               id = excluded.id, mean = excluded.mean, settledness = excluded.settledness,
+               created_at = excluded.created_at""",
+        dimension_ruling_to_row(ruling),
+    )
+    conn.commit()
+
+
+def dimension_rulings_for_opening(
+    conn: sqlite3.Connection, opening_id: str
+) -> list[DimensionRuling]:
+    rows = conn.execute(
+        "SELECT * FROM dimension_rulings WHERE opening_id = ? ORDER BY created_at",
+        (opening_id,),
+    ).fetchall()
+    return [dimension_ruling_from_row(dict(row)) for row in rows]

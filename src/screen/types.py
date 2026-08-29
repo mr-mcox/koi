@@ -165,6 +165,37 @@ class AssertionRuling(BaseModel):
     created_at: Annotated[datetime, Field()]
 
 
+class DimensionRuling(BaseModel):
+    """The operator's own continuous placement for one dimension/opening: "given
+    everything, where am I on this?" (domain-model.md §Ruling) — a non-arithmetic
+    squish over the assertions and rulings underneath, not a formula computed off
+    them. Sibling to `AssertionRuling`, not a shared type with a scope field
+    (review-ux/scouting F25/F28): assertion-level rating is a categorical
+    confirm/override, this is a continuous placement, and the two are different
+    author-intents with different payload shapes.
+
+    `mean` is the operator's stated fit, `[-1, 1]`, same scale `Assertion.fit`
+    maps onto (`FIT_VALUES`). `settledness` is stated *conviction*, `[0, 1]` —
+    0 is a loose opinion, 1 is the operator's strongest stated confidence, which
+    still carries some spread (the operator may be noisy; the system may not
+    manufacture a point estimate). The Scorer derives `half_width` from
+    `settledness` via configured bounds (`hw_max`/`hw_min` in `scoring.yaml`),
+    not stored here — this type carries only what the operator actually stated.
+
+    Pins are not revertable: no delete path exists; resubmission upserts by
+    `(opening_id, target)`, same pattern as `AssertionRuling`'s re-rating.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
+    opening_id: Annotated[str, Field(min_length=1)]
+    target: Target
+    mean: Annotated[float, Field(ge=-1.0, le=1.0)]
+    settledness: Annotated[float, Field(ge=0.0, le=1.0)]
+    created_at: Annotated[datetime, Field()]
+
+
 class DimensionDigest(BaseModel):
     """Cached prose gist of a dimension's assertion mix for one opening.
 
