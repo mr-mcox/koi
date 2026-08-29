@@ -143,3 +143,23 @@ class Assertion(BaseModel):
     chunk: Annotated[str, Field(min_length=1)]
     citations: Annotated[list[Citation], Field(min_length=1)]
     created_at: Annotated[datetime, Field()]
+
+
+class AssertionRuling(BaseModel):
+    """An operator's confirm/override verdict on one `Assertion`.
+
+    Sibling to `Assertion`, not a scoped union with a future `DimensionRuling` —
+    assertion-level override ("was this claim right?") and dimension-level
+    placement ("where does this dimension land?") are different author-intents
+    with different payload shapes (domain-model.md, F25/F28). `fit` reuses the
+    same closed rubric vocabulary as `Assertion.fit`; this type introduces no
+    new vocabulary and stays a categorical confirm/override, not a continuous
+    placement.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
+    assertion_id: Annotated[str, Field(min_length=1)]
+    fit: Fit
+    created_at: Annotated[datetime, Field()]

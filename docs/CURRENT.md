@@ -1,1 +1,1 @@
-docs/features/dimension-digest/generation.md
+The queue page (`_queue_items` in `src/screen/web/routes.py`) scores every opening via `score_opening(assertions, config)` with no rulings — only the per-opening rating page applies recorded `AssertionRuling`s. The queue's standing/band can silently disagree with what the rating page shows for the same opening. Orient on whether the queue should apply rulings too (and, if so, whether that's a query cost worth paying on every queue render).

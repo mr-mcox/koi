@@ -8,7 +8,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from screen.types import Assertion, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 
 def _company(**overrides) -> dict:
@@ -227,3 +227,46 @@ def test_citation_is_frozen() -> None:
     citation = Citation.model_validate(_citation())
     with pytest.raises(ValidationError):
         citation.url = "https://other.com"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# AssertionRuling — operator's confirm/override verdict on one Assertion
+# ---------------------------------------------------------------------------
+
+
+def _assertion_ruling(**overrides: object) -> dict:  # type: ignore[type-arg]
+    base = {
+        "assertion_id": "00000000-0000-0000-0000-000000000001",
+        "fit": "Strong",
+        "created_at": "2026-08-29T12:00:00Z",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_assertion_ruling_round_trip_minimum_valid() -> None:
+    raw = _assertion_ruling()
+    ruling = AssertionRuling.model_validate(raw)
+    assert ruling.assertion_id == raw["assertion_id"]
+    assert ruling.fit == "Strong"
+
+
+def test_assertion_ruling_id_defaults_to_uuid() -> None:
+    ruling = AssertionRuling.model_validate(_assertion_ruling())
+    uuid.UUID(ruling.id)
+
+
+def test_assertion_ruling_is_frozen() -> None:
+    ruling = AssertionRuling.model_validate(_assertion_ruling())
+    with pytest.raises(ValidationError):
+        ruling.fit = "Poor"  # type: ignore[misc]
+
+
+def test_assertion_ruling_rejects_unknown_field() -> None:
+    with pytest.raises(ValidationError):
+        AssertionRuling.model_validate({**_assertion_ruling(), "score": 7.5})
+
+
+def test_assertion_ruling_rejects_invalid_fit() -> None:
+    with pytest.raises(ValidationError):
+        AssertionRuling.model_validate(_assertion_ruling(fit="7.5"))

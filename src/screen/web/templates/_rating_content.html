@@ -1,0 +1,33 @@
+<div id="rating-content">
+  <section class="score-summary">
+    <span class="chip band-{{ score.band.replace(' ', '-') }}">{{ score.band }}</span>
+    <span>standing {{ "%.3f"|format(score.standing) }}</span>
+    <span>reach {{ "%.3f"|format(score.reach) }}</span>
+    <span>ceiling {{ "%.3f"|format(score.ceiling) }}</span>
+  </section>
+  <h2>Assertions</h2>
+  <ul class="assertions">
+    {% for assertion in assertions %}
+    {% set is_ruled = assertion.id in rulings %}
+    {% set current_fit = rulings[assertion.id].fit if is_ruled else assertion.fit %}
+    {% set display_provenance = "ratified" if is_ruled else assertion.provenance %}
+    <li>
+      <span class="target">{{ assertion.target }}</span>
+      <span class="provenance-glyph provenance-{{ display_provenance }}" aria-label="{{ display_provenance }}" title="{{ display_provenance }}"></span>
+      <form class="ruling-form" hx-post="/openings/{{ opening.id }}/assertions/{{ assertion.id }}/ruling"
+            hx-target="#rating-content" hx-swap="outerHTML" hx-trigger="submit">
+        <div class="fit-control" role="group" aria-label="fit for {{ assertion.target }}">
+          {% for fit in fit_values %}
+          <button type="submit" name="fit" value="{{ fit }}"
+                  class="fit-segment fit-{{ fit|lower }}{% if current_fit == fit %} active{% endif %}"
+                  aria-label="{{ fit }}"
+                  title="{{ fit }}"></button>
+          {% endfor %}
+        </div>
+      </form>
+      <blockquote>{{ assertion.chunk }}</blockquote>
+      <a class="citation-link" href="{{ assertion.citations[0].url }}" target="_blank" rel="noopener noreferrer">{{ assertion.citations[0].host }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>

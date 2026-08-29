@@ -131,3 +131,17 @@ def test_order_independent(config: ScoringConfig) -> None:
     assert forward.standing == reversed_result.standing
     assert forward.ceiling == reversed_result.ceiling
     assert (forward.trace == reversed_result.trace).all()
+
+
+def test_ruling_override_changes_target_stats(config: ScoringConfig) -> None:
+    """`score()` accepts an optional mapping of assertion id -> overridden fit; the ruled
+    fit replaces the assertion's own `fit` when computing that target's stats, and only
+    that target's stats move (bearing Done When: overriding one assertion changes the
+    score trace for its target)."""
+    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    assert target_assertion.target == "stretch"
+
+    unruled = score(PARTIALLY_RESEARCHED, config)
+    ruled = score(PARTIALLY_RESEARCHED, config, rulings={target_assertion.id: "Poor"})
+
+    assert ruled.standing != unruled.standing

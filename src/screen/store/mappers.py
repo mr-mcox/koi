@@ -9,7 +9,7 @@ convert to this shape via `dict(row)`.
 import json
 from datetime import datetime
 
-from screen.types import Assertion, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 
 def company_to_row(company: Company) -> dict[str, object]:
@@ -73,6 +73,26 @@ def assertion_from_row(row: dict[str, object]) -> Assertion:
             "provenance": row["provenance"],
             "chunk": str(row["chunk"]),
             "citations": citations,
+            "created_at": datetime.fromisoformat(str(row["created_at"])),
+        }
+    )
+
+
+def assertion_ruling_to_row(ruling: AssertionRuling) -> dict[str, object]:
+    return {
+        "id": ruling.id,
+        "assertion_id": ruling.assertion_id,
+        "fit": ruling.fit,
+        "created_at": ruling.created_at.isoformat(),
+    }
+
+
+def assertion_ruling_from_row(row: dict[str, object]) -> AssertionRuling:
+    return AssertionRuling.model_validate(
+        {
+            "id": str(row["id"]),
+            "assertion_id": str(row["assertion_id"]),
+            "fit": row["fit"],
             "created_at": datetime.fromisoformat(str(row["created_at"])),
         }
     )

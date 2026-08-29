@@ -76,21 +76,6 @@ h1, h2 {
   color: #084298;
 }
 
-.fit-strong {
-  color: #0f5132;
-  background: #d1e7dd;
-}
-
-.fit-mixed {
-  color: #664d03;
-  background: #fff3cd;
-}
-
-.fit-poor {
-  color: #842029;
-  background: #f8d7da;
-}
-
 .score-summary {
   display: flex;
   gap: 1rem;
@@ -107,6 +92,15 @@ h1, h2 {
 .assertions li {
   padding: 0.75rem 0.5rem;
   border-bottom: 1px solid #e5e5e5;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+
+.assertions li blockquote,
+.assertions li .citation-link {
+  grid-column: 1 / -1;
 }
 
 .assertions .target {
@@ -115,9 +109,62 @@ h1, h2 {
 }
 
 .assertions blockquote {
-  margin: 0.5rem 0 0;
+  margin: 0.25rem 0 0;
   padding-left: 0.75rem;
   border-left: 2px solid #ccc;
   color: #555;
   font-style: italic;
+}
+
+.provenance-glyph {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.provenance-glyph.provenance-model_proposed::before { content: "🤖"; }
+.provenance-glyph.provenance-precedent_matched::before { content: "📖"; }
+.provenance-glyph.provenance-ratified::before { content: "👤"; }
+.provenance-glyph.provenance-unexamined::before { content: "❓"; }
+
+.ruling-form {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fit-control {
+  display: inline-flex;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.fit-segment {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  background: #f5f5f5;
+  transition: background 0.1s;
+}
+
+.fit-segment.fit-poor { background: #f8d7da; }
+.fit-segment.fit-mixed { background: #fff3cd; }
+.fit-segment.fit-strong { background: #d1e7dd; }
+
+.fit-segment.active {
+  outline: 2px solid #333;
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+.fit-segment:hover {
+  filter: brightness(0.9);
+}
+
+.citation-link {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
 }

@@ -137,17 +137,69 @@ walks every assertion. Key requirements surfaced in conversation:
   Nothing in the current domain model names the *granularity* (assertion vs. dimension)
   explicitly — it's implicitly assertion-level throughout (D26's click is per-assertion).
   F6's open question is really asking whether `Ruling` needs a `scope` field or a sibling
-  type.
+  type — **closed by F25: sibling types** (`AssertionRuling`, `DimensionRuling`), different
+  payload shapes for different author-intents, not one type with an optional scope →
+  ruling-model bearing §Agreed.
+- **F25** — operator — assertion-level rating and dimension-level rating are different
+  author-intents with different payload shapes, not one granularity with a `scope` field:
+  overriding what the model said about one claim ("was this claim right?") is a categorical
+  confirm/override; placing where a dimension actually lands ("given everything, where am I
+  on this?") is a continuous, non-arithmetic squish (F6). Closes F18's scope-vs-sibling
+  question → sibling types, §Agreed in bearing.
+- **F26** — operator — the operator's own rating is expected to be noisy in both
+  directions ("you overrode my rating a bunch, does that invalidate it?" — no; re-rate
+  later, mood/context shifts the click). This is *additional* motivation for E3's original
+  "raw position stored, structurally invisible to scoring" pattern, not a reason to
+  reconsider it — the noise E3 already protects against includes the operator's own.
+- **F27** — operator — for a `DimensionRuling`, no snap-to-discrete-bucket step is wanted:
+  a continuous (fit, settledness) pin should feed the Scorer's mean/half_width directly, no
+  invisible line deciding which bucket a hover lands in. Does not reopen E3/D26 — E3's rule
+  is fit-never-multiplies-confidence and raw-click-stored-for-corpus, not "must discretize
+  on entry"; a continuous entry satisfies both by construction (x sets mean, y sets
+  half_width, no cross-multiplication).
+- **F28** — `src/screen/types.py:87` — `Assertion.fit` stays the closed `Literal`, untouched;
+  an `AssertionRuling`'s `fit` field reuses the same Literal (operator-authored, same
+  vocabulary as the model's). Only `DimensionRuling` introduces continuous floats, and only
+  as its own type's fields — no loosening of `Assertion`'s wall (answers F17 for this
+  feature: additive sibling types, not a Literal change).
+- **F29** — operator — confidence-in-the-model's-own-rating (rating a `model_proposed`
+  assertion's *confidence* before overriding it) is explicitly out of scope now ("exhausting"
+  to state at that level) — not rejected, just not this bearing.
+- **F30** — operator — a distinct concern surfaced and deliberately parked: some assertions
+  are evidenced-but-irrelevant to the target they're filed against (a "cat-friendly office"
+  counted toward `location` fit) — not low-fit, not low-confidence, but zero-weight-toward-
+  this-target. This is a third axis (relevance), orthogonal to fit and to confidence/
+  settledness. Not designed against here; noted as a future thread, not a requirement this
+  bearing must accommodate.
+
 
 ## Not Yet Settled (carried into bearing discussion)
 
 - Whether rating-VOI is computed by the existing Scorer (extended) or a new adjacent
   service — no finding pins this; it's an implementation shape decision.
-- F6/F18 — dimension-level Ruling's relationship to assertion-level provenance.
 - F11 — whether the transcript format as currently logged (F10) actually carries enough
   to compute "no signal despite searching" per target, or needs a small additive change
   (e.g., logging which target a search was assigned to explore) to make that computable
   after the fact.
+- `DimensionRuling` / continuous dimension-level squish (F25-F30) — exploratory, deferred
+  until assertion-level corpus exists; UX not finalized.
+- **F31** — operator — steel-thread sequence: start with assertion-level rating first to
+  get authentic interaction and accumulate a Ruling corpus; defer `DimensionRuling` (and its
+  continuous UI) until enough data/experience exists to finalize the interaction. This
+  reverses the earlier monolithic `ruling-model` bearing plan → assertion-level becomes the
+  first leaf, dimension-level remains exploratory (F25-F30 still valid but not implemented
+  now).
+- **F32** — operator — UI is not a separate later slice for assertion-level rating; an
+  authentic interaction requires the surface as part of the steel thread. Server-rendered +
+  HTMX remains the delivery shape (F22), but the rating template becomes a form, not a
+  display-only list.
+- **F33** — operator — the rating surface needs per-assertion rows/cards, each with a link
+  to its citation source, a clear display of the LLM's proposed fit/provenance, and a
+  distinct display of any operator ruling already recorded. Submission controls are a
+  separate, follow-up slice from the honest layout. This splits the assertion-ruling steel
+  thread into two leaves: layout-first, then submit.
+
+
 
 ## Frontend shape (added mid-stream)
 

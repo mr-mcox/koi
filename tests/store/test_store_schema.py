@@ -11,6 +11,8 @@ from pathlib import Path
 
 from screen.store.mappers import (
     assertion_from_row,
+    assertion_ruling_from_row,
+    assertion_ruling_to_row,
     assertion_to_row,
     company_from_row,
     company_to_row,
@@ -18,7 +20,7 @@ from screen.store.mappers import (
     opening_to_row,
 )
 from screen.store.migrate import apply_migrations
-from screen.types import Assertion, Citation, Company, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "src" / "screen" / "store" / "migrations"
 
@@ -33,7 +35,13 @@ def _connect() -> sqlite3.Connection:
 def test_all_migration_files_apply_cleanly_to_a_fresh_database() -> None:
     conn = _connect()
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"companies", "openings", "assertions", "schema_migrations"} <= tables
+    assert {
+        "companies",
+        "openings",
+        "assertions",
+        "assertion_rulings",
+        "schema_migrations",
+    } <= tables
 
 
 def test_company_insert_and_select_round_trips_through_the_real_schema() -> None:
@@ -95,3 +103,22 @@ def test_assertion_insert_and_select_round_trips_through_the_real_schema() -> No
         "SELECT * FROM assertions WHERE id = :id", {"id": assertion.id}
     ).fetchone()
     assert assertion_from_row(dict(fetched)) == assertion
+
+
+def test_assertion_ruling_insert_and_select_round_trips_through_the_real_schema() -> None:
+    conn = _connect()
+    ruling = AssertionRuling(
+        assertion_id="00000000-0000-0000-0000-000000000001",
+        fit="Strong",
+        created_at=datetime.now(UTC),
+    )
+    row = assertion_ruling_to_row(ruling)
+    conn.execute(
+        """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
+           VALUES (:id, :assertion_id, :fit, :created_at)""",
+        row,
+    )
+    fetched = conn.execute(
+        "SELECT * FROM assertion_rulings WHERE id = :id", {"id": ruling.id}
+    ).fetchone()
+    assert assertion_ruling_from_row(dict(fetched)) == ruling

@@ -63,3 +63,15 @@ def test_score_opening_handles_empty_assertions(config: ScoringConfig) -> None:
     result = score_opening([], config)
     assert 0.0 <= result.standing <= 1.0
     assert 0.0 <= result.reach <= 1.0
+
+
+def test_score_opening_applies_rulings(config: ScoringConfig) -> None:
+    """An `AssertionRuling` override changes `score_opening`'s standing for the ruled
+    assertion's target (bearing Done When)."""
+    assertion = _assertion("stretch", "Strong")
+    assertions = [assertion, _assertion("location", "Strong")]
+
+    unruled = score_opening(assertions, config)
+    ruled = score_opening(assertions, config, rulings={assertion.id: "Poor"})
+
+    assert ruled.standing != unruled.standing

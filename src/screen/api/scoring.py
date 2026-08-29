@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from screen.score.band import Band, band_for
 from screen.score.scorer import resolve_favourably, score
 from screen.score.types import ScoringConfig
-from screen.types import Assertion
+from screen.types import Assertion, Fit
 
 
 @dataclass(frozen=True)
@@ -25,13 +25,21 @@ class OpeningScore:
     unreachable: bool
 
 
-def score_opening(assertions: list[Assertion], config: ScoringConfig) -> OpeningScore:
+def score_opening(
+    assertions: list[Assertion],
+    config: ScoringConfig,
+    rulings: dict[str, Fit] | None = None,
+) -> OpeningScore:
     """Standing scores `assertions` as they exist; reach scores the counterfactual
     where every unexamined target has one hypothetical good research pass. `band`
     reads the pair (S5 · reach never sorts) — this function is where they're
-    always computed together, so a caller can't accidentally sort by reach."""
-    standing = score(assertions, config)
-    reach = score(resolve_favourably(assertions, config), config)
+    always computed together, so a caller can't accidentally sort by reach.
+
+    `rulings` (assertion id -> operator-ruled `Fit`) passes straight through to both
+    calls — an override changes what the ruled assertion says everywhere it's used,
+    including inside the reach counterfactual's real (non-hypothetical) assertions."""
+    standing = score(assertions, config, rulings)
+    reach = score(resolve_favourably(assertions, config), config, rulings)
     band = band_for(standing, reach, config.bands)
     return OpeningScore(
         standing=standing.standing,

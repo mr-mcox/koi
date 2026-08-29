@@ -20,7 +20,7 @@ from typing import cast
 import numpy as np
 
 from screen.score.types import FIT_VALUES, ScoreResult, ScoringConfig
-from screen.types import Assertion, Citation, Target
+from screen.types import Assertion, Citation, Fit, Target
 
 # Fixed, not `datetime.now()`: `resolve_favourably`'s hypothetical assertions must not read
 # the wall clock — the Scorer is stateless and deterministic given a seed (domain-model.md
@@ -53,14 +53,20 @@ class _TargetStats:
         return self.n == 0.0
 
 
-def _target_stats(assertions: list[Assertion], config: ScoringConfig, target: str) -> _TargetStats:
+def _target_stats(
+    assertions: list[Assertion],
+    config: ScoringConfig,
+    target: str,
+    rulings: dict[str, Fit] | None = None,
+) -> _TargetStats:
     weighted_sum = 0.0
     n = 0.0
     for a in assertions:
         if a.target != target:
             continue
         weight = config.provenance_weight[a.provenance]
-        weighted_sum += weight * FIT_VALUES[a.fit]
+        fit = rulings[a.id] if rulings is not None and a.id in rulings else a.fit
+        weighted_sum += weight * FIT_VALUES[fit]
         n += weight
     m = weighted_sum / n if n > 0 else 0.0
     return _TargetStats(n=n, mean=n * m / (n + 1), half_width=1.0 / math.sqrt(n + 1))
@@ -85,20 +91,33 @@ def _sample_constraint(
     return rng.uniform(min(lo, hi), max(lo, hi), size)
 
 
-def score(assertions: list[Assertion], config: ScoringConfig) -> ScoreResult:
+def score(
+    assertions: list[Assertion],
+    config: ScoringConfig,
+    rulings: dict[str, Fit] | None = None,
+) -> ScoreResult:
     """Score one assertion set. Deterministic given `config.seed` — reordering `assertions`
     never changes the result: every target's stats are a
-    sum over its own assertions, order-independent by construction."""
+    sum over its own assertions, order-independent by construction.
+
+    `rulings` is an optional assertion-id -> operator-ruled `Fit` mapping (bearing
+    assertion-ruling-submit): where present, the ruled fit substitutes for the assertion's
+    own `fit` when computing that target's stats. Provenance-weighting is untouched — a
+    ruling doesn't change how much an assertion counts, only what it says."""
     rng = np.random.default_rng(config.seed)
     size = config.samples
 
-    dim_stats = {slug: _target_stats(assertions, config, slug) for slug in config.dimension_weights}
+    dim_stats = {
+        slug: _target_stats(assertions, config, slug, rulings) for slug in config.dimension_weights
+    }
     weighted = np.zeros(size)
     for slug, weight in config.dimension_weights.items():
         weighted += weight * _sample_dimension(rng, dim_stats[slug], size)
     quality = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
 
-    con_stats = {slug: _target_stats(assertions, config, slug) for slug in config.constraints}
+    con_stats = {
+        slug: _target_stats(assertions, config, slug, rulings) for slug in config.constraints
+    }
     overall = quality.copy()
     for slug, con in config.constraints.items():
         overall *= _sample_constraint(rng, con_stats[slug], con.worst, con.best, size)

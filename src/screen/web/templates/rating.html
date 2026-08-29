@@ -2,22 +2,6 @@
 {% block title %}Rate {{ company.name }} — {{ opening.title }}{% endblock %}
 {% block content %}
   <h1>{{ company.name }} — {{ opening.title }}</h1>
-  <section class="score-summary">
-    <span class="chip band-{{ score.band.replace(' ', '-') }}">{{ score.band }}</span>
-    <span>standing {{ "%.3f"|format(score.standing) }}</span>
-    <span>reach {{ "%.3f"|format(score.reach) }}</span>
-    <span>ceiling {{ "%.3f"|format(score.ceiling) }}</span>
-  </section>
-  <h2>Assertions</h2>
-  <ul class="assertions">
-    {% for assertion in assertions %}
-    <li class="fit-{{ assertion.fit|lower }} provenance-{{ assertion.provenance }}">
-      <span class="target">{{ assertion.target }}</span>
-      <span class="chip fit">{{ assertion.fit }}</span>
-      <span class="chip provenance">{{ assertion.provenance }}</span>
-      <blockquote>{{ assertion.chunk }}</blockquote>
-    </li>
-    {% endfor %}
-  </ul>
+  {% include "_rating_content.html" %}
   <p><a href="/">Back to queue</a></p>
 {% endblock %}
