@@ -10,9 +10,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from screen.api.app import create_app
+from screen.digest.fakes import FakeDigester
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
-from screen.store.repo import append_assertions, upsert_company, upsert_opening
+from screen.store.repo import (
+    append_assertions,
+    upsert_company,
+    upsert_dimension_digest,
+    upsert_opening,
+)
 from screen.types import Assertion, Citation, Company, Fit, Opening, Target
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
@@ -35,7 +41,7 @@ def db_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def client(db_path: Path) -> Iterator[TestClient]:
     """A TestClient backed by a fresh database at a temporary path."""
-    app = create_app(db_path)
+    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
     with TestClient(app) as test_client:
         yield test_client
 
@@ -142,6 +148,164 @@ def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> N
     assert "stretch" in body
     assert "Strong" in body
     assert "Back to queue" in body
+
+
+def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path: Path) -> None:
+    """Assertions are grouped under their target dimension heading instead of a flat list."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[
+            _assertion("stretch", "Strong"),
+            _assertion("mission", "Mixed"),
+        ],
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert response.status_code == 200
+    body = response.text
+    assert '<h3 class="dimension-title">stretch</h3>' in body
+    assert '<h3 class="dimension-title">mission</h3>' in body
+    # Each dimension's assertion appears in its own section.
+    stretch_heading = body.index('<h3 class="dimension-title">stretch</h3>')
+    mission_heading = body.index('<h3 class="dimension-title">mission</h3>')
+    next_after_stretch = body.find('<h3 class="dimension-title">', stretch_heading + 1)
+    stretch_section = body[stretch_heading:next_after_stretch]
+    assert '<span class="chip fit">Strong</span>' in stretch_section
+    next_after_mission = body.find('<h3 class="dimension-title">', mission_heading + 1)
+    mission_section = body[mission_heading:next_after_mission]
+    assert '<span class="chip fit">Mixed</span>' in mission_section
+
+
+def test_rate_opening_shows_cached_digest_above_assertions(
+    client: TestClient, db_path: Path
+) -> None:
+    """Each dimension group shows its cached digest above the assertion list."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="High-bar stretch culture.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    response = client.get("/openings/acme--eng/rate")
+    body = response.text
+
+    assert body.count("High-bar stretch culture.") == 1
+    digest_pos = body.find("High-bar stretch culture.")
+    chunk_pos = body.find("verbatim source text")
+    assert digest_pos < chunk_pos
+
+
+def test_rate_opening_dimension_order_is_weight_descending(
+    client: TestClient, db_path: Path
+) -> None:
+    """Dimension groups render in weight-descending order, not assertion insertion order."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[
+            _assertion("domain", "Mixed"),  # weight 1
+            _assertion("stretch", "Strong"),  # weight 3
+        ],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="Stretch digest.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="domain",
+        digest="Domain digest.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    response = client.get("/openings/acme--eng/rate")
+    body = response.text
+
+    assert body.count("Stretch digest.") == 1
+    assert body.count("Domain digest.") == 1
+    assert body.find("Stretch digest.") < body.find("Domain digest.")
+
+
+def test_rate_opening_empty_dimension_shows_not_yet_examined(
+    client: TestClient, db_path: Path
+) -> None:
+    """A dimension with no assertions renders its group with a 'not yet examined' digest."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="Stretch digest.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    response = client.get("/openings/acme--eng/rate")
+    body = response.text
+
+    mission_heading = body.index('<h3 class="dimension-title">mission</h3>')
+    next_after_mission = body.find('<h3 class="dimension-title">', mission_heading + 1)
+    mission_section = body[mission_heading:next_after_mission]
+    assert "not yet examined" in mission_section
+
+
+def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_path: Path) -> None:
+    """The per-assertion markup (target, fit chip, provenance chip, quote) stays the same."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="Stretch digest.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    response = client.get("/openings/acme--eng/rate")
+    body = response.text
+
+    assert '<li class="fit-strong provenance-ratified">' in body
+    assert '<span class="target">stretch</span>' in body
+    assert '<span class="chip fit">Strong</span>' in body
+    assert '<span class="chip provenance">ratified</span>' in body
+    assert "<blockquote>verbatim source text</blockquote>" in body
 
 
 def test_rate_opening_404_when_missing(client: TestClient) -> None:

@@ -8,16 +8,24 @@
     <span>reach {{ "%.3f"|format(score.reach) }}</span>
     <span>ceiling {{ "%.3f"|format(score.ceiling) }}</span>
   </section>
-  <h2>Assertions</h2>
-  <ul class="assertions">
-    {% for assertion in assertions %}
-    <li class="fit-{{ assertion.fit|lower }} provenance-{{ assertion.provenance }}">
-      <span class="target">{{ assertion.target }}</span>
-      <span class="chip fit">{{ assertion.fit }}</span>
-      <span class="chip provenance">{{ assertion.provenance }}</span>
-      <blockquote>{{ assertion.chunk }}</blockquote>
-    </li>
-    {% endfor %}
-  </ul>
+  <h2>Dimensions</h2>
+  {% for group in groups %}
+  <section class="dimension-group">
+    <h3 class="dimension-title">{{ group.target }}</h3>
+    <p class="digest">{{ group.digest }}</p>
+    {% if group.assertions %}
+    <ul class="assertions">
+      {% for assertion in group.assertions %}
+      <li class="fit-{{ assertion.fit|lower }} provenance-{{ assertion.provenance }}">
+        <span class="target">{{ assertion.target }}</span>
+        <span class="chip fit">{{ assertion.fit }}</span>
+        <span class="chip provenance">{{ assertion.provenance }}</span>
+        <blockquote>{{ assertion.chunk }}</blockquote>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endfor %}
   <p><a href="/">Back to queue</a></p>
 {% endblock %}
