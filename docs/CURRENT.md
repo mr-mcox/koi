@@ -1,1 +1,1 @@
-docs/features/review-ux/scouting.md
+docs/features/dimension-digest/generation.md
