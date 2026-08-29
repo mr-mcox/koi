@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-29
 commit: 1c109aedd1aff28d690a115ae7148c4706ad3e1a
 branch: main
-status: orienting
+status: done
 scouting: ./digest-latency-and-style-scouting.md
 parent: ./bearing.md
 ---
@@ -15,15 +15,15 @@ The rating view blocks on live digest generation when the cache is cold, and the
 
 ## Done When
 
-- [ ] The CLI warms the digest cache for every target with assertions before the research pass is considered complete
-      → `tests/test_cli_intake.py` asserts `FakeDigester` is called after `dispatch` returns
-- [ ] `GET /openings/{id}/rate` renders with no live digest calls when the cache is warm
-      → `tests/test_web.py` asserts `FakeDigester.calls` is 0 during the request
-- [ ] `DigestDimension` prompt enforces ≤30 words, no em-dashes, and uses bullets only for distinct facets or genuine tension
-      → BAML smoke test in `src/screen/baml_src/digest.baml`, run outside `scripts/check.py`
-- [ ] The rating view renders line breaks and leading-dash bullets in the digest as structured HTML
-      → `tests/test_web.py` asserts `<ul>`/`<li>` or `<br>` in the digest section
-- [ ] `uv run python scripts/check.py` passes
+- [x] The CLI warms the digest cache for every target with assertions before the research pass is considered complete
+      → `tests/cli/test_digest_warming.py` asserts `FakeDigester` is called after `dispatch` returns
+- [x] `GET /openings/{id}/rate` renders with no live digest calls when the cache is warm
+      → `tests/test_web.py::test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm` asserts `FakeDigester.calls == 0`
+- [x] `DigestDimension` prompt enforces ≤30 words, no em-dashes, and uses bullets only for distinct facets or genuine tension
+      → BAML smoke tests in `src/screen/baml_src/digest.baml`, run via `baml-cli test` (both pass against the live model)
+- [x] The rating view renders line breaks and leading-dash bullets in the digest as structured HTML
+      → `tests/test_web.py::test_rate_opening_renders_bullets_and_line_breaks_as_html` asserts `<ul>`/`<li>`
+- [x] `uv run python scripts/check.py` passes
 
 ## Approach
 
