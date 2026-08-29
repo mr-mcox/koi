@@ -14,6 +14,9 @@ from screen.browser import (
     BrowserProtocol,
     TavilyBrowser,
 )
+from screen.digest.baml_digester import BAMLDigester
+from screen.digest.protocol import DigesterProtocol
+from screen.digest.service import update_digests_for_opening
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.extract import extract_assertions
 from screen.extract.prompt import rubric_text_for_baml
@@ -34,6 +37,7 @@ from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
     assertions_for_opening,
+    list_openings,
     upsert_company,
     upsert_opening,
 )
@@ -55,6 +59,10 @@ def _build_identifier() -> IdentifierProtocol:
 
 def _build_extractor() -> ExtractorProtocol:
     return BAMLExtractor()
+
+
+def _build_digester() -> DigesterProtocol:
+    return BAMLDigester()
 
 
 def _build_planner() -> PlannerProtocol:
@@ -129,6 +137,25 @@ def intake(url: str) -> None:
     client = _build_client()
     research_trace_path = _fetch_url(url, client, data_root)
     _identify_research_trace(research_trace_path, data_root)
+
+
+@click.command()
+def backfill_digests() -> None:
+    """Warm the digest cache for every opening already in the DB — for use
+    after a bulk import or a digest prompt change, not part of normal intake."""
+    conn = connect(_db_path_for(data_dir()))
+    openings = list_openings(conn)
+    digester = _build_digester()
+    rubric = rubric_text_for_baml()
+    for opening in openings:
+        update_digests_for_opening(
+            conn,
+            opening_id=opening.id,
+            digester=digester,
+            rubric_text=rubric,
+            now=datetime.now(UTC),
+        )
+    click.echo(f"warmed digests for {len(openings)} opening(s)")
 
 
 def _fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
@@ -219,6 +246,7 @@ def _run_dispatch(
     planner: PlannerProtocol | None = None,
     browser: BrowserProtocol | None = None,
     extractor: ExtractorProtocol | None = None,
+    digester: DigesterProtocol | None = None,
     on_event: Callable[..., None] | None = None,
 ) -> None:
     """Build LoopState from in-memory values and run one dispatch cycle.
@@ -245,6 +273,14 @@ def _run_dispatch(
     pl = planner if planner is not None else _build_planner()
     br = browser if browser is not None else _build_client()
     xt = extractor if extractor is not None else _build_extractor()
+    dg = digester if digester is not None else _build_digester()
     ev_callback: Callable[..., None] = on_event if on_event is not None else _noop_on_event
     summary = dispatch(state, planner=pl, browser=br, extractor=xt, on_event=ev_callback)
     click.echo(f"pass complete: {summary.stopped_reason}")
+    update_digests_for_opening(
+        conn,
+        opening_id=opening_id,
+        digester=dg,
+        rubric_text=rubric,
+        now=datetime.now(UTC),
+    )

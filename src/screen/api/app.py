@@ -16,6 +16,8 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from screen.api.routes import router as api_router
+from screen.digest.baml_digester import BAMLDigester
+from screen.digest.protocol import DigesterProtocol
 from screen.paths import data_dir
 from screen.store.db import connect as db_connect
 from screen.web.routes import router as web_router
@@ -37,9 +39,11 @@ class Database:
         return cls(data_dir() / "screen.db")
 
 
-def create_app(db_path: Path | None = None) -> FastAPI:
+def create_app(db_path: Path | None = None, digester: DigesterProtocol | None = None) -> FastAPI:
     """Application factory. Tests pass a temp path; production uses the default.
-    `app.state.database` is what `screen.api.deps.get_db` reads per request."""
+    `app.state.database` is what `screen.api.deps.get_db` reads per request.
+    `app.state.digester` is the `DigesterProtocol` the web rating view uses for
+    dimension digests; tests inject a fake, production gets the BAML adapter."""
     database = Database(db_path) if db_path else Database.default()
 
     @contextlib.asynccontextmanager
@@ -51,6 +55,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database
+    app.state.digester = digester if digester is not None else BAMLDigester()
     app.include_router(web_router)
     app.include_router(api_router)
     app.mount("/static", static_files, name="static")

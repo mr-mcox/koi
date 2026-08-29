@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeIdentifier
@@ -88,4 +89,13 @@ def patch_planner(monkeypatch: pytest.MonkeyPatch) -> None:
         cli_module,
         "_build_planner",
         lambda: FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]]),
+    )
+
+
+def patch_digester(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Substitute a FakeDigester so post-pass digest warming completes without calling BAML."""
+    monkeypatch.setattr(
+        cli_module,
+        "_build_digester",
+        lambda: FakeDigester(["Synthetic digest."]),
     )

@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-29
 commit: 4ed61f7
 branch: main
-status: orienting
+status: done
 scouting: ./scouting.md
 parent: ./bearing.md
 ---
@@ -17,15 +17,15 @@ assertions, expandable to the raw list. Terrain: [scouting.md](./scouting.md).
 
 ## Done When
 
-- [ ] `/openings/{id}/rate` groups assertions by dimension instead of one flat list
+- [x] `/openings/{id}/rate` groups assertions by dimension instead of one flat list
       → `tests/test_web.py`
-- [ ] Each dimension group shows its cached digest text above the assertions
+- [x] Each dimension group shows its cached digest text above the assertions
       → `tests/test_web.py`, asserts digest string appears once per group
-- [ ] Existing per-assertion rendering (target, fit chip, provenance chip, quote) is
+- [x] Existing per-assertion rendering (target, fit chip, provenance chip, quote) is
       unchanged underneath each group → `tests/test_web.py`
-- [ ] Groups render in `rubric.yaml`'s dimension order (weight-descending), not
+- [x] Groups render in `rubric.yaml`'s dimension order (weight-descending), not
       insertion/created_at order → test asserts group order
-- [ ] A dimension with no assertions still renders its group with a "not yet examined"
+- [x] A dimension with no assertions still renders its group with a "not yet examined"
       digest, not an empty/broken block → `tests/test_web.py`
 
 ## Approach

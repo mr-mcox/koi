@@ -163,3 +163,21 @@ class AssertionRuling(BaseModel):
     assertion_id: Annotated[str, Field(min_length=1)]
     fit: Fit
     created_at: Annotated[datetime, Field()]
+
+
+class DimensionDigest(BaseModel):
+    """Cached prose gist of a dimension's assertion mix for one opening.
+
+    Never a verdict, count, or Fit word — see `docs/features/dimension-digest/`.
+    `assertion_count` is the staleness key: assertions are append-only (Wall 6),
+    so a monotonic count comparison against the target's current assertion
+    count is exact and sufficient to detect a stale digest.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    opening_id: Annotated[str, Field(min_length=1)]
+    target: Target
+    digest: Annotated[str, Field(min_length=1)]
+    assertion_count: Annotated[int, Field(ge=0)]
+    computed_at: Annotated[datetime, Field()]

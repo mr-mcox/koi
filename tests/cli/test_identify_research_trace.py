@@ -16,7 +16,13 @@ from screen.intake.fakes import FakeIdentifier
 from screen.store.db import connect
 from screen.store.repo import assertions_for_opening
 from screen.types import IdentificationResult
-from tests.cli.helpers import fake_identifier, patch_extractor, patch_planner, seed_research_trace
+from tests.cli.helpers import (
+    fake_identifier,
+    patch_digester,
+    patch_extractor,
+    patch_planner,
+    seed_research_trace,
+)
 
 
 def test_identify_research_trace_writes_company_and_opening(
@@ -29,6 +35,7 @@ def test_identify_research_trace_writes_company_and_opening(
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
     _identify_research_trace(research_trace_path, tmp_path)
 
     conn = sqlite3.connect(tmp_path / "screen.db")
@@ -49,6 +56,7 @@ def test_identify_research_trace_leaves_trace_at_final_path(
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
     _identify_research_trace(research_trace_path, tmp_path)
     assert research_trace_path.exists()
 
@@ -64,6 +72,7 @@ def test_identify_research_trace_records_decide_plan_event(
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
     _identify_research_trace(research_trace_path, tmp_path)
     tools = [
         json.loads(line)["tool"]
@@ -83,6 +92,7 @@ def test_identify_research_trace_ignores_sibling_files(
     monkeypatch.setattr(cli_module, "_build_identifier", lambda: fake_identifier(title="Eng"))
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
     _identify_research_trace(research_trace_path, tmp_path)
     assert research_trace_path.exists()
     assert sibling.exists()
@@ -141,6 +151,7 @@ def test_identify_research_trace_skips_blank_and_non_tavily_lines(
     )
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
 
     _identify_research_trace(research_trace, tmp_path)
     conn = sqlite3.connect(tmp_path / "screen.db")
@@ -182,6 +193,7 @@ def test_identify_research_trace_writes_assertions_to_db(
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
     _identify_research_trace(research_trace_path, tmp_path)
 
     conn = connect(tmp_path / "screen.db")

@@ -12,7 +12,13 @@ from click.testing import CliRunner
 from screen.browser import BrowserError, TavilyBrowser
 from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeTavily
-from tests.cli.helpers import env_for, fake_identifier, patch_extractor, patch_planner
+from tests.cli.helpers import (
+    env_for,
+    fake_identifier,
+    patch_digester,
+    patch_extractor,
+    patch_planner,
+)
 
 
 def _fake_tavily_for(url: str) -> FakeTavily:
@@ -37,6 +43,7 @@ def test_cli_writes_domain_rows_to_sqlite_not_json_files(
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
 
     result = CliRunner().invoke(
         cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False
@@ -111,6 +118,7 @@ def test_cli_echoes_stop_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
 
     runner = CliRunner()
     result = runner.invoke(cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False)
@@ -128,6 +136,7 @@ def test_cli_dispatch_does_not_re_extract(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
     patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
 
     runner = CliRunner()
     result = runner.invoke(cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False)

@@ -30,6 +30,7 @@ OMIT_FROM_COVERAGE: list[str] = [
     # Live BAML adapter: calls external LLM service, no unit test coverage by design.
     # Symmetric with pyproject.toml [tool.coverage.run] omit.
     "src/screen/extract/baml_extractor.py",
+    "src/screen/digest/baml_digester.py",
 ]
 
 EXEMPT_FILES: dict[str, str] = {

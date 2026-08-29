@@ -4,6 +4,7 @@ built on `db.connect` + `mappers`. This is the layer `intake/cli.py` calls;
 """
 
 import sqlite3
+from datetime import datetime
 
 from screen.store.mappers import (
     assertion_from_row,
@@ -12,10 +13,12 @@ from screen.store.mappers import (
     assertion_to_row,
     company_from_row,
     company_to_row,
+    dimension_digest_from_row,
+    dimension_digest_to_row,
     opening_from_row,
     opening_to_row,
 )
-from screen.types import Assertion, AssertionRuling, Company, Opening
+from screen.types import Assertion, AssertionRuling, Company, DimensionDigest, Opening
 
 
 def upsert_company(conn: sqlite3.Connection, company: Company) -> None:
@@ -109,3 +112,43 @@ def list_openings(conn: sqlite3.Connection) -> list[Opening]:
     """Every opening in the DB, oldest first — the queue's candidate set before scoring."""
     rows = conn.execute("SELECT * FROM openings ORDER BY created_at").fetchall()
     return [opening_from_row(dict(row)) for row in rows]
+
+
+def get_dimension_digest(
+    conn: sqlite3.Connection, opening_id: str, target: str
+) -> DimensionDigest | None:
+    row = conn.execute(
+        "SELECT * FROM dimension_digests WHERE opening_id = ? AND target = ?",
+        (opening_id, target),
+    ).fetchone()
+    return dimension_digest_from_row(dict(row)) if row is not None else None
+
+
+def upsert_dimension_digest(
+    conn: sqlite3.Connection,
+    *,
+    opening_id: str,
+    target: str,
+    digest: str,
+    assertion_count: int,
+    computed_at: datetime,
+) -> None:
+    record = DimensionDigest.model_validate(
+        {
+            "opening_id": opening_id,
+            "target": target,
+            "digest": digest,
+            "assertion_count": assertion_count,
+            "computed_at": computed_at,
+        }
+    )
+    conn.execute(
+        """INSERT INTO dimension_digests (opening_id, target, digest, assertion_count, computed_at)
+           VALUES (:opening_id, :target, :digest, :assertion_count, :computed_at)
+           ON CONFLICT (opening_id, target) DO UPDATE SET
+               digest = excluded.digest,
+               assertion_count = excluded.assertion_count,
+               computed_at = excluded.computed_at""",
+        dimension_digest_to_row(record),
+    )
+    conn.commit()
