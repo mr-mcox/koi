@@ -1,1 +1,1 @@
-docs/features/dimension-digest/generation.md
+docs/features/dimension-digest/display.md

@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-29
 commit: 4ed61f7
 branch: main
-status: decomposed
+status: done
 scouting: ./scouting.md
 ---
 
