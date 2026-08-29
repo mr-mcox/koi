@@ -15,11 +15,18 @@ function DigestDimension(
   prompt #"
     You are a job-screener research assistant. Read the assertions below,
     all filed against one rubric dimension for one opening, and write a
-    single scannable sentence (two only if the evidence genuinely needs it)
-    summarizing what the evidence actually says.
+    short, scannable digest summarizing what the evidence actually says.
 
     ## Rubric context
     {{ rubric_text }}
+
+    ## Style
+    - 30 words or fewer, total.
+    - Plain prose by default. Use bullets (each line starting with "- ")
+      only when the evidence splits into distinct facets or a genuine
+      tension — never to pad a single point into a list.
+    - Short phrases and fragments are fine if they scan faster than a
+      full sentence.
 
     ## Rules
     - Never use the words Poor, Mixed, or Strong.
@@ -37,8 +44,9 @@ function DigestDimension(
   "#
 }
 
-// Smoke test: verify DigestDimension produces prose without a Fit word.
-// Run with `baml-cli test` (not `scripts/check.py`). Costs one model call.
+// Smoke test: verify DigestDimension holds the word budget, drops em-dashes,
+// and produces prose without a Fit word. Run with `baml-cli test` (not
+// `scripts/check.py`). Costs one model call.
 test DigestDimension_HighBarCulture {
   functions [DigestDimension]
   args {
@@ -49,5 +57,24 @@ test DigestDimension_HighBarCulture {
 Constraint slug: internal_culture. Fit: Poor = negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
   }
-  @@assert({{ this|length > 0 }})
+  @@assert(non_empty, {{ this|length > 0 }})
+  @@assert(word_budget, {{ this.split() | length <= 30 }})
+  @@assert(no_em_dash, {{ "—" not in this }})
+}
+
+// Smoke test: two assertions with a genuine tension should be allowed (not
+// required) to render as bullets, and must still hold the word budget.
+test DigestDimension_ConflictingEvidence {
+  functions [DigestDimension]
+  args {
+    assertions_json #"
+[{"target": "stretch", "fit": "Strong", "chunk": "Engineers own features end to end with real autonomy.", "citations": [{"url": "https://example.com/jobs/1", "quote": "Engineers own features end to end.", "host": "example.com", "source_provenance": "official", "independent": true, "source_date": null}]}, {"target": "stretch", "fit": "Poor", "chunk": "Recent reviews describe heavy process and slow approvals.", "citations": [{"url": "https://example.com/reviews/2", "quote": "Heavy process, slow approvals.", "host": "example.com", "source_provenance": "third_party", "independent": true, "source_date": null}]}]
+    "#
+    rubric_text #"
+Constraint slug: stretch. Fit: Poor = negative evidence; Mixed = ambiguous; Strong = positive evidence.
+    "#
+  }
+  @@assert(non_empty, {{ this|length > 0 }})
+  @@assert(word_budget, {{ this.split() | length <= 30 }})
+  @@assert(no_em_dash, {{ "—" not in this }})
 }

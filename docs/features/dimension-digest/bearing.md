@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-29
 commit: 4ed61f7
 branch: main
-status: done
+status: decomposed
 scouting: ./scouting.md
 ---
 
@@ -15,9 +15,7 @@ LLM-generated prose gist of what a dimension's evidence actually says — never 
 never a count-of-assertions restatement — with the assertions still reachable underneath.
 Terrain: [scouting.md](./scouting.md).
 
-## Done When
-
-Carried by children — see `generation.md`/`display.md`.
+Carried by children — see `generation.md`/`display.md`/`digest-latency-and-style.md`.
 
 ## Approach
 
@@ -30,6 +28,7 @@ template/routing decision):
   invalidated (new table, assertion-count-based staleness), and what it must never say.
 - **`display.md`** — grouping assertions by dimension in the rating view and rendering
   the cached digest above each group.
+- **`digest-latency-and-style.md`** — warm the cache after a research pass, tighten the digest prompt for scanability, and render bullets/line breaks in the view.
 
 ## Not Doing
 

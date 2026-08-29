@@ -13,6 +13,31 @@ from screen.digest.protocol import DigesterProtocol
 from screen.store.repo import assertions_for_opening, get_dimension_digest, upsert_dimension_digest
 
 
+def update_digests_for_opening(
+    conn: sqlite3.Connection,
+    *,
+    opening_id: str,
+    digester: DigesterProtocol,
+    rubric_text: str,
+    now: datetime,
+) -> None:
+    """Warm the digest cache for every target that has assertions on this opening.
+
+    Called post-pass (F6) so the rating view never blocks on a cold cache;
+    idempotent by the same assertion-count staleness key `digest_for_target` uses.
+    """
+    targets = dict.fromkeys(a.target for a in assertions_for_opening(conn, opening_id))
+    for target in targets:
+        digest_for_target(
+            conn,
+            opening_id=opening_id,
+            target=target,
+            digester=digester,
+            rubric_text=rubric_text,
+            now=now,
+        )
+
+
 def digest_for_target(
     conn: sqlite3.Connection,
     *,

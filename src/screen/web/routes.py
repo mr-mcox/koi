@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from screen.api.deps import get_db
 from screen.api.scoring import score_opening
 from screen.digest.protocol import DigesterProtocol
+from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
 from screen.extract.prompt import rubric_text_for_baml
 from screen.score.loader import load_scoring_config
@@ -33,6 +34,7 @@ Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.filters["render_digest_html"] = render_digest_html
 
 
 @dataclass(frozen=True)

@@ -21,8 +21,11 @@ case "$cmd" in
   intake)
     exec uv run python -m screen "$@"
     ;;
+  backfill-digests)
+    exec uv run python -c "from screen.intake.cli import backfill_digests; backfill_digests()" "$@"
+    ;;
   *)
-    echo "usage: ./run [serve|intake <url>]" >&2
+    echo "usage: ./run [serve|intake <url>|backfill-digests]" >&2
     exit 1
     ;;
 esac

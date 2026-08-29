@@ -77,6 +77,35 @@ def _assertion(target: Target, fit: Fit) -> Assertion:
     )
 
 
+def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Path) -> None:
+    """A warm cache means the rating view never calls the digester (Done When #2 of
+    digest-latency-and-style) — cold-cache generation happens post-pass, not on page view."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="High-bar stretch culture.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+    digester = FakeDigester(["unused"])
+    app = create_app(db_path, digester=digester)
+
+    with TestClient(app) as test_client:
+        response = test_client.get("/openings/acme--eng/rate")
+
+    assert response.status_code == 200
+    assert digester.calls == 0
+
+
 def test_index_renders_queue_html(client: TestClient, db_path: Path) -> None:
     """`GET /` returns text/html with the ranked queue."""
     _seed_opening(
@@ -277,6 +306,37 @@ def test_rate_opening_empty_dimension_shows_not_yet_examined(
     next_after_mission = body.find('<h3 class="dimension-title">', mission_heading + 1)
     mission_section = body[mission_heading:next_after_mission]
     assert "not yet examined" in mission_section
+
+
+def test_rate_opening_renders_bullets_and_line_breaks_as_html(
+    client: TestClient, db_path: Path
+) -> None:
+    """A digest with leading-dash bullets and line breaks renders as `<ul>/<li>`
+    or `<br>`, not literal text (Done When #4 of digest-latency-and-style)."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--eng",
+        target="stretch",
+        digest="Evidence is mixed:\n- Autonomy is real.\n- Process is heavy.",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    response = client.get("/openings/acme--eng/rate")
+    body = response.text
+
+    assert "<ul>" in body
+    assert "<li>Autonomy is real.</li>" in body
+    assert "<li>Process is heavy.</li>" in body
+    assert "- Autonomy is real." not in body
 
 
 def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_path: Path) -> None:

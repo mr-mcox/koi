@@ -12,7 +12,7 @@
   {% for group in groups %}
   <section class="dimension-group">
     <h3 class="dimension-title">{{ group.target }}</h3>
-    <p class="digest">{{ group.digest }}</p>
+    <p class="digest">{{ group.digest|render_digest_html }}</p>
     {% if group.assertions %}
     <ul class="assertions">
       {% for assertion in group.assertions %}
