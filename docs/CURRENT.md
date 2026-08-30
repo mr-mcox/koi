@@ -1,1 +1,1 @@
-docs/features/review-ux/rating-voi-triage.md
+docs/features/review-ux/dimension-ruling-flat-gradient.md
