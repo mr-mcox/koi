@@ -15,6 +15,7 @@ def test_loads_real_rubric_and_scoring_yaml() -> None:
     assert config.provenance_weight["ratified"] > config.provenance_weight["model_proposed"]
     assert config.dimension_ruling_hw_max == 1.0
     assert config.dimension_ruling_hw_min == 0.05
+    assert config.rating_task_budget == 4
 
 
 def test_parse_tolerability_single_value() -> None:

@@ -9,12 +9,17 @@
   {% for group in groups %}
   <section class="dimension-group">
     <h3 class="dimension-title">{{ group.target }}</h3>
+    {% if group.show_dimension_context %}
     <div class="dimension-body">
       <p class="digest">{{ group.digest|render_digest_html }}</p>
       <form class="dimension-ruling-form" action="/openings/{{ opening.id }}/dimensions/{{ group.target }}/ruling"
-            method="post" hx-post="/openings/{{ opening.id }}/dimensions/{{ group.target }}/ruling"
+            method="post" hx-post="/openings/{{ opening.id }}/dimensions/{{ group.target }}/ruling{{ '?focus=1' if focus else '' }}"
             hx-target="#rating-content" hx-swap="outerHTML" hx-trigger="submit">
         <div class="dimension-ruling-pad{% if group.ruling %} dimension-ruling-pin{% endif %}" role="button" tabindex="0"
+        {% if focus %}
+        <input type="hidden" name="focus_snapshot_assertion_ids" value="{{ focus_snapshot_assertion_ids_csv }}">
+        <input type="hidden" name="focus_snapshot_dimension_targets" value="{{ focus_snapshot_dimension_targets_csv }}">
+        {% endif %}
              aria-label="pin fit and conviction for {{ group.target }}"
              data-mean="{{ group.ruling.mean if group.ruling else 0 }}"
              data-settledness="{{ group.ruling.settledness if group.ruling else 0 }}">
@@ -26,19 +31,24 @@
         <input type="hidden" name="settledness" value="{{ group.ruling.settledness if group.ruling else 0 }}">
       </form>
     </div>
+    {% endif %}
     {% if group.assertions %}
     <ul class="assertions">
       {% for assertion in group.assertions %}
       {% set is_ruled = assertion.id in rulings %}
       {% set current_fit = rulings[assertion.id].fit if is_ruled else assertion.fit %}
       {% set display_provenance = "ratified" if is_ruled else assertion.provenance %}
-      <li>
-        <blockquote>{{ assertion.chunk }}</blockquote>
+      {% set is_context = focus and assertion.id not in candidate_assertion_ids %}
+      {% set assertion_controls %}
         <div class="assertion-controls">
           <span class="provenance-glyph provenance-{{ display_provenance }}" aria-label="{{ display_provenance }}" title="{{ display_provenance }}"></span>
-          <form class="ruling-form" hx-post="/openings/{{ opening.id }}/assertions/{{ assertion.id }}/ruling"
+          <form class="ruling-form" hx-post="/openings/{{ opening.id }}/assertions/{{ assertion.id }}/ruling{{ '?focus=1' if focus else '' }}"
                 hx-target="#rating-content" hx-swap="outerHTML" hx-trigger="submit">
             <div class="fit-control" role="group" aria-label="fit for {{ assertion.target }}">
+            {% if focus %}
+            <input type="hidden" name="focus_snapshot_assertion_ids" value="{{ focus_snapshot_assertion_ids_csv }}">
+            <input type="hidden" name="focus_snapshot_dimension_targets" value="{{ focus_snapshot_dimension_targets_csv }}">
+            {% endif %}
               {% for fit in fit_values %}
               <button type="submit" name="fit" value="{{ fit }}"
                       class="fit-segment fit-{{ fit|lower }}{% if current_fit == fit %} active{% endif %}"
@@ -49,7 +59,29 @@
           </form>
         </div>
         <a class="citation-link" href="{{ assertion.citations[0].url }}" target="_blank" rel="noopener noreferrer">{{ assertion.citations[0].host }}</a>
+      {% endset %}
+      {% if is_context %}
+      <li>
+        <details class="assertion-context">
+          <summary>
+            <span class="provenance-glyph provenance-{{ display_provenance }}" aria-label="{{ display_provenance }}" title="{{ display_provenance }}"></span>
+            <span class="assertion-snippet">{{ assertion.chunk[:80] }}{% if assertion.chunk|length > 80 %}…{% endif %}</span>
+            <span class="fit-indicator" aria-label="current fit: {{ current_fit }}" role="img">
+              <span class="fit-segment fit-poor{% if current_fit == 'Poor' %} active{% endif %}"></span>
+              <span class="fit-segment fit-mixed{% if current_fit == 'Mixed' %} active{% endif %}"></span>
+              <span class="fit-segment fit-strong{% if current_fit == 'Strong' %} active{% endif %}"></span>
+            </span>
+          </summary>
+          <blockquote>{{ assertion.chunk }}</blockquote>
+          {{ assertion_controls }}
+        </details>
       </li>
+      {% else %}
+      <li>
+        <blockquote>{{ assertion.chunk }}</blockquote>
+        {{ assertion_controls }}
+      </li>
+      {% endif %}
       {% endfor %}
     </ul>
     {% endif %}

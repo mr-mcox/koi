@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +20,9 @@ from screen.store.mappers import assertion_ruling_to_row
 from screen.store.repo import (
     append_assertions,
     assertion_rulings_for_opening,
+    assertions_for_opening,
     dimension_rulings_for_opening,
+    upsert_assertion_ruling,
     upsert_company,
     upsert_dimension_digest,
     upsert_dimension_ruling,
@@ -31,6 +36,7 @@ from screen.types import (
     DimensionRuling,
     Fit,
     Opening,
+    Provenance,
     Target,
 )
 
@@ -88,6 +94,17 @@ def _assertion(target: Target, fit: Fit) -> Assertion:
         citations=[_CITATION],
         created_at=_NOW,
     )
+
+
+def _focus_snapshot_fields(body: str) -> dict[str, str]:
+    """Extract the two hidden `focus_snapshot_*` fields the focused view echoes into
+    every ruling-form, so a test can simulate what a real HTMX submit carries forward
+    (bearing: the stable-task-set fix relies on the client round-tripping these)."""
+    fields = {}
+    for name in ("focus_snapshot_assertion_ids", "focus_snapshot_dimension_targets"):
+        match = re.search(rf'name="{name}" value="([^"]*)"', body)
+        fields[name] = match.group(1) if match else ""
+    return fields
 
 
 def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Path) -> None:
@@ -799,3 +816,486 @@ def test_submit_dimension_ruling_rejects_out_of_range_settledness(
     )
 
     assert response.status_code == 422
+
+
+def test_focus_opening_shows_only_budgeted_tasks(client: TestClient, db_path: Path) -> None:
+    """`GET /openings/{id}/focus` renders only the highest-leverage unrated tasks, not
+    every dimension/assertion (review-ux/rating-voi-triage bearing)."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[
+            _assertion("stretch", "Strong"),
+            _assertion("domain", "Strong"),
+        ],
+    )
+
+    response = client.get("/openings/acme--eng/focus")
+
+    assert response.status_code == 200
+    body = response.text
+    # stretch (weight 3, unexamined) should outrank domain (weight 1) for budget inclusion.
+    assert '<h3 class="dimension-title">stretch</h3>' in body
+
+
+def test_focus_opening_hides_fully_ruled_dimensions(client: TestClient, db_path: Path) -> None:
+    """A dimension with a pin already in place has nothing left to rate and is excluded
+    from the focused view."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--eng", target="stretch", mean=0.9, settledness=1.0, created_at=_NOW
+        ),
+    )
+
+    response = client.get("/openings/acme--eng/focus")
+
+    assert response.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' not in response.text
+
+
+def test_focus_opening_404_when_missing(client: TestClient) -> None:
+    response = client.get("/openings/no-such-opening/focus")
+    assert response.status_code == 404
+
+
+def test_focus_opening_submission_stays_focused(client: TestClient, db_path: Path) -> None:
+    """Submitting a ruling from the focused view keeps the swapped-in content focused,
+    not the full unfiltered rating page (bearing Done When: same focused view via HTMX).
+    Which targets are budgeted can legitimately shift after a rating changes the swing
+    ranking — what must hold is that the swap stays under budget, not full."""
+    all_targets = [
+        "stretch",
+        "schematic",
+        "peer",
+        "trajectory",
+        "mission",
+        "agentic",
+        "compensation",
+        "domain",
+    ]
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion(target, "Strong") for target in all_targets],
+    )
+    focus_response = client.get("/openings/acme--eng/focus")
+    budget = load_scoring_config().rating_task_budget
+    focus_shown = [
+        t for t in all_targets if f'<h3 class="dimension-title">{t}</h3>' in focus_response.text
+    ]
+    assert len(focus_shown) <= budget
+
+    conn = connect(db_path)
+    (assertion,) = [
+        a for a in assertions_for_opening(conn, "acme--eng") if a.target in focus_shown
+    ][:1]
+    fields = _focus_snapshot_fields(focus_response.text)
+    submit_response = client.post(
+        f"/openings/acme--eng/assertions/{assertion.id}/ruling?focus=1",
+        data={"fit": "Mixed", **fields},
+    )
+    assert submit_response.status_code == 200
+    submit_shown = [
+        t for t in all_targets if f'<h3 class="dimension-title">{t}</h3>' in submit_response.text
+    ]
+    assert len(submit_shown) <= budget
+
+
+def test_focus_opening_dimension_ruling_keeps_dimension_visible(
+    client: TestClient, db_path: Path
+) -> None:
+    """After submitting a dimension pin from the focused view, that dimension stays
+    present in the swapped-in content — otherwise the task the operator just acted on
+    vanishes mid-click, which reads as a bug even though the ranking is doing its job.
+    Here `stretch` starts as the sole remaining task (its assertions are all ratified,
+    so only the dimension pin is left); pinning it removes it from the candidate set
+    entirely, but the just-completed group must still render (bearing: keep the
+    just-acted-on task visible until the operator navigates away, not just-in-budget).
+    """
+    assertions = [
+        Assertion(
+            target="stretch",
+            fit="Strong",
+            provenance="ratified",
+            chunk="strong assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+        Assertion(
+            target="stretch",
+            fit="Poor",
+            provenance="ratified",
+            chunk="poor assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+        Assertion(
+            target="stretch",
+            fit="Mixed",
+            provenance="ratified",
+            chunk="mixed assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
+    conn = connect(db_path)
+    for a in assertions:
+        upsert_assertion_ruling(
+            conn,
+            AssertionRuling(
+                id=str(uuid4()), assertion_id=a.id, fit=cast(Fit, a.fit), created_at=_NOW
+            ),
+        )
+
+    before = client.get("/openings/acme--eng/focus")
+    assert before.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' in before.text
+
+    fields = _focus_snapshot_fields(before.text)
+    after = client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling?focus=1",
+        data={"mean": "0.5", "settledness": "0.8", **fields},
+    )
+    assert after.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' in after.text
+
+
+def test_focus_opening_stable_task_set_survives_multiple_submissions(
+    client: TestClient, db_path: Path
+) -> None:
+    """Completing task B must not make task A disappear (operator feedback): the
+    focused screen's task set is fixed at the initial GET and echoed back via hidden
+    `focus_snapshot_*` fields on every submit, not recomputed after each one — so both
+    A and B stay visible for the whole session, and no new task not shown on the
+    initial GET appears either."""
+    a_target_assertion = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="stretch assertion",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    b_target_assertion = Assertion(
+        target="domain",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="domain assertion",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[a_target_assertion, b_target_assertion],
+    )
+
+    initial = client.get("/openings/acme--eng/focus")
+    assert initial.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' in initial.text
+    assert '<h3 class="dimension-title">domain</h3>' in initial.text
+    fields = _focus_snapshot_fields(initial.text)
+
+    conn = connect(db_path)
+    (a_id,) = [a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "stretch"]
+    (b_id,) = [a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "domain"]
+
+    after_a = client.post(
+        f"/openings/acme--eng/assertions/{a_id}/ruling?focus=1",
+        data={"fit": "Mixed", **fields},
+    )
+    assert after_a.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' in after_a.text
+    assert '<h3 class="dimension-title">domain</h3>' in after_a.text
+
+    after_b = client.post(
+        f"/openings/acme--eng/assertions/{b_id}/ruling?focus=1",
+        data={"fit": "Mixed", **fields},
+    )
+    assert after_b.status_code == 200
+    assert '<h3 class="dimension-title">stretch</h3>' in after_b.text
+    assert '<h3 class="dimension-title">domain</h3>' in after_b.text
+
+
+def test_focus_redirect_to_highest_leverage_opening(client: TestClient, db_path: Path) -> None:
+    """`GET /focus` redirects to the focused view of the opening with the most aggregate
+    rating leverage (largest sum of top budgeted task swings)."""
+    # low leverage: one dimension, already ratified -> narrow, low swing
+    low = Assertion(
+        target="domain",
+        fit="Strong",
+        provenance="ratified",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    # high leverage: one dimension, model_proposed -> wide, high swing
+    high = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(db_path, company_id="low", opening_id="low--eng", assertions=[low])
+    _seed_opening(db_path, company_id="high", opening_id="high--eng", assertions=[high])
+
+    response = client.get("/focus", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/openings/high--eng/focus"
+
+
+def test_focus_redirect_skips_fully_rated_openings(client: TestClient, db_path: Path) -> None:
+    """`GET /focus` skips openings with no unrated tasks and picks the first one that still
+    has rating work available."""
+    rated = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="ratified",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=[rated])
+    conn = connect(db_path)
+    (a,) = assertions_for_opening(conn, "done--eng")
+    upsert_assertion_ruling(
+        conn,
+        AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
+    )
+    unrated = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(db_path, company_id="todo", opening_id="todo--eng", assertions=[unrated])
+
+    response = client.get("/focus", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/openings/todo--eng/focus"
+
+
+def test_focus_redirect_falls_back_to_queue_when_all_rated(
+    client: TestClient, db_path: Path
+) -> None:
+    """`GET /focus` with no remaining rating work redirects back to the queue."""
+    rated = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="ratified",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=[rated])
+    conn = connect(db_path)
+    (a,) = assertions_for_opening(conn, "done--eng")
+    upsert_assertion_ruling(
+        conn,
+        AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
+    )
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="done--eng",
+            target="stretch",
+            mean=1.0,
+            settledness=1.0,
+            created_at=_NOW,
+        ),
+    )
+
+    response = client.get("/focus", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+def test_focus_view_shows_next_opening_link(client: TestClient, db_path: Path) -> None:
+    """The focused view for an opening includes a link to the next opening in leverage
+    order, so the operator can continue the session without returning to the queue."""
+    first = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    second = Assertion(
+        target="stretch",
+        fit="Strong",
+        provenance="model_proposed",
+        chunk="chunk",
+        citations=[_CITATION],
+        created_at=_NOW,
+    )
+    _seed_opening(db_path, company_id="first", opening_id="first--eng", assertions=[first])
+    _seed_opening(db_path, company_id="second", opening_id="second--eng", assertions=[second])
+
+    response = client.get("/openings/first--eng/focus")
+
+    assert response.status_code == 200
+    assert "/openings/second--eng/focus" in response.text
+    assert "Next opening" in response.text
+
+
+def test_focus_view_last_opening_shows_back_to_queue(client: TestClient, db_path: Path) -> None:
+    """The focused view for the last opening shows a link back to the queue instead of a
+    disabled next link."""
+    _seed_opening(db_path, company_id="only", opening_id="only--eng", assertions=[])
+
+    response = client.get("/openings/only--eng/focus")
+
+    assert response.status_code == 200
+    assert "Back to queue" in response.text
+
+
+def test_focus_opening_assertion_only_task_hides_digest_and_dimension_control(
+    client: TestClient, db_path: Path
+) -> None:
+    """When the highest-ranked candidate for a target is an assertion-ruling task, not
+    the whole-dimension pin, the focused view shows that assertion without the digest or
+    dimension-ruling pad — those belong to the bigger, unselected task. Fixture found by
+    search: `stretch`'s only budgeted candidate is its lone assertion, not a dimension
+    task, under the fixed scoring seed."""
+    fixture = [
+        ("stretch", "Poor", "model_proposed"),
+        ("schematic", "Poor", "ratified"),
+        ("schematic", "Strong", "precedent_matched"),
+        ("schematic", "Mixed", "ratified"),
+        ("peer", "Strong", "model_proposed"),
+        ("peer", "Strong", "ratified"),
+        ("trajectory", "Mixed", "ratified"),
+        ("trajectory", "Mixed", "ratified"),
+        ("mission", "Strong", "precedent_matched"),
+        ("mission", "Strong", "precedent_matched"),
+        ("mission", "Poor", "model_proposed"),
+        ("agentic", "Mixed", "precedent_matched"),
+        ("agentic", "Mixed", "precedent_matched"),
+        ("agentic", "Strong", "model_proposed"),
+        ("compensation", "Poor", "model_proposed"),
+        ("compensation", "Poor", "model_proposed"),
+        ("domain", "Poor", "model_proposed"),
+        ("domain", "Strong", "ratified"),
+        ("domain", "Mixed", "ratified"),
+        ("location", "Mixed", "precedent_matched"),
+        ("location", "Strong", "ratified"),
+        ("internal_culture", "Strong", "precedent_matched"),
+        ("internal_culture", "Mixed", "precedent_matched"),
+        ("internal_culture", "Poor", "precedent_matched"),
+        ("extractive_business", "Strong", "ratified"),
+        ("extractive_business", "Poor", "precedent_matched"),
+        ("extractive_business", "Mixed", "precedent_matched"),
+        ("extractive_business", "Strong", "ratified"),
+    ]
+    assertions = [
+        Assertion(
+            target=cast(Target, target),
+            fit=cast(Fit, fit),
+            provenance=cast(Provenance, provenance),
+            chunk=f"{target}-{provenance}-{fit}",
+            citations=[_CITATION],
+            created_at=_NOW,
+        )
+        for target, fit, provenance in fixture
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
+    response = client.get("/openings/acme--eng/focus")
+    assert response.status_code == 200
+    body = response.text
+    assert '<h3 class="dimension-title">stretch</h3>' in body
+    stretch_section = body[body.index('<h3 class="dimension-title">stretch</h3>') :]
+    stretch_section = stretch_section[: stretch_section.find("</section>")]
+    assert "digest" not in stretch_section.lower()
+    assert "dimension-ruling-pad" not in stretch_section
+
+
+def test_focus_opening_context_assertions_under_dimension_task_are_collapsible(
+    client: TestClient, db_path: Path
+) -> None:
+    """When the budgeted task for a target is the whole-dimension pin, assertions
+    underneath are shown collapsed by default (compact, not full interactive cards) but
+    remain reachable — expand to correct one if it's the reason the dimension pin feels
+    wrong (operator principle: always able to dig into what's lower in the hierarchy).
+    Here `stretch` has all three assertions already ruled, so the only remaining budgeted
+    task is the dimension pin; the assertions must still carry a `ruling-form` (reachable),
+    just collapsed inside a `<details>` disclosure, not open by default."""
+    assertions = [
+        Assertion(
+            target="stretch",
+            fit="Strong",
+            provenance="ratified",
+            chunk="strong assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+        Assertion(
+            target="stretch",
+            fit="Poor",
+            provenance="ratified",
+            chunk="poor assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+        Assertion(
+            target="stretch",
+            fit="Mixed",
+            provenance="ratified",
+            chunk="mixed assertion",
+            citations=[_CITATION],
+            created_at=_NOW,
+        ),
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
+    conn = connect(db_path)
+    for assertion, fit in zip(assertions, ["Strong", "Poor", "Mixed"], strict=True):
+        upsert_assertion_ruling(
+            conn,
+            AssertionRuling(
+                id=str(uuid4()),
+                assertion_id=assertion.id,
+                fit=cast(Fit, fit),
+                created_at=_NOW,
+            ),
+        )
+
+    response = client.get("/openings/acme--eng/focus")
+    assert response.status_code == 200
+    body = response.text
+    assert "dimension-ruling-pad" in body
+    assert "strong assertion" in body
+    assert "poor assertion" in body
+    assert "mixed assertion" in body
+    stretch_section = body[body.index('<h3 class="dimension-title">stretch</h3>') :]
+    stretch_section = stretch_section[: stretch_section.find("</section>")]
+    # reachable — the fit-ruling form is present so an assertion can be corrected
+    assert stretch_section.count('class="ruling-form"') == 3
+    # but collapsed by default, not one interactive card per assertion up front
+    assert stretch_section.count("<details") == 3
+    assert "<details open" not in stretch_section
+    # collapsed summary carries the provenance glyph, a compact fit indicator, and the
+    # truncated snippet — not the full assertion text or a verbose fit label
+    first_summary = stretch_section[stretch_section.index("<summary>") :]
+    first_summary = first_summary[: first_summary.index("</summary>")]
+    assert "provenance-glyph" in first_summary
+    assert 'class="fit-indicator"' in first_summary
+    assert "fit-static" not in first_summary

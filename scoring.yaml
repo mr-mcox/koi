@@ -59,3 +59,9 @@ bands:
 dimension_ruling:
   hw_max: 1.0
   hw_min: 0.05
+
+# Rating-VOI triage (review-ux/rating-voi-triage bearing). Per-opening cap on how many
+# unrated assertion/dimension tasks the focused view surfaces at once — the "switching
+# cost" that keeps attention on one opening instead of spreading across a dozen half-rated
+# ones. Unmeasured placeholder, same status as bar/bands above.
+rating_task_budget: 4

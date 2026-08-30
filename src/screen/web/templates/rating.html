@@ -3,5 +3,11 @@
 {% block content %}
   <h1>{{ company.name }} — {{ opening.title }}</h1>
   {% include "_rating_content.html" %}
+  {% if focus and next_opening_id %}
+  <p><a class="next-opening" href="/openings/{{ next_opening_id }}/focus">Next opening</a></p>
+  {% elif focus %}
+  <p><a class="back-to-queue" href="/">Back to queue</a></p>
+  {% else %}
   <p><a href="/">Back to queue</a></p>
+  {% endif %}
 {% endblock %}

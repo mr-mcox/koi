@@ -60,6 +60,7 @@ class ScoringConfig:
     constraints: dict[str, ConstraintRange]
     dimension_ruling_hw_max: float
     dimension_ruling_hw_min: float
+    rating_task_budget: int
 
     @property
     def total_weight(self) -> int:
