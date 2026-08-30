@@ -103,7 +103,7 @@ highest-leverage information, not spread thin.
   over exactly this structure (assertions with no entry in `_latest_ruling_by_assertion`,
   dimension groups with `ruling is None`) — no new read path needed to identify candidates,
   only a new selection/ranking step over already-assembled context.
-- **F62** [ ] — how does "collectively moves the score the most" get computed for a
+- **F62** [x] — how does "collectively moves the score the most" get computed for a
   *candidate set* of 3-4 items, given the Scorer only takes a single fixed
   `rulings`/`dimension_rulings` mapping per `score()` call (scorer.py `score()` signature)?
   A per-item marginal-movement estimate (e.g., resolve each unrated item to its target's
@@ -111,7 +111,11 @@ highest-leverage information, not spread thin.
   delta) is a plausible cheap proxy, but "collectively" implies some combination logic
   (sum of marginals? re-score with all N pinned to their means at once?) that no finding
   yet settles — and F55's noise-floor warning applies directly to whatever comparison is
-  used.
+  used. Closed — operator (checkpoint, implementation session): independent per-item
+  symmetric best/worst-case swing (`|standing(Strong) - standing(Poor)|` for an assertion,
+  analogous for a dimension pin), sorted and truncated to the budget — a cheap
+  approximation of "collectively moves the most," not true combinatorial subset
+  optimization, accepted as good enough → bearing Approach, `src/screen/score/triage.py`.
 - **F63** — review-ux/scouting.md F20 — the load-bearing UX bar already established:
   submitting a rating re-sorts/updates without a full page reload (HTMX partial swap). A
   focused-task view's per-task submission should follow the same pattern, not introduce a
@@ -125,10 +129,13 @@ highest-leverage information, not spread thin.
   scope-check from the prior bearing draft with no changes needed.
 
 ## Not Yet Settled
+
+(Resolved during implementation — see rating-voi-triage.md Approach/Agreed. Kept here for
+the record of what was open at scouting time.)
+
 - F62 — the exact per-item leverage proxy and how per-item estimates combine into a
-  "collectively moves the most" set — a bearing/implementation-time numeric choice, not
-  yet pinned to one formula.
-- Whether this reuses `rating.html` (a filtered mode) or is a distinct new template, per
-  review-ux/scouting F19 ("the queue is the central view but not the only one") —
-  F60/F61 suggest a filtered mode of the existing rating context, but this is an
-  implementation-shape call, not yet decided.
+  "collectively moves the most" set — resolved: independent symmetric best/worst-case
+  swing per item, summed for cross-opening ordering.
+- Whether this reuses `rating.html` (a filtered mode) or is a distinct new template —
+  resolved: filtered mode of the existing rating context, driven by a `focus` template
+  variable plus per-group/per-assertion visibility flags.

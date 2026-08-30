@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: 10eda09
 branch: main
-status: orienting
+status: done
 parent: ./scouting.md
 scouting: ./rating-voi-scouting.md
 ---
@@ -21,21 +21,29 @@ present only those in a focused view before moving to the next opening. Terrain:
 
 ## Done When
 
-- [ ] Given an opening with unrated assertions/dimensions, a function returns the
+- [x] Given an opening with unrated assertions/dimensions, a function returns the
       task budget (3-4, configured) ranked by estimated score movement — test: a target
       with wide half-width and high dimension weight/constraint leverage outranks a
       narrow, low-weight one (→ scouting F54, F50)
-- [ ] A focused rating view for one opening renders only the budgeted tasks (each with its
+- [x] A focused rating view for one opening renders only the budgeted tasks (each with its
       digest/citations/context) and hides other assertions/dimension groups on that
       opening — test: route response contains only the selected targets' rows (→ scouting
       F60, F61)
-- [ ] Submitting a task's rating (assertion or dimension ruling) updates the same focused
+- [x] Submitting a task's rating (assertion or dimension ruling) updates the same focused
       view via HTMX partial swap, consistent with the existing ruling-submit contract —
       no full reload (→ scouting F63, review-ux/scouting F20)
-- [ ] The per-opening task budget is a named value in `scoring.yaml`, not a literal (→
+- [x] The per-opening task budget is a named value in `scoring.yaml`, not a literal (→
       scoring.yaml precedent, AGENTS.md "measure before model")
-- [ ] Existing `rate` (full) page, JSON routes, and queue are unchanged and still pass
+- [x] Existing `rate` (full) page, JSON routes, and queue are unchanged and still pass
       their tests (→ scouting F63)
+- [x] The focused view's task set is stable for the duration of one focus session (a
+      completed task doesn't vanish when a second task is completed, and no new task
+      appears mid-session) — reload or moving to the next opening is the only way the
+      task set changes (→ operator live-feedback, this session)
+- [x] The focused view respects a presentation hierarchy: a task at a lower level
+      (assertion) never fully hides the level above it in a way that blocks correcting
+      it, and a task at a higher level (dimension) never fully hides the assertions
+      beneath it — collapsed, not removed (→ operator live-feedback, this session)
 
 ## Approach
 
@@ -93,3 +101,16 @@ Test-first by default. Exempt:
 - A focused view hides everything except the budgeted tasks, with enough context per task
   to rate it — not the full rating page filtered visually, an actually reduced surface (→
   scouting F60, operator)
+- Presentation hierarchy: dimension > assertion. A budgeted assertion task may hide its
+  parent dimension's digest/pad; a budgeted dimension task must keep its assertions
+  reachable (collapsed, not removed) — the operator must always be able to correct a
+  lower-level judgment that's the real reason a higher-level one looks wrong (→ operator
+  live-feedback, this session)
+- No new persisted state was needed for the hierarchy/stability fixes — `Assertion`,
+  `AssertionRuling`, `DimensionRuling`, and `RatingTaskCandidate` were already sufficient;
+  the friction was route/template conflation of "budgeted" with "visible," and of
+  "recomputed" with "stable" (→ operator live-feedback, this session)
+- The focused view's task set is a snapshot taken at the initial GET and echoed back via
+  hidden fields on every HTMX submit, not recomputed after each submission — a real UI
+  session needs the screen to hold still, not just show correct output at each step (→
+  operator live-feedback, this session)
