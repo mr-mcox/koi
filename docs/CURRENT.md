@@ -1,1 +1,1 @@
-docs/features/review-ux/dimension-ruling-flat-gradient.md
+docs/features/review-ux/queue-ruling-sort-bug.md
