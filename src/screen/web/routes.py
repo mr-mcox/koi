@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import get_db
 from screen.api.scoring import (
+    OpeningScore,
     dimension_rulings_by_target,
     latest_ruling_by_assertion,
     score_opening,
@@ -65,6 +66,47 @@ class _DimensionGroup:
     ruling but not its own dimension-ruling task (review-ux/rating-voi-triage bearing,
     operator feedback): the digest and dimension-ruling pad belong to the bigger,
     unselected task and would be noise for a pure assertion-rating task."""
+
+
+@dataclass(frozen=True)
+class Sparkline:
+    """Opening-level visual summary for the score-summary block and queue rows.
+
+    Three-point lollipop on a 0-`scale_max` axis: `standing` is the lower bound,
+    `reach` is the upper bound, and `ceiling` is the theoretical maximum for this
+    opening. The glyph is display-only; `standing` remains the sort key (S5).
+    """
+
+    standing: float
+    reach: float
+    ceiling: float
+    scale_max: float
+
+    @property
+    def scale(self) -> float:
+        return self.scale_max if self.scale_max > 0 else 1.0
+
+    @property
+    def standing_pct(self) -> float:
+        return self.standing / self.scale
+
+    @property
+    def reach_pct(self) -> float:
+        return self.reach / self.scale
+
+    @property
+    def ceiling_pct(self) -> float:
+        return self.ceiling / self.scale
+
+
+def _sparkline_for_score(score: OpeningScore, *, scale_max: float) -> Sparkline:
+    """A three-point lollipop scaled to the supplied maximum (queue-wide or per-opening)."""
+    return Sparkline(
+        standing=score.standing,
+        reach=score.reach,
+        ceiling=score.ceiling,
+        scale_max=scale_max,
+    )
 
 
 def _company_for(conn: sqlite3.Connection, opening: Opening) -> Company:
@@ -135,7 +177,7 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
     Applies the same assertion/dimension rulings as the per-opening rating view so a
     queue position never disagrees with the score the operator just edited."""
     config = load_scoring_config()
-    items = []
+    scored: list[tuple[Opening, Company, OpeningScore]] = []
     for opening in list_openings(conn):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
@@ -154,18 +196,19 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
             rulings=ruled_fits,
             dimension_rulings=dimension_rulings,
         )
-        items.append(
-            {
-                "opening_id": opening.id,
-                "company_name": company.name,
-                "opening_title": opening.title,
-                "standing": result.standing,
-                "reach": result.reach,
-                "band": result.band,
-                "ceiling": result.ceiling,
-                "unreachable": result.unreachable,
-            }
-        )
+        scored.append((opening, company, result))
+    scale_max = max((score.ceiling for _, _, score in scored), default=1.0)
+    items = [
+        {
+            "opening_id": opening.id,
+            "company_name": company.name,
+            "opening_title": opening.title,
+            "band": result.band,
+            "sparkline": _sparkline_for_score(result, scale_max=scale_max),
+            "standing": result.standing,
+        }
+        for opening, company, result in scored
+    ]
     items.sort(key=lambda item: item["standing"], reverse=True)
     return items
 
@@ -253,6 +296,7 @@ def _rating_context(
         "company": company,
         "groups": groups,
         "score": score,
+        "score_sparkline": _sparkline_for_score(score, scale_max=score.ceiling),
         "rulings": rulings,
         "fit_values": list(FIT_VALUES),
         "focus": False,

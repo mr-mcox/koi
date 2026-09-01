@@ -92,7 +92,7 @@ def rating_task_candidates(
     ranked by estimated swing, truncated to `config.rating_task_budget`.
 
     An assertion under a pinned dimension is excluded — the pin supersedes it in scoring
-    (scorer.py `_stats_for_target`), so rating it can't move anything. A dimension target
+    (scorer.py `stats_for_target`), so rating it can't move anything. A dimension target
     with zero assertions is excluded too — there is nothing to review, so "rate this
     dimension" isn't an actionable task; that gap is a research question, not a rating
     one.

@@ -1,0 +1,12 @@
+{% macro sparkline(sparkline) -%}
+{% set standing_pct = (sparkline.standing_pct * 100) | round(2) %}
+{% set reach_pct = (sparkline.reach_pct * 100) | round(2) %}
+{% set ceiling_pct = (sparkline.ceiling_pct * 100) | round(2) %}
+<span class="sparkline" role="img" aria-label="standing to reach band">
+  <span class="sparkline-baseline"></span>
+  <span class="sparkline-range" style="left: {{ standing_pct }}%; right: {{ 100 - reach_pct }}%;"></span>
+  <span class="sparkline-marker sparkline-standing" style="left: {{ standing_pct }}%;"></span>
+  <span class="sparkline-marker sparkline-reach" style="left: {{ reach_pct }}%;"></span>
+  <span class="sparkline-marker sparkline-ceiling" style="left: {{ ceiling_pct }}%;"></span>
+</span>
+{%- endmacro %}

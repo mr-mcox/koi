@@ -38,7 +38,7 @@ _HYPOTHETICAL_CITATION = Citation(
 
 
 @dataclass(frozen=True)
-class _TargetStats:
+class TargetStats:
     """Shrunk mean/half-width for one target (dimension or constraint), computed from its
     assertions' provenance-weighted fit values. `n = 0` (no counted weight) is the unexamined
     case — `mean = 0`, `half_width = 1`, i.e. Uniform(-1, +1), from the formula itself rather
@@ -58,7 +58,7 @@ def _target_stats(
     config: ScoringConfig,
     target: str,
     rulings: dict[str, Fit] | None = None,
-) -> _TargetStats:
+) -> TargetStats:
     weighted_sum = 0.0
     n = 0.0
     for a in assertions:
@@ -69,7 +69,7 @@ def _target_stats(
         weighted_sum += weight * FIT_VALUES[fit]
         n += weight
     m = weighted_sum / n if n > 0 else 0.0
-    return _TargetStats(n=n, mean=n * m / (n + 1), half_width=1.0 / math.sqrt(n + 1))
+    return TargetStats(n=n, mean=n * m / (n + 1), half_width=1.0 / math.sqrt(n + 1))
 
 
 def _map_to_range(x: float, worst: float, best: float) -> float:
@@ -77,12 +77,12 @@ def _map_to_range(x: float, worst: float, best: float) -> float:
     return worst + (x + 1.0) / 2.0 * (best - worst)
 
 
-def _sample_dimension(rng: np.random.Generator, stats: _TargetStats, size: int) -> np.ndarray:
+def _sample_dimension(rng: np.random.Generator, stats: TargetStats, size: int) -> np.ndarray:
     return rng.uniform(stats.mean - stats.half_width, stats.mean + stats.half_width, size)
 
 
 def _sample_constraint(
-    rng: np.random.Generator, stats: _TargetStats, worst: float, best: float, size: int
+    rng: np.random.Generator, stats: TargetStats, worst: float, best: float, size: int
 ) -> np.ndarray:
     if stats.is_unexamined:
         return rng.uniform(worst, best, size)
@@ -91,23 +91,23 @@ def _sample_constraint(
     return rng.uniform(min(lo, hi), max(lo, hi), size)
 
 
-def _dimension_ruling_stats(ruling: DimensionRuling, config: ScoringConfig) -> _TargetStats:
-    """A `DimensionRuling` pin supersedes the whole computed `_TargetStats` for its target
+def _dimension_ruling_stats(ruling: DimensionRuling, config: ScoringConfig) -> TargetStats:
+    """A `DimensionRuling` pin supersedes the whole computed `TargetStats` for its target
     (bearing Approach): `mean` comes straight from the pin, `half_width` is derived from
     `settledness` via configured bounds so rising conviction narrows the distribution but
     never reaches a point estimate (`hw_min > 0`)."""
     hw_max, hw_min = config.dimension_ruling_hw_max, config.dimension_ruling_hw_min
     half_width = hw_max - ruling.settledness * (hw_max - hw_min)
-    return _TargetStats(n=math.inf, mean=ruling.mean, half_width=half_width)
+    return TargetStats(n=math.inf, mean=ruling.mean, half_width=half_width)
 
 
-def _stats_for_target(
+def stats_for_target(
     assertions: list[Assertion],
     config: ScoringConfig,
     target: str,
     rulings: dict[str, Fit] | None,
     dimension_rulings: dict[str, DimensionRuling] | None,
-) -> _TargetStats:
+) -> TargetStats:
     """A dimension pin (if present for this target) replaces the assertion-derived stats
     entirely, including any per-assertion rulings underneath it (bearing Done When:
     "superseding any per-assertion rulings underneath")."""
@@ -133,12 +133,12 @@ def score(
 
     `dimension_rulings` is an optional target -> `DimensionRuling` mapping (bearing
     dimension-ruling): where present for a target, it replaces that target's whole
-    computed `_TargetStats`, superseding `rulings` for any assertions filed against it."""
+    computed `TargetStats`, superseding `rulings` for any assertions filed against it."""
     rng = np.random.default_rng(config.seed)
     size = config.samples
 
     dim_stats = {
-        slug: _stats_for_target(assertions, config, slug, rulings, dimension_rulings)
+        slug: stats_for_target(assertions, config, slug, rulings, dimension_rulings)
         for slug in config.dimension_weights
     }
     weighted = np.zeros(size)
@@ -147,7 +147,7 @@ def score(
     quality = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
 
     con_stats = {
-        slug: _stats_for_target(assertions, config, slug, rulings, dimension_rulings)
+        slug: stats_for_target(assertions, config, slug, rulings, dimension_rulings)
         for slug in config.constraints
     }
     overall = quality.copy()

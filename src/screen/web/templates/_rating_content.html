@@ -1,9 +1,8 @@
 <div id="rating-content">
+{% from "_sparkline.html" import sparkline as sparkline_macro %}
   <section class="score-summary">
     <span class="chip band-{{ score.band.replace(' ', '-') }}">{{ score.band }}</span>
-    <span>standing {{ "%.3f"|format(score.standing) }}</span>
-    <span>reach {{ "%.3f"|format(score.reach) }}</span>
-    <span>ceiling {{ "%.3f"|format(score.ceiling) }}</span>
+    {{ sparkline_macro(score_sparkline) }}
   </section>
   <h2>Dimensions</h2>
   {% for group in groups %}

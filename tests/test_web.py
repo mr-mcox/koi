@@ -96,6 +96,41 @@ def _assertion(target: Target, fit: Fit) -> Assertion:
     )
 
 
+def _lollipop_positions(text: str) -> tuple[float, float, float, float, float]:
+    """Return the rendered left positions of the three dots and the range band.
+
+    Percentages are returned as fractions (0.0-1.0) in the order:
+    standing, reach, ceiling, range_left, range_right.
+    """
+    standing_m = re.search(
+        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-standing[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
+        text,
+    )
+    reach_m = re.search(
+        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-reach[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
+        text,
+    )
+    ceiling_m = re.search(
+        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-ceiling[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
+        text,
+    )
+    range_m = re.search(
+        r'<span[^>]*class="[^"]*sparkline-range[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%;[^"]*right:\s*([\d.]+)%',
+        text,
+    )
+    assert standing_m is not None
+    assert reach_m is not None
+    assert ceiling_m is not None
+    assert range_m is not None
+    return (
+        float(standing_m.group(1)) / 100,
+        float(reach_m.group(1)) / 100,
+        float(ceiling_m.group(1)) / 100,
+        float(range_m.group(1)) / 100,
+        1 - float(range_m.group(2)) / 100,
+    )
+
+
 def _focus_snapshot_fields(body: str) -> dict[str, str]:
     """Extract the two hidden `focus_snapshot_*` fields the focused view echoes into
     every ruling-form, so a test can simulate what a real HTMX submit carries forward
@@ -229,6 +264,45 @@ def test_index_empty_queue_renders(client: TestClient) -> None:
     assert "<html" in response.text
 
 
+def test_index_queue_no_raw_floats_and_renders_lollipop(client: TestClient, db_path: Path) -> None:
+    """The queue row replaces raw standing/reach/ceiling floats with a scaled lollipop."""
+    config = load_scoring_config()
+    strong = [
+        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.text
+
+    score_response = client.get("/queue")
+    scores = score_response.json()
+    score = next(item for item in scores if item["opening_id"] == "acme--eng")
+    standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
+    scale_max = max(item["ceiling"] for item in scores)
+
+    assert f"{standing:.3f}" not in body
+    assert f"{reach:.3f}" not in body
+    assert f"{ceiling:.3f}" not in body
+    assert "sparkline" in body
+
+    row_match = re.search(
+        r'<li[^>]*class="[^"]*band-[^"]*"[^>]*>.*?acme--eng title.*?</li>',
+        body,
+        re.DOTALL,
+    )
+    assert row_match is not None
+    standing_pct, reach_pct, ceiling_pct, range_left, range_right = _lollipop_positions(
+        row_match.group(0)
+    )
+    assert standing_pct == pytest.approx(standing / scale_max, abs=0.01)
+    assert reach_pct == pytest.approx(reach / scale_max, abs=0.01)
+    assert ceiling_pct == pytest.approx(ceiling / scale_max, abs=0.01)
+    assert range_left == pytest.approx(standing / scale_max, abs=0.01)
+    assert range_right == pytest.approx(reach / scale_max, abs=0.01)
+
+
 def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> None:
     """`GET /openings/{id}/rate` is a distinct read-only rating surface."""
     _seed_opening(
@@ -248,6 +322,38 @@ def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> N
     assert "stretch" in body
     assert "Strong" in body
     assert "Back to queue" in body
+
+
+def test_rate_opening_score_block_no_raw_floats_and_renders_lollipop(
+    client: TestClient, db_path: Path
+) -> None:
+    """The per-opening score block replaces raw floats with a lollipop scaled to the opening's ceiling."""
+    config = load_scoring_config()
+    strong = [
+        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+
+    response = client.get("/openings/acme--eng/rate")
+    assert response.status_code == 200
+    body = response.text
+
+    score_response = client.get("/queue")
+    score = next(item for item in score_response.json() if item["opening_id"] == "acme--eng")
+    standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
+    scale_max = ceiling
+
+    assert f"{standing:.3f}" not in body
+    assert f"{reach:.3f}" not in body
+    assert f"{ceiling:.3f}" not in body
+    assert "sparkline" in body
+
+    standing_pct, reach_pct, ceiling_pct, range_left, range_right = _lollipop_positions(body)
+    assert standing_pct == pytest.approx(standing / scale_max, abs=0.01)
+    assert reach_pct == pytest.approx(reach / scale_max, abs=0.01)
+    assert ceiling_pct == pytest.approx(ceiling / scale_max, abs=0.01)
+    assert range_left == pytest.approx(standing / scale_max, abs=0.01)
+    assert range_right == pytest.approx(reach / scale_max, abs=0.01)
 
 
 def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path: Path) -> None:
@@ -638,7 +744,7 @@ def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> N
     )
 
     assert response.status_code == 200
-    assert "standing" in response.text
+    assert "sparkline" in response.text
     assert response.text != before.text
 
 

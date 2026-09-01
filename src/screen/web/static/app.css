@@ -266,3 +266,56 @@ h1, h2 {
   transform: translate(-50%, 50%);
   pointer-events: none;
 }
+
+
+.sparkline {
+  display: inline-block;
+  width: 6rem;
+  height: 0.75rem;
+  position: relative;
+  vertical-align: middle;
+}
+
+.sparkline-baseline {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.sparkline-range {
+  position: absolute;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.sparkline-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sparkline-standing {
+  width: 1px;
+  height: 0.6rem;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.sparkline-reach {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.sparkline-ceiling {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+}

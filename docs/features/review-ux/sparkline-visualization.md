@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: efe0c2d
 branch: main
-status: orienting
+status: implementing
 parent: ../review-ux/scouting.md
 scouting: ./sort-and-presentation-scouting.md
 ---
@@ -15,10 +15,11 @@ The per-opening score block (`standing 0.018 / reach 0.022 / ceiling 0.791`) and
 queue's raw `standing` float are noise, not signal, and are a direct violation of the
 "precision ranks, bands display" wall. A stale, unbuilt bearing
 (`dimension-ruling-flat-gradient.md`) already worked out a flat-band visual for one
-dimension's `(mean, half_width)`; this leaf generalizes that shape into a compact
-sparkline-style glyph for **both** the queue (one row per opening) and the per-opening
-view (replacing the raw numbers), so the operator sees relative spread and position
-without a decimal. Terrain:
+dimension's `(mean, half_width)`; this leaf replaces the raw numbers with a compact
+three-point lollipop glyph (standing, reach, ceiling) for **both** the queue (one row per
+opening) and the per-opening view, so the operator sees relative spread and position
+without a decimal. The horizontal axis is scaled to the largest ceiling in the current
+context so the glyph fills the available space. Terrain:
 [sort-and-presentation-scouting.md](./sort-and-presentation-scouting.md) F3, F7, F8, F9,
 F10.
 
@@ -29,30 +30,32 @@ F10.
       these fields (→ scouting F3)
 - [ ] The queue no longer renders raw `standing` as a formatted float per row — same test
       shape against `queue.html` (→ scouting F3)
-- [ ] Both the queue row and the per-opening view render a sparkline-style glyph built from
-      the same `(mean, half_width)` pair the Scorer samples from — test: the rendered glyph's
-      numeric endpoints match `_stats_for_target`/`ScoreResult` for a synthetic opening (→
-      scouting F8, F9)
-- [ ] The glyph visually distinguishes *why* a target is wide: unexamined prior vs. a
-      `DimensionRuling` pin vs. assertion disagreement — test: three synthetic cases render
-      distinct visual states (→ scouting F7)
+- [ ] Both the queue row and the per-opening score block render a minimalist lollipop glyph
+      showing `standing`, `reach`, and `ceiling` on a horizontal axis scaled to the maximum
+      ceiling in the current context — test: the rendered dot and range positions match the
+      `score_opening` result for a synthetic opening (→ scouting F8, F9)
 - [ ] `standing` remains the only sort key; the glyph is display-only and never becomes an
       input to sorting or scoring (→ scouting F6)
 
 ## Approach
 
-- Queue-level glyph summarizes the opening's `standing`/`reach` pair (not a per-dimension
-  breakdown — that's the per-opening view's job); per-opening glyphs are per-target,
-  reusing `dimension-ruling-flat-gradient.md`'s Approach almost unchanged: CSS
-  `linear-gradient`, flat (not curved), computed from `_stats_for_target`, low opacity (→
-  scouting F8, F9)
-- Reuse `_stats_for_target` as the seam for per-opening/per-target glyphs, same as the
-  stale bearing specified; queue-level glyph is a new, smaller computation over
-  `ScoreResult` (standing, reach, ceiling) rather than per-target stats (→ scouting F9)
-- Distinguishing "wide because unexamined" from "wide because pinned" from "wide because
-  disagreement" is a new visual requirement the stale bearing didn't have (it only handled
-  pinned vs. unpinned) — needs a third visual state, not just color/opacity tuning (→
-  scouting F7)
+- Both the queue row and the per-opening score block use the same opening-level lollipop
+  component, computed from `standing`/`reach`/`ceiling` returned by `score_opening`. The
+  horizontal axis is scaled to the largest ceiling in the current context (queue-wide max
+  for the queue; the opening's own ceiling for the per-opening view) so the glyph fills the
+  available space and still reads as a probability ruler. Start identical; allow
+  context-specific CSS only if a single rendering looks wrong at one scale (→
+  scouting F8, F9, operator this session)
+- Per-target / per-dimension sparklines are out of scope for this leaf; they are recorded in
+  `sort-and-presentation-scouting.md` F8/F9 and can become a separate bearing (→ operator)
+- Promote `_stats_for_target` / `_TargetStats` in `scorer.py` to public names so the web route
+  can read per-target distributions if the future dimension-bearing needs it; for this leaf
+  they are only used to compute the opening-level lollipop via `score_opening` (→ operator
+  this session, open space: whether the public types move to `score.types` or stay in
+  `scorer.py`)
+- Drop the "why it's wide" visual-state requirement: the operator doesn't need to decode
+  unexamined vs. pinned vs. disagreement from the glyph alone; the dimension row already
+  shows the pin control and provenance glyphs for that (→ operator this session)
 
 ## Not Doing
 
@@ -70,21 +73,17 @@ Test-first by default. Exempt:
 
 ## Recalibrate When
 
-- The flat mean/half-width glyph is ambiguous often enough in practice that the operator
-  can't tell wide-and-unexamined from wide-and-pinned — stop, F7's why-it's-wide
-  distinction is no longer deferrable (→ scouting F7)
+- The lollipop or its scaled axis starts implying false precision or making openings look
+  more similar than they are — stop, the visual language needs rework before shipping
+  (→ scouting F7)
+- The single shared component renders badly at one scale and needs to diverge, or the
+  queue and per-opening scales need to unify — stop, if divergence is more than CSS it
+  becomes a separate design question (→ operator)
 
 ## Agreed
 
 - Build for both the queue and the per-opening view, not one first — same visual language
   reused at two scales (→ operator, this session)
- implying false precision — stop, the visual language needs rework before
-  shipping (→ scouting F7)
 - This glyph turns out to also settle the band-label-clarity leaf (i.e., the sparkline
   makes the categorical labels redundant) — stop and fold that leaf in rather than building
   it separately (→ operator, this session: "sparklines would be possible replacement")
-
-## Agreed
-
-- Build for both the queue and the per-opening view, not one first — same visual language
-  reused at two scales (→ operator, this session)
