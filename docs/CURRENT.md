@@ -1,1 +1,1 @@
-docs/features/review-ux/sparkline-visualization.md
+docs/features/review-ux/band-label-clarity.md
