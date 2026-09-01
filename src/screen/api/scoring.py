@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from screen.score.band import Band, band_for
 from screen.score.scorer import resolve_favourably, score
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, DimensionRuling, Fit
+from screen.types import Assertion, AssertionRuling, DimensionRuling, Fit
 
 
 @dataclass(frozen=True)
@@ -52,3 +52,21 @@ def score_opening(
         ceiling=standing.ceiling,
         unreachable=standing.unreachable,
     )
+
+
+def latest_ruling_by_assertion(
+    rulings: list[AssertionRuling],
+) -> dict[str, AssertionRuling]:
+    """Rulings are append-only — re-rating is expected and noisy in both directions,
+    not an error — so keep the most recent one per assertion for scoring. Callers are
+    expected to pass rulings ordered by `created_at` ascending; the last write per
+    assertion id wins."""
+    return {ruling.assertion_id: ruling for ruling in rulings}
+
+
+def dimension_rulings_by_target(
+    rulings: list[DimensionRuling],
+) -> dict[str, DimensionRuling]:
+    """One row per `(opening_id, target)` by construction (upsert, migration 0005's
+    unique constraint) — no dedupe needed, just a lookup keyed by target."""
+    return {ruling.target: ruling for ruling in rulings}

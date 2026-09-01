@@ -23,7 +23,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import get_db
-from screen.api.scoring import score_opening
+from screen.api.scoring import (
+    dimension_rulings_by_target,
+    latest_ruling_by_assertion,
+    score_opening,
+)
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
@@ -126,13 +130,30 @@ def _dimension_groups(
 
 
 def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
-    """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
+    """Build the same ranked list the JSON `/queue` returns, shaped for the template.
+
+    Applies the same assertion/dimension rulings as the per-opening rating view so a
+    queue position never disagrees with the score the operator just edited."""
     config = load_scoring_config()
     items = []
     for opening in list_openings(conn):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
-        result = score_opening(assertions, config)
+        assertion_rulings = latest_ruling_by_assertion(
+            assertion_rulings_for_opening(conn, opening.id)
+        )
+        dimension_rulings = dimension_rulings_by_target(
+            dimension_rulings_for_opening(conn, opening.id)
+        )
+        ruled_fits: dict[str, Fit] = {
+            assertion_id: ruling.fit for assertion_id, ruling in assertion_rulings.items()
+        }
+        result = score_opening(
+            assertions,
+            config,
+            rulings=ruled_fits,
+            dimension_rulings=dimension_rulings,
+        )
         items.append(
             {
                 "opening_id": opening.id,
@@ -153,13 +174,11 @@ def _opening_leverage(conn: sqlite3.Connection, opening: Opening, config: Scorin
     """Aggregate rating leverage for one opening: sum of top `rating_task_budget` task
     swings. Used to order the focused-session entry point across openings."""
     assertions = assertions_for_opening(conn, opening.id)
-    rulings = _latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening.id))
+    rulings = latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening.id))
     ruled_fits: dict[str, Fit] = {
         assertion_id: ruling.fit for assertion_id, ruling in rulings.items()
     }
-    dimension_rulings = _dimension_rulings_by_target(
-        dimension_rulings_for_opening(conn, opening.id)
-    )
+    dimension_rulings = dimension_rulings_by_target(dimension_rulings_for_opening(conn, opening.id))
     candidates = rating_task_candidates(
         assertions, config, rulings=ruled_fits, dimension_rulings=dimension_rulings
     )
@@ -175,23 +194,6 @@ def _focus_queue_items(conn: sqlite3.Connection) -> list[str]:
     ]
     leverages.sort(key=lambda pair: pair[1], reverse=True)
     return [opening_id for opening_id, leverage in leverages if leverage > 0]
-
-
-def _latest_ruling_by_assertion(
-    rulings: list[AssertionRuling],
-) -> dict[str, AssertionRuling]:
-    """Rulings are append-only — re-rating is expected and noisy in both directions,
-    not an error — so keep the most recent one per assertion for display. `assertion_rulings_for_opening`
-    already orders by `created_at`, so the last write per key wins."""
-    return {ruling.assertion_id: ruling for ruling in rulings}
-
-
-def _dimension_rulings_by_target(
-    rulings: list[DimensionRuling],
-) -> dict[str, DimensionRuling]:
-    """One row per `(opening_id, target)` by construction (upsert, migration 0005's
-    unique constraint) — no dedupe needed, just a lookup keyed by target."""
-    return {ruling.target: ruling for ruling in rulings}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -227,13 +229,11 @@ def _rating_context(
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
     company = _company_for(conn, opening)
     assertions = assertions_for_opening(conn, opening_id)
-    rulings = _latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
+    rulings = latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
     ruled_fits: dict[str, Fit] = {
         assertion_id: ruling.fit for assertion_id, ruling in rulings.items()
     }
-    dimension_rulings = _dimension_rulings_by_target(
-        dimension_rulings_for_opening(conn, opening_id)
-    )
+    dimension_rulings = dimension_rulings_by_target(dimension_rulings_for_opening(conn, opening_id))
     config = load_scoring_config()
     score = score_opening(
         assertions, config, rulings=ruled_fits, dimension_rulings=dimension_rulings
@@ -291,13 +291,11 @@ def _focus_context(
     )
 
     assertions = assertions_for_opening(conn, opening_id)
-    rulings = _latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
+    rulings = latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
     ruled_fits: dict[str, Fit] = {
         assertion_id: ruling.fit for assertion_id, ruling in rulings.items()
     }
-    dimension_rulings = _dimension_rulings_by_target(
-        dimension_rulings_for_opening(conn, opening_id)
-    )
+    dimension_rulings = dimension_rulings_by_target(dimension_rulings_for_opening(conn, opening_id))
     config = load_scoring_config()
     if use_snapshot:
         candidate_assertion_ids = snapshot_assertion_ids or set()

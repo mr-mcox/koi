@@ -180,6 +180,47 @@ def test_index_order_matches_json_queue(client: TestClient, db_path: Path) -> No
     assert positions[0] < positions[1]
 
 
+def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path: Path) -> None:
+    """Submitting a ruling that raises an opening's standing re-sorts the HTML queue and
+    the JSON queue in the same way."""
+    config = load_scoring_config()
+    poor_assertions = [
+        Assertion(
+            target=slug,  # type: ignore[arg-type]
+            fit="Poor",
+            provenance="model_proposed",
+            chunk="verbatim source text",
+            citations=[_CITATION],
+            created_at=_NOW,
+        )
+        for slug in (*config.dimension_weights, *config.constraints)
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=poor_assertions)
+    _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
+
+    before = client.get("/")
+    assert before.status_code == 200
+    assert before.text.find("widgets--unexamined") < before.text.find("acme--ruled")
+
+    conn = connect(db_path)
+    for assertion in assertions_for_opening(conn, "acme--ruled"):
+        response = client.post(
+            f"/openings/acme--ruled/assertions/{assertion.id}/ruling",
+            data={"fit": "Strong"},
+        )
+        assert response.status_code == 200
+    conn.close()
+
+    after = client.get("/")
+    assert after.status_code == 200
+    assert after.text.find("acme--ruled") < after.text.find("widgets--unexamined")
+
+    json_response = client.get("/queue")
+    assert json_response.status_code == 200
+    json_ids = [item["opening_id"] for item in json_response.json()]
+    assert json_ids == ["acme--ruled", "widgets--unexamined"]
+
+
 def test_index_empty_queue_renders(client: TestClient) -> None:
     """An empty queue still returns a valid HTML document."""
     response = client.get("/")

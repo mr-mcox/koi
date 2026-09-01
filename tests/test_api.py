@@ -18,8 +18,13 @@ from screen.api.app import create_app
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import score
 from screen.store.db import connect
-from screen.store.repo import append_assertions, upsert_company, upsert_opening
-from screen.types import Assertion, Citation, Company, Opening
+from screen.store.repo import (
+    append_assertions,
+    upsert_assertion_ruling,
+    upsert_company,
+    upsert_opening,
+)
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -139,3 +144,49 @@ def test_queue_sorts_by_standing_descending(client: TestClient, db_path: Path) -
     assert body[0]["standing"] == pytest.approx(expected_strong)
     assert body[1]["standing"] == pytest.approx(expected_unexamined)
     assert body[0]["standing"] >= body[1]["standing"]
+
+
+def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Path) -> None:
+    """Rulings must move the queue: an opening with Poor model-proposed assertions that
+    are all overridden to Strong should outrank an unexamined one, and the per-opening
+    score endpoint must agree with the queue entry."""
+    config = load_scoring_config()
+    weak_assertions = [
+        Assertion(
+            target=slug,  # type: ignore[arg-type]
+            fit="Poor",
+            provenance="model_proposed",
+            chunk="verbatim source text",
+            citations=[_CITATION],
+            created_at=_NOW,
+        )
+        for slug in (*config.dimension_weights, *config.constraints)
+    ]
+    _seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=weak_assertions)
+    _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
+
+    conn = connect(db_path)
+    for assertion in weak_assertions:
+        upsert_assertion_ruling(
+            conn,
+            AssertionRuling(
+                id=f"ruling--{assertion.id}",
+                assertion_id=assertion.id,
+                fit="Strong",
+                created_at=_NOW,
+            ),
+        )
+    conn.close()
+
+    response = client.get("/queue")
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["opening_id"] for item in body] == ["acme--ruled", "widgets--unexamined"]
+
+    score_response = client.get("/openings/acme--ruled/score").json()
+    queue_item = next(item for item in body if item["opening_id"] == "acme--ruled")
+    assert score_response["standing"] == pytest.approx(queue_item["standing"])
+    assert score_response["reach"] == pytest.approx(queue_item["reach"])
+    assert score_response["band"] == queue_item["band"]
+    assert score_response["ceiling"] == pytest.approx(queue_item["ceiling"])
+    assert score_response["unreachable"] == queue_item["unreachable"]

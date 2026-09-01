@@ -14,10 +14,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from screen.api.deps import get_db
-from screen.api.scoring import OpeningScore, score_opening
+from screen.api.scoring import (
+    OpeningScore,
+    dimension_rulings_by_target,
+    latest_ruling_by_assertion,
+    score_opening,
+)
 from screen.score.loader import load_scoring_config
-from screen.store.repo import assertions_for_opening, get_company, get_opening, list_openings
-from screen.types import Company, Opening
+from screen.store.repo import (
+    assertion_rulings_for_opening,
+    assertions_for_opening,
+    dimension_rulings_for_opening,
+    get_company,
+    get_opening,
+    list_openings,
+)
+from screen.types import Company, Fit, Opening
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -63,7 +75,14 @@ def get_opening_score(opening_id: str, conn: Conn) -> ScoreResponse:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
     company = _company_for(conn, opening)
     assertions = assertions_for_opening(conn, opening_id)
-    result = score_opening(assertions, load_scoring_config())
+    assertion_rulings = latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
+    dimension_rulings = dimension_rulings_by_target(dimension_rulings_for_opening(conn, opening_id))
+    ruled_fits: dict[str, Fit] = {
+        assertion_id: ruling.fit for assertion_id, ruling in assertion_rulings.items()
+    }
+    result = score_opening(
+        assertions, load_scoring_config(), rulings=ruled_fits, dimension_rulings=dimension_rulings
+    )
     return _to_response(company, opening, result)
 
 
@@ -74,7 +93,21 @@ def get_queue(conn: Conn) -> list[ScoreResponse]:
     for opening in list_openings(conn):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
-        result = score_opening(assertions, config)
+        assertion_rulings = latest_ruling_by_assertion(
+            assertion_rulings_for_opening(conn, opening.id)
+        )
+        dimension_rulings = dimension_rulings_by_target(
+            dimension_rulings_for_opening(conn, opening.id)
+        )
+        ruled_fits: dict[str, Fit] = {
+            assertion_id: ruling.fit for assertion_id, ruling in assertion_rulings.items()
+        }
+        result = score_opening(
+            assertions,
+            config,
+            rulings=ruled_fits,
+            dimension_rulings=dimension_rulings,
+        )
         items.append(_to_response(company, opening, result))
     # Standing is the only sort key (S5 · reach never sorts).
     items.sort(key=lambda item: item.standing, reverse=True)

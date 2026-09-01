@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: efe0c2d
 branch: main
-status: orienting
+status: implementing
 parent: ../review-ux/scouting.md
 scouting: ./sort-and-presentation-scouting.md
 ---
