@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: efe0c2d
 branch: main
-status: implementing
+status: done
 parent: ../review-ux/scouting.md
 scouting: ./sort-and-presentation-scouting.md
 ---
@@ -25,16 +25,16 @@ F10.
 
 ## Done When
 
-- [ ] The per-opening score block no longer renders `standing`/`reach`/`ceiling` as
+- [x] The per-opening score block no longer renders `standing`/`reach`/`ceiling` as
       formatted floats — test: `_rating_content.html` render contains no `%.3f` value for
       these fields (→ scouting F3)
-- [ ] The queue no longer renders raw `standing` as a formatted float per row — same test
+- [x] The queue no longer renders raw `standing` as a formatted float per row — same test
       shape against `queue.html` (→ scouting F3)
-- [ ] Both the queue row and the per-opening score block render a minimalist lollipop glyph
+- [x] Both the queue row and the per-opening score block render a minimalist lollipop glyph
       showing `standing`, `reach`, and `ceiling` on a horizontal axis scaled to the maximum
       ceiling in the current context — test: the rendered dot and range positions match the
       `score_opening` result for a synthetic opening (→ scouting F8, F9)
-- [ ] `standing` remains the only sort key; the glyph is display-only and never becomes an
+- [x] `standing` remains the only sort key; the glyph is display-only and never becomes an
       input to sorting or scoring (→ scouting F6)
 
 ## Approach
