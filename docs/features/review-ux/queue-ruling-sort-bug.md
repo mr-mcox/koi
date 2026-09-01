@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: efe0c2d
 branch: main
-status: implementing
+status: done
 parent: ../review-ux/scouting.md
 scouting: ./sort-and-presentation-scouting.md
 ---
@@ -19,15 +19,15 @@ Rating something never changes its position in the queue. Terrain:
 
 ## Done When
 
-- [ ] Rating an assertion or dimension on an opening changes that opening's position in
+- [x] Rating an assertion or dimension on an opening changes that opening's position in
       both `GET /` (HTML queue) and `GET /queue` (JSON) without a full page reload for the
       HTML case — test: seed two openings, submit a ruling that raises one opening's
       standing above the other's, assert the order flips in both responses (→ scouting F1)
-- [ ] `_queue_items` and `get_queue` compute `standing`/`reach`/`band` from the same
+- [x] `_queue_items` and `get_queue` compute `standing`/`reach`/`band` from the same
       rulings the rating page uses for that opening — test: rate an opening via the rating
       route, then assert `GET /queue`'s entry for it matches `GET /openings/{id}/score`
       exactly (→ scouting F1)
-- [ ] Existing queue/rating tests continue to pass unmodified where they don't depend on
+- [x] Existing queue/rating tests continue to pass unmodified where they don't depend on
       the old no-rulings queue behavior (→ scouting F1)
 
 ## Approach
