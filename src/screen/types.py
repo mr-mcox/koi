@@ -1,4 +1,6 @@
 """Pydantic models for the job screener domain.
+Bare ids below: `E*`/`S*` are `docs/architecture/decisions.md`,
+`D*` are `docs/architecture/prototype-decisions.md`.
 `extra="forbid"` on every model enforces Wall 1/2 (no scoring fields).
 The closed `Target` Literal enforces Wall 3 (no unknown targets).
 `tests/test_types.py` pins all three properties at the test level.
@@ -151,7 +153,7 @@ class AssertionRuling(BaseModel):
     Sibling to `Assertion`, not a scoped union with a future `DimensionRuling` —
     assertion-level override ("was this claim right?") and dimension-level
     placement ("where does this dimension land?") are different author-intents
-    with different payload shapes (domain-model.md, F25/F28). `fit` reuses the
+    with different payload shapes (domain-model.md §Ruling). `fit` reuses the
     same closed rubric vocabulary as `Assertion.fit`; this type introduces no
     new vocabulary and stays a categorical confirm/override, not a continuous
     placement.
@@ -169,10 +171,10 @@ class DimensionRuling(BaseModel):
     """The operator's own continuous placement for one dimension/opening: "given
     everything, where am I on this?" (domain-model.md §Ruling) — a non-arithmetic
     squish over the assertions and rulings underneath, not a formula computed off
-    them. Sibling to `AssertionRuling`, not a shared type with a scope field
-    (review-ux/scouting F25/F28): assertion-level rating is a categorical
-    confirm/override, this is a continuous placement, and the two are different
-    author-intents with different payload shapes.
+    them. Sibling to `AssertionRuling`, not a shared type with a scope field:
+    assertion-level rating is a categorical confirm/override, this is a continuous
+    placement, and the two are different author-intents with different payload
+    shapes.
 
     `mean` is the operator's stated fit, `[-1, 1]`, same scale `Assertion.fit`
     maps onto (`FIT_VALUES`). `settledness` is stated *conviction*, `[0, 1]` —
@@ -199,7 +201,8 @@ class DimensionRuling(BaseModel):
 class DimensionDigest(BaseModel):
     """Cached prose gist of a dimension's assertion mix for one opening.
 
-    Never a verdict, count, or Fit word — see `docs/features/dimension-digest/`.
+    Never a verdict, count, or Fit word (S7 · The rollup is mechanical; the model
+    never renders verdicts).
     `assertion_count` is the staleness key: assertions are append-only (Wall 6),
     so a monotonic count comparison against the target's current assertion
     count is exact and sufficient to detect a stale digest.

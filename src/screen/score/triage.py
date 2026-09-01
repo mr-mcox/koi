@@ -94,8 +94,8 @@ def rating_task_candidates(
     An assertion under a pinned dimension is excluded — the pin supersedes it in scoring
     (scorer.py `_stats_for_target`), so rating it can't move anything. A dimension target
     with zero assertions is excluded too — there is nothing to review, so "rate this
-    dimension" isn't an actionable task; that gap is a research question (F56), not a
-    rating one.
+    dimension" isn't an actionable task; that gap is a research question, not a rating
+    one.
     """
     rulings = rulings or {}
     dimension_rulings = dimension_rulings or {}

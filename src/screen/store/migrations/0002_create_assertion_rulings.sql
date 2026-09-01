@@ -1,4 +1,4 @@
--- Sibling to `assertions`, not a column on it (F25/F28): an AssertionRuling is the
+-- Sibling to `assertions`, not a column on it: an AssertionRuling is the
 -- operator's own confirm/override record, kept separate so the model's proposal is
 -- never overwritten in place (Wall 6 applies to Assertion; this table is append-only
 -- for the same reason a ruling supersedes rather than mutates).

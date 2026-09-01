@@ -94,8 +94,8 @@ def assertion_rulings_for_opening(
 ) -> list[AssertionRuling]:
     """Every recorded ruling against any assertion belonging to this opening,
     joined through `assertions.opening_id` since `assertion_rulings` carries no
-    opening reference of its own (F25/F28: sibling to Assertion, not a copy of
-    its foreign keys)."""
+    opening reference of its own — it is a sibling to Assertion, not a copy of its
+    foreign keys."""
     rows = conn.execute(
         """SELECT assertion_rulings.*
            FROM assertion_rulings

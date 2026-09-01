@@ -1,8 +1,9 @@
 -- Cached LLM-generated prose digest of a dimension's assertion mix.
--- Additive only — no change to companies/openings/assertions (F7).
+-- Additive only — no change to companies/openings/assertions.
 -- `assertion_count` is the staleness key: assertions are append-only (wall 6),
 -- so a monotonic count comparison against the current count for
--- (opening_id, target) is exact and sufficient to detect staleness (F5, F6).
+-- (opening_id, target) is exact and sufficient to detect staleness. Recomputing on
+-- change rather than per view keeps the LLM call priced per change, not per read.
 CREATE TABLE dimension_digests (
     opening_id TEXT NOT NULL REFERENCES openings (id),
     target TEXT NOT NULL,

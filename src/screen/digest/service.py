@@ -23,8 +23,9 @@ def update_digests_for_opening(
 ) -> None:
     """Warm the digest cache for every target that has assertions on this opening.
 
-    Called post-pass (F6) so the rating view never blocks on a cold cache;
-    idempotent by the same assertion-count staleness key `digest_for_target` uses.
+    Called from the CLI at the end of a research pass, so the rating view never blocks
+    on a cold cache; idempotent by the same assertion-count staleness key
+    `digest_for_target` uses.
     """
     targets = dict.fromkeys(a.target for a in assertions_for_opening(conn, opening_id))
     for target in targets:

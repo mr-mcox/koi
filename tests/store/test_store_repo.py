@@ -335,8 +335,9 @@ def test_dimension_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
 def test_upsert_dimension_ruling_replaces_prior_ruling_for_same_target(
     tmp_path: Path,
 ) -> None:
-    """Re-rating the same dimension replaces the stored ruling, not appends —
-    pins are not revertable but resubmission still replaces the value (F46)."""
+    """Re-rating the same dimension replaces the stored ruling, not appends. "Not
+    revertable" means there is no path back to unpinned — it does not mean the value is
+    frozen once set."""
     conn = connect(tmp_path / "screen.db")
     _seed_opening_with_assertion(conn)
     upsert_dimension_ruling(

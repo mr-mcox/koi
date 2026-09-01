@@ -180,8 +180,8 @@ def _focus_queue_items(conn: sqlite3.Connection) -> list[str]:
 def _latest_ruling_by_assertion(
     rulings: list[AssertionRuling],
 ) -> dict[str, AssertionRuling]:
-    """Rulings are append-only (F26: re-rating is expected, not an error) —
-    keep the most recent one per assertion for display. `assertion_rulings_for_opening`
+    """Rulings are append-only — re-rating is expected and noisy in both directions,
+    not an error — so keep the most recent one per assertion for display. `assertion_rulings_for_opening`
     already orders by `created_at`, so the last write per key wins."""
     return {ruling.assertion_id: ruling for ruling in rulings}
 
@@ -271,9 +271,8 @@ def _focus_context(
     snapshot_dimension_targets: set[Target] | None = None,
 ) -> dict[str, object]:
     """The focused view's data: `_rating_context`'s full context, narrowed to the
-    highest-leverage unrated tasks (review-ux/rating-voi-triage bearing). Reuses
-    `_rating_context`'s assembly rather than re-deriving it (scouting F61) — only the
-    `groups` list is filtered afterward.
+    highest-leverage unrated tasks. Reuses `_rating_context`'s assembly rather than
+    re-deriving it — only the `groups` list is filtered afterward.
 
     Without a snapshot (first GET of the focused view), the task set is freshly ranked.
     With one (an HTMX submit echoing back the initial GET's task identifiers), the task
@@ -407,8 +406,7 @@ def rate_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
 @router.get("/openings/{opening_id}/focus", response_class=HTMLResponse)
 def focus_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
     """The focused rating surface for one opening: only the highest-leverage unrated
-    tasks (review-ux/rating-voi-triage bearing), rendered with the same template family
-    as the full rating page (scouting F61)."""
+    tasks, rendered with the same template family as the full rating page."""
     context = _focus_context_for_request(request, conn, opening_id)
     ordered = _focus_queue_items(conn)
     try:
@@ -444,8 +442,9 @@ def submit_ruling(
     focus_snapshot_dimension_targets: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
     """Upsert the operator's ruling for one assertion, then return the rating-content
-    partial (not a full document) for an HTMX swap — F20/F31: re-sorting the queue
-    itself is the separate queue page's concern, not this fragment's. `focus=1` keeps
+    partial (not a full document) for an HTMX swap. Submitting a rating must re-sort the
+    queue without a full page reload, but that re-sort is the queue page's concern, not
+    this fragment's. `focus=1` keeps
     the swap on the focused-view's narrowed context, not the full rating page's (bearing
     Done When: submitting from the focused view stays focused)."""
     if get_opening(conn, opening_id) is None:
@@ -486,8 +485,8 @@ def submit_dimension_ruling(
     focus_snapshot_dimension_targets: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
     """Upsert the operator's dimension-level pin, then return the rating-content partial
-    for an HTMX swap (bearing Done When). Pins are not revertable (F46): there is no
-    unset route, only resubmission via this same upsert. `focus=1` keeps the swap on the
+    for an HTMX swap. Pins are not revertable — no unset route, no path back to
+    unpinned, only resubmission via this same upsert. `focus=1` keeps the swap on the
     focused-view's narrowed context, matching `submit_ruling`."""
     if get_opening(conn, opening_id) is None:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")

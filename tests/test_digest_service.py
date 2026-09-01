@@ -157,8 +157,9 @@ def test_update_digests_for_opening_warms_every_target_with_assertions(tmp_path:
 def test_update_digests_for_opening_is_idempotent_when_assertions_unchanged(
     tmp_path: Path,
 ) -> None:
-    """A second call with no new assertions must not re-invoke the digester —
-    exact staleness via assertion count (F7)."""
+    """A second call with no new assertions must not re-invoke the digester. Staleness is
+    keyed on assertion count, and assertions are append-only (Wall 6), so an unchanged
+    count is exact evidence that nothing needs recomputing — not a heuristic."""
     conn = _seeded_conn(tmp_path)
     append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
     digester = FakeDigester(["stretch digest"])
