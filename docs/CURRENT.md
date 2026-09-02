@@ -1,1 +1,1 @@
-docs/features/review-ux/attention-allocation-scouting.md
+docs/features/review-ux/attention-allocation-computation.md
