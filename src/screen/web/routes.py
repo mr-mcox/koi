@@ -9,6 +9,7 @@ routes stay read-only and untouched.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
@@ -127,6 +128,24 @@ def _company_for(conn: sqlite3.Connection, opening: Opening) -> Company:
     return cast(Company, get_company(conn, opening.company_id))
 
 
+def _hue_from_seed(seed: str, *, center: float, spread: float) -> float:
+    """Deterministic decorative OKLCH hue (degrees) from a stable id. Styling only —
+    never read by the scorer or stored; re-derived on every render."""
+    digest = hashlib.sha256(seed.encode()).digest()
+    frac = int.from_bytes(digest[:4], "big") / 0xFFFFFFFF
+    return round(center + (frac - 0.5) * 2 * spread, 1)
+
+
+def _accent_hues(company_id: str, opening_id: str) -> tuple[float, float]:
+    """Company and opening accent hues, both within the koi-orange band (centered
+    ~42°). The opening's hue is a small perturbation of its own company's — not an
+    independent draw — so a company's openings read as kin, each opening still its
+    own shade."""
+    company_hue = _hue_from_seed(company_id, center=42, spread=16)
+    opening_hue = _hue_from_seed(opening_id, center=company_hue, spread=6)
+    return company_hue, opening_hue
+
+
 def _dimension_groups(
     conn: sqlite3.Connection,
     opening_id: str,
@@ -227,24 +246,29 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
     config = load_scoring_config()
     scored = _scored_openings(conn, config)
     kth = _kth_result(scored, config)
-    return [
-        {
-            "opening_id": opening.id,
-            "company_name": company.name,
-            "opening_title": opening.title,
-            "glyph": _boundary_glyph_for_score(
-                result,
-                boundary=kth.median if kth is not None else None,
-                crossing_probability=(
-                    crossing_probability(result.standing_result, kth.standing_result)
-                    if kth is not None
-                    else None
+    items = []
+    for opening, company, result in scored:
+        company_hue, opening_hue = _accent_hues(company.id, opening.id)
+        items.append(
+            {
+                "opening_id": opening.id,
+                "company_name": company.name,
+                "opening_title": opening.title,
+                "company_hue": company_hue,
+                "opening_hue": opening_hue,
+                "glyph": _boundary_glyph_for_score(
+                    result,
+                    boundary=kth.median if kth is not None else None,
+                    crossing_probability=(
+                        crossing_probability(result.standing_result, kth.standing_result)
+                        if kth is not None
+                        else None
+                    ),
                 ),
-            ),
-            "standing": result.standing,
-        }
-        for opening, company, result in scored
-    ]
+                "standing": result.standing,
+            }
+        )
+    return items
 
 
 def _contested_queue_items(conn: sqlite3.Connection) -> list[str]:
@@ -360,6 +384,7 @@ def _rating_context(
         assertions, config, rulings=ruled_fits, dimension_rulings=dimension_rulings
     )
     kth = _kth_result(_scored_openings(conn, config), config)
+    company_hue, opening_hue = _accent_hues(company.id, opening_id)
     groups = _dimension_groups(
         conn,
         opening_id=opening_id,
@@ -388,6 +413,8 @@ def _rating_context(
         "fit_values": list(FIT_VALUES),
         "focus": False,
         "candidate_assertion_ids": set(),
+        "company_hue": company_hue,
+        "opening_hue": opening_hue,
     }
 
 

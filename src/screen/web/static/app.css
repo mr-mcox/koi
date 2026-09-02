@@ -1,17 +1,78 @@
+/*
+ * Palette: one OKLCH system, everywhere. Chrome (paper/ink/rule) sits on a fixed
+ * cool hue (a pond, not a page). The fit scale is a proper diverging triad
+ * (ColorBrewer-style, e.g. PuOr) rather than a stoplight or a one-hue ramp: two
+ * endpoints matched in lightness and chroma so neither outshouts the other — a
+ * cool blue-teal for "poor", the koi-orange accent family for "strong" — with a
+ * genuinely neutral, low-chroma light midpoint for "mixed" (not a blend of the
+ * two endpoints, which is how diverging scales avoid a muddy middle).
+ * `--accent-hue` is set per company/opening (routes.py `_accent_hues`, a stable
+ * hash of the id, styling only) and stays inside the koi-orange band —
+ * decorative variation, never a second signal.
+ */
+:root {
+  --paper: oklch(97% 0.006 220);
+  --paper-dim: oklch(94% 0.01 220);
+  --ink: oklch(22% 0.02 220);
+  --ink-muted: oklch(48% 0.02 220);
+  --rule: oklch(85% 0.012 220);
+
+  --fit-poor: oklch(52% 0.13 235);
+  --fit-mixed: oklch(90% 0.015 90);
+  --fit-strong: oklch(56% 0.14 45);
+
+  --accent-hue: 42; /* fallback; every real page sets its own */
+  --accent: oklch(68% 0.15 var(--accent-hue));
+  --accent-soft: oklch(90% 0.05 var(--accent-hue));
+}
+
+* , *::before, *::after { box-sizing: border-box; }
+
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  line-height: 1.5;
-  max-width: 48rem;
+  font-family: Charter, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  max-width: 42rem;
   margin: 0 auto;
-  padding: 1rem;
-  color: #222;
-  background: #fff;
+  padding: 1.5rem 1.25rem 4rem;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1, h2 {
+  font-family: Charter, Georgia, serif;
   font-weight: 600;
+  line-height: 1.25;
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
+}
+
+h1 { font-size: 1.5rem; letter-spacing: -0.01em; }
+
+/* Company/title perturbation (idea #: "two things changing in relation to each
+   other"): company sits near-neutral chrome, the opening's title carries the
+   fuller accent so the more specific, more decision-relevant name draws the
+   eye. Both derive from the same per-page --accent-hue tree, so a company's
+   openings read as kin. */
+.entity-company {
+  color: oklch(45% 0.05 var(--accent-hue));
+  font-weight: 600;
+}
+
+.entity-sep {
+  color: var(--ink-muted);
+  padding: 0 0.15em;
+}
+
+.entity-opening {
+  color: oklch(38% 0.1 var(--accent-hue));
+}
+
+h1 .entity-company,
+h1 .entity-opening {
+  font-size: inherit;
 }
 
 .queue {
@@ -23,42 +84,33 @@ h1, h2 {
 .queue li {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #e5e5e5;
+  gap: 1rem;
+  padding: 0.9rem 0.25rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .queue .title {
   flex: 1;
+  min-width: 0;
   color: inherit;
   text-decoration: none;
 }
 
-.queue .title:hover {
+.queue .title:hover .entity-opening {
   text-decoration: underline;
+  text-decoration-color: var(--accent);
 }
 
 .score {
   font-variant-numeric: tabular-nums;
-  color: #666;
+  color: var(--ink-muted);
 }
-
-.chip {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.85rem;
-  font-weight: 500;
-  text-transform: capitalize;
-  white-space: nowrap;
-}
-
 
 .score-summary {
   display: flex;
   gap: 1rem;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .assertions {
@@ -69,7 +121,7 @@ h1, h2 {
 
 .assertions li {
   padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--rule);
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.25rem 0.5rem;
@@ -90,8 +142,8 @@ h1, h2 {
 .assertions blockquote {
   margin: 0;
   padding-left: 0.75rem;
-  border-left: 2px solid #ccc;
-  color: #555;
+  border-left: 2px solid var(--rule);
+  color: var(--ink-muted);
   font-style: italic;
 }
 
@@ -100,19 +152,25 @@ h1, h2 {
   line-height: 1;
 }
 
-.provenance-glyph.provenance-model_proposed::before { content: "🤖"; }
-.provenance-glyph.provenance-precedent_matched::before { content: "📖"; }
-.provenance-glyph.provenance-ratified::before { content: "👤"; }
-.provenance-glyph.provenance-unexamined::before { content: "❓"; }
+.provenance-glyph.provenance-model_proposed::before { content: "\1F916"; }
+.provenance-glyph.provenance-precedent_matched::before { content: "\1F4D6"; }
+.provenance-glyph.provenance-ratified::before { content: "\1F464"; }
+.provenance-glyph.provenance-unexamined::before { content: "\2753"; }
 
 .ruling-form {
   display: flex;
   justify-content: flex-end;
 }
 
+/*
+ * Fit control: the sink/surface ramp, not a stoplight. Poor recedes (cool,
+ * low chroma); strong surfaces (warm, saturated) — the same three tokens the
+ * boundary glyph's band uses, so "fit" reads as one visual language wherever
+ * it shows up.
+ */
 .fit-control {
   display: inline-flex;
-  border: 1px solid #ccc;
+  border: 1px solid var(--rule);
   border-radius: 0.5rem;
   overflow: hidden;
 }
@@ -124,23 +182,29 @@ h1, h2 {
   padding: 0;
   margin: 0;
   cursor: pointer;
-  background: #f5f5f5;
-  transition: background 0.1s;
+  background: var(--paper-dim);
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.fit-segment.fit-poor { background: #f8d7da; }
-.fit-segment.fit-mixed { background: #fff3cd; }
-.fit-segment.fit-strong { background: #d1e7dd; }
+.fit-segment.fit-poor { background: var(--fit-poor); opacity: 0.4; }
+.fit-segment.fit-mixed { background: var(--fit-mixed); opacity: 0.9; border: 1px solid var(--rule); }
+.fit-segment.fit-strong { background: var(--fit-strong); opacity: 0.4; }
 
 .fit-segment.active {
-  outline: 2px solid #333;
+  outline: 2px solid var(--ink);
   outline-offset: -2px;
   position: relative;
   z-index: 1;
+  opacity: 1;
 }
 
 .fit-segment:hover {
-  filter: brightness(0.9);
+  transform: scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fit-segment { transition: none; }
+  .fit-segment:hover { transform: none; }
 }
 
 .assertion-context summary {
@@ -163,7 +227,7 @@ h1, h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #555;
+  color: var(--ink-muted);
   font-style: italic;
 }
 
@@ -173,7 +237,7 @@ h1, h2 {
 
 .fit-indicator {
   display: inline-flex;
-  gap: 0.1rem;
+  gap: 0.15rem;
   align-items: center;
   flex-shrink: 0;
 }
@@ -182,39 +246,45 @@ h1, h2 {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: #f0f0f0;
-  border: 1px solid #cfcfcf;
+  background: var(--paper-dim);
+  border: 1px solid var(--rule);
   padding: 0;
   margin: 0;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.3;
 }
 
 .fit-indicator .fit-segment.active {
   width: 0.7rem;
   height: 0.7rem;
   opacity: 1;
-  border-color: #333;
+  border-color: var(--ink);
 }
 
-.fit-indicator .fit-segment.fit-poor.active { background: #f8d7da; }
-.fit-indicator .fit-segment.fit-mixed.active { background: #fff3cd; }
-.fit-indicator .fit-segment.fit-strong.active { background: #d1e7dd; }
+.fit-indicator .fit-segment.fit-poor.active { background: var(--fit-poor); }
+.fit-indicator .fit-segment.fit-mixed.active { background: var(--fit-mixed); }
+.fit-indicator .fit-segment.fit-strong.active { background: var(--fit-strong); }
 
 .citation-link {
   font-size: 0.85rem;
   margin-top: 0.25rem;
 }
 
+.citation-link, .citation-link:link, .citation-link:visited {
+  color: var(--ink-muted);
+}
+
 .dimension-title {
   margin: 0 0 0.35rem;
 }
+
 .dimension-body {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.5rem 1rem;
   align-items: center;
 }
+
 .dimension-body .digest {
   margin: 0;
 }
@@ -222,68 +292,129 @@ h1, h2 {
 .dimension-ruling-form {
   justify-self: end;
 }
+
 .dimension-ruling-pad {
   position: relative;
   width: 6rem;
   height: 3rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--rule);
   border-radius: 0.35rem;
-  background: linear-gradient(to right, #f8d7da, #fff3cd, #d1e7dd);
+  background: linear-gradient(
+    to right,
+    var(--fit-poor),
+    var(--fit-mixed),
+    var(--fit-strong)
+  );
   cursor: pointer;
 }
+
 .dimension-ruling-pad.dimension-ruling-pin {
-  border: 2px solid #333;
+  border: 2px solid var(--ink);
 }
+
 .dimension-ruling-cursor {
   position: absolute;
   width: 0.55rem;
   height: 0.55rem;
-  border: 2px solid #333;
+  border: 2px solid var(--ink);
   border-radius: 50%;
-  background: #fff;
+  background: var(--paper);
   transform: translate(-50%, 50%);
   pointer-events: none;
 }
 
-
+/*
+ * The boundary glyph: a shallow transit-dip light curve, not a flat bar. The
+ * baseline is a gently bowed rule (Kepler half of the name); the credible
+ * interval draws as a soft koi-orange wash under the dip rather than a hard
+ * bar (`--median-pct` is set inline per-glyph and drives the dip's own
+ * position). A settle-in ripple plays once per htmx swap; the initial page
+ * load gets it too (the glyph mounts fresh either way), and reduced-motion
+ * drops straight to the end state.
+ */
 .boundary-glyph {
   display: inline-block;
-  width: 6rem;
+  width: 7rem;
   flex: 0 0 auto;
-  height: 0.75rem;
+  height: 1.1rem;
   position: relative;
   vertical-align: middle;
 }
 
 .boundary-baseline {
   position: absolute;
-  top: 50%;
+  top: 55%;
   left: 0;
   right: 0;
   height: 1px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--rule);
+}
+
+.boundary-dip {
+  position: absolute;
+  top: 0;
+  bottom: 35%;
+  border-radius: 0 0 60% 60% / 0 0 100% 100%;
+  background: linear-gradient(to bottom, transparent, var(--accent-soft) 85%);
+  opacity: 0.8;
 }
 
 .boundary-range {
   position: absolute;
-  top: calc(50% - 1px);
+  top: calc(55% - 1px);
   height: 2px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--accent);
+  opacity: 0.55;
+  border-radius: 2px;
 }
 
 .boundary-marker {
   position: absolute;
-  top: 50%;
+  top: 55%;
   transform: translate(-50%, -50%);
 }
+
 .boundary-median {
-  width: 1px;
-  height: 0.6rem;
-  background: rgba(0, 0, 0, 0.7);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--paper);
 }
 
 .boundary-tick {
   width: 1px;
   height: 0.9rem;
-  background: rgba(200, 0, 0, 0.6);
+  background: oklch(55% 0.15 25);
 }
+
+@keyframes koi-ripple {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  60% { opacity: 0.5; }
+  100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
+}
+
+.boundary-median::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  animation: koi-ripple 900ms ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boundary-median::after { animation: none; content: none; }
+}
+
+/* Index/queue chrome kept from the previous build, restyled onto tokens. */
+.entries { list-style: none; margin: 0; padding: 0; }
+
+.entries li + li {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+}
+
+a { color: var(--ink); text-underline-offset: 0.16em; text-decoration-thickness: 1px; }
+a:hover { color: var(--accent); }

@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Rate {{ company.name }} — {{ opening.title }}{% endblock %}
 {% block content %}
-  <h1>{{ company.name }} — {{ opening.title }}</h1>
+  <h1>
+    <span class="entity-company" style="--accent-hue: {{ company_hue }};">{{ company.name }}</span>
+    <span class="entity-sep">—</span>
+    <span class="entity-opening" style="--accent-hue: {{ opening_hue }};">{{ opening.title }}</span>
+  </h1>
   {% include "_rating_content.html" %}
   {% if contested and next_contested_id %}
   <p><a class="next-contested" href="/openings/{{ next_contested_id }}/contested">Next contested opening</a></p>
