@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_sparkline.html" import sparkline %}
+{% from "_boundary_glyph.html" import boundary_glyph %}
 {% block title %}Queue{% endblock %}
 {% block content %}
   <h1>Queue</h1>
@@ -8,7 +8,7 @@
     {% for item in items %}
     <li>
       <span class="title">{{ item.company_name }} — {{ item.opening_title }}</span>
-      {{ sparkline(item.sparkline) }}
+      {{ boundary_glyph(item.glyph) }}
       <a class="rate-link" href="/openings/{{ item.opening_id }}/rate">rate</a>
       <a class="focus-link" href="/openings/{{ item.opening_id }}/focus">focus</a>
     </li>

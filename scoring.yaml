@@ -58,6 +58,6 @@ dimension_ruling:
 rating_task_budget: 4
 
 # Attention allocation. The queue's competitive cutoff: the operator applies to
-# roughly the top K openings each week. K≈10 today and expected to grow with
+# roughly the top K openings each week. K≈5 today and expected to grow with
 # capacity — unmeasured placeholder, same status as bar/rating_task_budget above.
-top_k: 10
+top_k: 5

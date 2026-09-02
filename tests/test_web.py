@@ -96,36 +96,24 @@ def _assertion(target: Target, fit: Fit) -> Assertion:
     )
 
 
-def _lollipop_positions(text: str) -> tuple[float, float, float, float, float]:
-    """Return the rendered left positions of the three dots and the range band.
-
+def _boundary_glyph_positions(text: str) -> tuple[float, float, float]:
+    """Return the rendered left position of the median marker plus the interval band's
+    edges.
     Percentages are returned as fractions (0.0-1.0) in the order:
-    standing, reach, ceiling, range_left, range_right.
+    median, low (range left edge), high (range right edge).
     """
-    standing_m = re.search(
-        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-standing[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
-        text,
-    )
-    reach_m = re.search(
-        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-reach[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
-        text,
-    )
-    ceiling_m = re.search(
-        r'<span[^>]*class="[^"]*sparkline-marker[^"]*sparkline-ceiling[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
+    median_m = re.search(
+        r'<span[^>]*class="[^"]*boundary-marker[^"]*boundary-median[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%',
         text,
     )
     range_m = re.search(
-        r'<span[^>]*class="[^"]*sparkline-range[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%;[^"]*right:\s*([\d.]+)%',
+        r'<span[^>]*class="[^"]*boundary-range[^"]*"[^>]*style="[^"]*left:\s*([\d.]+)%;[^"]*right:\s*([\d.]+)%',
         text,
     )
-    assert standing_m is not None
-    assert reach_m is not None
-    assert ceiling_m is not None
+    assert median_m is not None
     assert range_m is not None
     return (
-        float(standing_m.group(1)) / 100,
-        float(reach_m.group(1)) / 100,
-        float(ceiling_m.group(1)) / 100,
+        float(median_m.group(1)) / 100,
         float(range_m.group(1)) / 100,
         1 - float(range_m.group(2)) / 100,
     )
@@ -264,30 +252,28 @@ def test_index_empty_queue_renders(client: TestClient) -> None:
     assert "<html" in response.text
 
 
-def test_index_queue_no_raw_floats_and_renders_lollipop(client: TestClient, db_path: Path) -> None:
-    """The queue row replaces raw standing/reach/ceiling floats with a scaled lollipop."""
+def test_index_queue_no_raw_floats_and_renders_boundary_glyph(
+    client: TestClient, db_path: Path
+) -> None:
+    """The queue row replaces raw standing/reach/ceiling floats with the credible-
+    interval boundary glyph (low/median/high on a fixed 0-1 `overall` axis)."""
     config = load_scoring_config()
     strong = [
         _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
     ]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
-
     response = client.get("/")
     assert response.status_code == 200
     body = response.text
-
     score_response = client.get("/queue")
     scores = score_response.json()
     score = next(item for item in scores if item["opening_id"] == "acme--eng")
     standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
-    scale_max = max(item["ceiling"] for item in scores)
-
     assert f"{standing:.3f}" not in body
     assert f"{reach:.3f}" not in body
     assert f"{ceiling:.3f}" not in body
-    assert "sparkline" in body
-
-    assert "band-" not in body
+    assert "boundary-glyph" in body
+    assert "sparkline" not in body
     assert "chip band" not in body
     for label in ("no path", "contender", "established", "capped", "wide open"):
         assert label not in body
@@ -297,14 +283,8 @@ def test_index_queue_no_raw_floats_and_renders_lollipop(client: TestClient, db_p
         re.DOTALL,
     )
     assert row_match is not None
-    standing_pct, reach_pct, ceiling_pct, range_left, range_right = _lollipop_positions(
-        row_match.group(0)
-    )
-    assert standing_pct == pytest.approx(standing / scale_max, abs=0.01)
-    assert reach_pct == pytest.approx(reach / scale_max, abs=0.01)
-    assert ceiling_pct == pytest.approx(ceiling / scale_max, abs=0.01)
-    assert range_left == pytest.approx(standing / scale_max, abs=0.01)
-    assert range_right == pytest.approx(reach / scale_max, abs=0.01)
+    median, range_left, range_right = _boundary_glyph_positions(row_match.group(0))
+    assert range_left <= median <= range_right
 
 
 def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> None:
@@ -328,40 +308,34 @@ def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> N
     assert "Back to queue" in body
 
 
-def test_rate_opening_score_block_no_raw_floats_and_renders_lollipop(
+def test_rate_opening_score_block_no_raw_floats_and_renders_boundary_glyph(
     client: TestClient, db_path: Path
 ) -> None:
-    """The per-opening score block replaces raw floats with a lollipop scaled to the opening's ceiling."""
+    """The per-opening score block replaces raw floats with the credible-interval
+    boundary glyph on the fixed 0-1 `overall` axis."""
     config = load_scoring_config()
     strong = [
         _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
     ]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
-
     response = client.get("/openings/acme--eng/rate")
     assert response.status_code == 200
     body = response.text
-
     score_response = client.get("/queue")
     score = next(item for item in score_response.json() if item["opening_id"] == "acme--eng")
     standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
-    scale_max = ceiling
-
     assert f"{standing:.3f}" not in body
     assert f"{reach:.3f}" not in body
     assert f"{ceiling:.3f}" not in body
-    assert "sparkline" in body
+    assert "boundary-glyph" in body
+    assert "sparkline" not in body
     assert "band-" not in body
     assert "chip band" not in body
     for label in ("no path", "contender", "established", "capped", "wide open"):
         assert label not in body
 
-    standing_pct, reach_pct, ceiling_pct, range_left, range_right = _lollipop_positions(body)
-    assert standing_pct == pytest.approx(standing / scale_max, abs=0.01)
-    assert reach_pct == pytest.approx(reach / scale_max, abs=0.01)
-    assert ceiling_pct == pytest.approx(ceiling / scale_max, abs=0.01)
-    assert range_left == pytest.approx(standing / scale_max, abs=0.01)
-    assert range_right == pytest.approx(reach / scale_max, abs=0.01)
+    median, range_left, range_right = _boundary_glyph_positions(body)
+    assert range_left <= median <= range_right
 
 
 def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path: Path) -> None:
@@ -752,7 +726,7 @@ def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> N
     )
 
     assert response.status_code == 200
-    assert "sparkline" in response.text
+    assert "boundary-glyph" in response.text
     assert response.text != before.text
 
 
@@ -1399,6 +1373,70 @@ def test_contested_redirect_falls_back_to_queue_when_fewer_than_top_k(
 
     assert response.status_code == 302
     assert response.headers["location"] == "/"
+
+
+def test_index_queue_hides_boundary_tick_when_fewer_than_top_k(
+    client: TestClient, db_path: Path
+) -> None:
+    """With fewer than `top_k` scored openings there is no K-th opening, so the queue
+    row's glyph has no boundary tick and no crossing-probability tooltip (bearing Done
+    When: "the boundary does not exist yet")."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "boundary-glyph" in body
+    assert "boundary-tick" not in body
+    assert "chance of crossing the boundary" not in body
+
+
+def test_index_queue_shows_boundary_tick_when_at_least_top_k(
+    client: TestClient, db_path: Path
+) -> None:
+    """With at least `top_k` scored openings the K-th opening exists, so every row's
+    glyph shows a boundary tick and a crossing-probability tooltip."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k):
+        _seed_opening(
+            db_path,
+            company_id=f"c{i}",
+            opening_id=f"c{i}--eng",
+            assertions=[_assertion(slug, "Strong") for slug in targets],
+        )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "boundary-tick" in body
+    assert "chance of crossing the boundary" in body
+
+
+def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
+    client: TestClient, db_path: Path
+) -> None:
+    """The per-opening score block renders the same marks (interval band, median dot,
+    boundary tick) as the queue row, via the shared `boundary_glyph` macro."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k):
+        _seed_opening(
+            db_path,
+            company_id=f"c{i}",
+            opening_id=f"c{i}--eng",
+            assertions=[_assertion(slug, "Strong") for slug in targets],
+        )
+
+    response = client.get("/openings/c0--eng/rate")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "boundary-glyph" in body
+    for mark in ("boundary-range", "boundary-median", "boundary-tick"):
+        assert mark in body
 
 
 def test_contested_per_opening_shows_next_link(client: TestClient, db_path: Path) -> None:

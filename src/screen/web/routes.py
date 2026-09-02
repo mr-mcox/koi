@@ -70,43 +70,54 @@ class _DimensionGroup:
 
 
 @dataclass(frozen=True)
-class Sparkline:
-    """Opening-level visual summary for the score-summary block and queue rows.
-
-    Three-point lollipop on a 0-`scale_max` axis: `standing` is the lower bound,
-    `reach` is the upper bound, and `ceiling` is the theoretical maximum for this
-    opening. The glyph is display-only; `standing` remains the sort key (S5).
+class BoundaryGlyph:
+    """Credible-interval bar on a fixed 0-1 `overall`-quality axis (review-ux/
+    attention-allocation-display.md Approach): `median` is the dot, `low`/`high` its
+    q10/q90 bar (rendered as the bar's own edges, not separate end markers), and
+    `boundary` (optional) the K-th opening's `median` — all on this one axis, never
+    `standing`'s `P(> bar)` axis (this session's correction: the trace's own quantiles
+    don't bracket `standing`, a single scalar with no per-draw quantile).
+    `boundary`/`crossing_probability` are both `None` when the queue has fewer than
+    `top_k` scored openings — no K-th opening means no boundary to show.
     """
 
-    standing: float
-    reach: float
-    ceiling: float
-    scale_max: float
+    low: float
+    median: float
+    high: float
+    boundary: float | None
+    crossing_probability: float | None
 
     @property
-    def scale(self) -> float:
-        return self.scale_max if self.scale_max > 0 else 1.0
+    def low_pct(self) -> float:
+        return self.low
 
     @property
-    def standing_pct(self) -> float:
-        return self.standing / self.scale
+    def median_pct(self) -> float:
+        return self.median
 
     @property
-    def reach_pct(self) -> float:
-        return self.reach / self.scale
+    def high_pct(self) -> float:
+        return self.high
 
     @property
-    def ceiling_pct(self) -> float:
-        return self.ceiling / self.scale
+    def boundary_pct(self) -> float | None:
+        return self.boundary
 
 
-def _sparkline_for_score(score: OpeningScore, *, scale_max: float) -> Sparkline:
-    """A three-point lollipop scaled to the supplied maximum (queue-wide or per-opening)."""
-    return Sparkline(
-        standing=score.standing,
-        reach=score.reach,
-        ceiling=score.ceiling,
-        scale_max=scale_max,
+def _boundary_glyph_for_score(
+    score: OpeningScore,
+    *,
+    boundary: float | None,
+    crossing_probability: float | None,
+) -> BoundaryGlyph:
+    """The glyph for one opening, given the queue's shared K-th-opening boundary (or
+    `None` when fewer than `top_k` openings exist)."""
+    return BoundaryGlyph(
+        low=score.low,
+        median=score.median,
+        high=score.high,
+        boundary=boundary,
+        crossing_probability=crossing_probability,
     )
 
 
@@ -202,17 +213,34 @@ def _scored_openings(
     return scored
 
 
+def _kth_result(
+    scored: list[tuple[Opening, Company, OpeningScore]], config: ScoringConfig
+) -> OpeningScore | None:
+    """The K-th-ranked opening's `OpeningScore`, or `None` when fewer than `top_k` openings
+    exist — no K-th opening means no boundary (S5-adjacent display convention, review-ux/
+    attention-allocation-computation.md Approach)."""
+    return scored[config.top_k - 1][2] if len(scored) >= config.top_k else None
+
+
 def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
     """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
     config = load_scoring_config()
     scored = _scored_openings(conn, config)
-    scale_max = max((score.ceiling for _, _, score in scored), default=1.0)
+    kth = _kth_result(scored, config)
     return [
         {
             "opening_id": opening.id,
             "company_name": company.name,
             "opening_title": opening.title,
-            "sparkline": _sparkline_for_score(result, scale_max=scale_max),
+            "glyph": _boundary_glyph_for_score(
+                result,
+                boundary=kth.median if kth is not None else None,
+                crossing_probability=(
+                    crossing_probability(result.standing_result, kth.standing_result)
+                    if kth is not None
+                    else None
+                ),
+            ),
             "standing": result.standing,
         }
         for opening, company, result in scored
@@ -331,6 +359,7 @@ def _rating_context(
     score = score_opening(
         assertions, config, rulings=ruled_fits, dimension_rulings=dimension_rulings
     )
+    kth = _kth_result(_scored_openings(conn, config), config)
     groups = _dimension_groups(
         conn,
         opening_id=opening_id,
@@ -346,7 +375,15 @@ def _rating_context(
         "company": company,
         "groups": groups,
         "score": score,
-        "score_sparkline": _sparkline_for_score(score, scale_max=score.ceiling),
+        "score_glyph": _boundary_glyph_for_score(
+            score,
+            boundary=kth.median if kth is not None else None,
+            crossing_probability=(
+                crossing_probability(score.standing_result, kth.standing_result)
+                if kth is not None
+                else None
+            ),
+        ),
         "rulings": rulings,
         "fit_values": list(FIT_VALUES),
         "focus": False,

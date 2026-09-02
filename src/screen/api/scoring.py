@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from screen.score.interval import credible_interval
 from screen.score.scorer import resolve_favourably, score
 from screen.score.types import ScoreResult, ScoringConfig
 from screen.types import Assertion, AssertionRuling, DimensionRuling, Fit
@@ -20,6 +21,14 @@ class OpeningScore:
     reach: float
     ceiling: float
     unreachable: bool
+    # Display glyph statistics for the `overall` trace (review-ux/attention-allocation-
+    # display.md Approach): `median` is the glyph's dot, `low`/`high` its q10/q90 bar.
+    # Distinct from `standing` (`P(overall > bar)`, a single scalar with no per-draw
+    # quantile of its own) — the two live on different axes and neither is derived from
+    # the other.
+    low: float
+    median: float
+    high: float
     # The full standing ScoreResult, not just its scalar: callers computing
     # crossing-probability need the raw trace to compare against another opening's.
     standing_result: ScoreResult = field(compare=False, repr=False)
@@ -40,11 +49,15 @@ def score_opening(
     pinned target is superseded in both standing and reach (bearing dimension-ruling)."""
     standing = score(assertions, config, rulings, dimension_rulings)
     reach = score(resolve_favourably(assertions, config), config, rulings, dimension_rulings)
+    low, median, high = credible_interval(standing)
     return OpeningScore(
         standing=standing.standing,
         reach=reach.standing,
         ceiling=standing.ceiling,
         unreachable=standing.unreachable,
+        low=low,
+        median=median,
+        high=high,
         standing_result=standing,
     )
 

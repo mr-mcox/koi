@@ -1,7 +1,7 @@
 <div id="rating-content">
-{% from "_sparkline.html" import sparkline as sparkline_macro %}
+{% from "_boundary_glyph.html" import boundary_glyph as boundary_glyph_macro %}
   <section class="score-summary">
-    {{ sparkline_macro(score_sparkline) }}
+    {{ boundary_glyph_macro(score_glyph) }}
   </section>
   <h2>Dimensions</h2>
   {% for group in groups %}
