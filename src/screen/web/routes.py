@@ -33,6 +33,7 @@ from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
 from screen.extract.prompt import rubric_text_for_baml
+from screen.score.boundary import crossing_probability
 from screen.score.loader import load_scoring_config
 from screen.score.triage import rating_task_candidates
 from screen.score.types import FIT_VALUES, ScoringConfig
@@ -171,12 +172,12 @@ def _dimension_groups(
     return groups
 
 
-def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
-    """Build the same ranked list the JSON `/queue` returns, shaped for the template.
-
-    Applies the same assertion/dimension rulings as the per-opening rating view so a
-    queue position never disagrees with the score the operator just edited."""
-    config = load_scoring_config()
+def _scored_openings(
+    conn: sqlite3.Connection, config: ScoringConfig
+) -> list[tuple[Opening, Company, OpeningScore]]:
+    """All openings scored with the same rulings the rating view uses, sorted by
+    standing descending. Shared by the queue template and the contested review session
+    so both see the same boundary."""
     scored: list[tuple[Opening, Company, OpeningScore]] = []
     for opening in list_openings(conn):
         company = _company_for(conn, opening)
@@ -197,8 +198,16 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
             dimension_rulings=dimension_rulings,
         )
         scored.append((opening, company, result))
+    scored.sort(key=lambda row: row[2].standing, reverse=True)
+    return scored
+
+
+def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
+    """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
+    config = load_scoring_config()
+    scored = _scored_openings(conn, config)
     scale_max = max((score.ceiling for _, _, score in scored), default=1.0)
-    items = [
+    return [
         {
             "opening_id": opening.id,
             "company_name": company.name,
@@ -208,13 +217,33 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
         }
         for opening, company, result in scored
     ]
-    items.sort(key=lambda item: item["standing"], reverse=True)
-    return items
+
+
+def _contested_queue_items(conn: sqlite3.Connection) -> list[str]:
+    """Opening ids ordered by descending P(rank crosses K), limited to openings that still
+    have rating work available. Empty when fewer than `top_k` openings: no K-th opening
+    means no boundary, so no crossing probability to order by. Also empty when none of
+    the contested openings have actionable rating tasks — their uncertainty is inherent
+    in the opportunity, not something the operator can resolve by rating."""
+    config = load_scoring_config()
+    scored = _scored_openings(conn, config)
+    if len(scored) < config.top_k:
+        return []
+    kth = scored[config.top_k - 1][2].standing_result
+    ordered = [
+        (opening.id, crossing_probability(result.standing_result, kth))
+        for opening, _, result in scored
+        if _opening_leverage(conn, opening, config) > 0
+    ]
+    ordered.sort(key=lambda pair: pair[1], reverse=True)
+    return [opening_id for opening_id, _ in ordered]
 
 
 def _opening_leverage(conn: sqlite3.Connection, opening: Opening, config: ScoringConfig) -> float:
     """Aggregate rating leverage for one opening: sum of top `rating_task_budget` task
-    swings. Used to order the focused-session entry point across openings."""
+    swings. Orders "next opening" within a per-opening focus session (`focus_opening`) —
+    the only remaining consumer; the cross-opening entry point that used to rank the
+    whole backlog by this same number is gone."""
     assertions = assertions_for_opening(conn, opening.id)
     rulings = latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening.id))
     ruled_fits: dict[str, Fit] = {
@@ -245,14 +274,36 @@ def index(request: Request, conn: Conn) -> HTMLResponse:
     return templates.TemplateResponse(request, "queue.html", {"items": items})
 
 
-@router.get("/focus")
-def focus_session(request: Request, conn: Conn) -> RedirectResponse:
-    """Entry point for a focused rating session: redirect to the opening with the most
-    aggregate rating leverage, or back to the queue if nothing needs rating."""
-    ordered = _focus_queue_items(conn)
+@router.get("/contested")
+def contested_session(request: Request, conn: Conn) -> RedirectResponse:
+    """Entry point for a contested-boundary review session: redirect to the opening the
+    crossing-probability signal ranks first, or back to the queue if the boundary
+    doesn't exist."""
+    ordered = _contested_queue_items(conn)
     if not ordered:
         return RedirectResponse("/", status_code=302)
-    return RedirectResponse(f"/openings/{ordered[0]}/focus", status_code=302)
+    return RedirectResponse(f"/openings/{ordered[0]}/contested", status_code=302)
+
+
+@router.get("/openings/{opening_id}/contested", response_class=HTMLResponse)
+def contested_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
+    """The focused rating surface for one opening, wrapped in a contested-boundary
+    review session. Reuses the focused per-opening UI (filtered to high-leverage tasks)
+    but chains openings by the new crossing-probability signal, not the raw-swing order
+    used by `/focus`. The probability value itself is not rendered; only the order and
+    a next link are exposed."""
+    context = _focus_context_for_request(request, conn, opening_id)
+    ordered = _contested_queue_items(conn)
+    try:
+        idx = ordered.index(opening_id)
+    except ValueError:
+        idx = None
+    next_contested_id = ordered[idx + 1] if idx is not None and idx + 1 < len(ordered) else None
+    return templates.TemplateResponse(
+        request,
+        "rating.html",
+        {**context, "contested": True, "next_contested_id": next_contested_id},
+    )
 
 
 def _rating_context(

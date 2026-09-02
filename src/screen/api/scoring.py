@@ -7,10 +7,10 @@ without a database.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from screen.score.scorer import resolve_favourably, score
-from screen.score.types import ScoringConfig
+from screen.score.types import ScoreResult, ScoringConfig
 from screen.types import Assertion, AssertionRuling, DimensionRuling, Fit
 
 
@@ -20,6 +20,9 @@ class OpeningScore:
     reach: float
     ceiling: float
     unreachable: bool
+    # The full standing ScoreResult, not just its scalar: callers computing
+    # crossing-probability need the raw trace to compare against another opening's.
+    standing_result: ScoreResult = field(compare=False, repr=False)
 
 
 def score_opening(
@@ -42,6 +45,7 @@ def score_opening(
         reach=reach.standing,
         ceiling=standing.ceiling,
         unreachable=standing.unreachable,
+        standing_result=standing,
     )
 
 

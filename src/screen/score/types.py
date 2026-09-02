@@ -48,6 +48,7 @@ class ScoringConfig:
     dimension_ruling_hw_max: float
     dimension_ruling_hw_min: float
     rating_task_budget: int
+    top_k: int
 
     @property
     def total_weight(self) -> int:

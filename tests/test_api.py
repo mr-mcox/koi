@@ -188,3 +188,82 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
     assert score_response["reach"] == pytest.approx(queue_item["reach"])
     assert score_response["ceiling"] == pytest.approx(queue_item["ceiling"])
     assert score_response["unreachable"] == queue_item["unreachable"]
+
+
+def test_queue_includes_crossing_probability_when_enough_openings(
+    client: TestClient, db_path: Path
+) -> None:
+    """With at least `top_k` openings, every queue item carries a
+    `crossing_probability` computed against the K-th-ranked opening's trace under the
+    shared `config.seed`. `scoring.yaml`'s real `top_k` is 10; seed exactly that many
+    openings at strictly decreasing standing so rank K is unambiguous."""
+    config = load_scoring_config()
+    for i in range(config.top_k):
+        assertions = [
+            Assertion(
+                target=slug,  # type: ignore[arg-type]
+                fit="Strong" if i == 0 else "Poor",
+                provenance="ratified",
+                chunk="verbatim source text",
+                citations=[_CITATION],
+                created_at=_NOW,
+            )
+            for slug in (*config.dimension_weights, *config.constraints)
+        ]
+        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
+
+    response = client.get("/queue")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == config.top_k
+    for item in body:
+        assert "crossing_probability" in item
+        assert 0.0 <= item["crossing_probability"] <= 1.0
+    # The K-th-ranked opening (last in the sorted list) always crosses itself.
+    assert body[-1]["crossing_probability"] == pytest.approx(0.0)
+
+
+def test_queue_omits_crossing_probability_when_fewer_than_top_k(
+    client: TestClient, db_path: Path
+) -> None:
+    """Fewer than `top_k` openings: no K-th opening exists, so `crossing_probability`
+    is omitted rather than defaulting to 0 or 1 — a small backlog isn't "everyone
+    stable," it's "the boundary doesn't exist yet." """
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.get("/queue")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["crossing_probability"] is None
+
+
+def test_queue_crossing_probability_is_deterministic_across_calls(
+    client: TestClient, db_path: Path
+) -> None:
+    """Two `/queue` calls against the same DB snapshot return identical
+    `crossing_probability` values — both draw under the shared `config.seed`, so this
+    is reproducibility, not sampling noise."""
+    config = load_scoring_config()
+    for i in range(config.top_k):
+        assertions = [
+            Assertion(
+                target=slug,  # type: ignore[arg-type]
+                fit="Strong" if i == 0 else "Poor",
+                provenance="ratified",
+                chunk="verbatim source text",
+                citations=[_CITATION],
+                created_at=_NOW,
+            )
+            for slug in (*config.dimension_weights, *config.constraints)
+        ]
+        _seed_opening(db_path, company_id=f"d{i}", opening_id=f"d{i}--eng", assertions=assertions)
+
+    first = client.get("/queue").json()
+    second = client.get("/queue").json()
+
+    assert [item["crossing_probability"] for item in first] == [
+        item["crossing_probability"] for item in second
+    ]

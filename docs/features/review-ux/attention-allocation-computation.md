@@ -11,9 +11,10 @@ scouting: ./attention-allocation-scouting.md
 
 ## Problem
 
-Compute and expose `P(rank crosses K)` per opening, and retire the raw-swing `/focus`
-entry point it replaces. Display is a separate leaf — this one is the stable, testable
-math and wiring. Terrain: [attention-allocation-scouting.md](./attention-allocation-scouting.md).
+Compute and expose `P(rank crosses K)` per opening, retire the raw-swing `/focus`
+entry point it replaces, and provide a minimal UI entrance so the operator can manually
+validate the signal on live data. Display is a separate leaf — this one is the stable,
+testable math and wiring. Terrain: [attention-allocation-scouting.md](./attention-allocation-scouting.md).
 
 ## Done When
 
@@ -40,6 +41,15 @@ math and wiring. Terrain: [attention-allocation-scouting.md](./attention-allocat
       point) are removed
 - [ ] Existing JSON `/queue` and per-opening rating tests otherwise pass unmodified (→
       scouting F16)
+- [ ] A minimal UI entrance lets the operator start a session ordered by the new
+      crossing-probability signal, so it can be validated on live data without waiting
+      for the display leaf. The probability value itself is not rendered — only the
+      order and a "next" link. The session reuses the focused per-opening UI (filtered
+      to high-leverage tasks) but chains openings by the crossing-probability ordering;
+      it skips openings with no remaining rating tasks, since their uncertainty is
+      inherent in the opportunity (wide prior / saturated evidence) and not actionable by
+      rating. The raw-swing `/openings/{id}/focus` route and its next-link ordering
+      remain untouched.
 
 ## Approach
 
@@ -50,13 +60,20 @@ math and wiring. Terrain: [attention-allocation-scouting.md](./attention-allocat
   comparison lives in `screen/score/` alongside `triage.py` as a sibling pure function,
   or in the route layer if it turns out to need no state beyond two `ScoreResult`s
   (open space — implementer's call, mirrors `triage.py`'s existing seam)
+- The manual-test entrance is a thin route-layer redirect + per-opening chaining link,
+  mirroring the old `/focus` redirect shape but ordering by crossing probability instead
+  of raw swing. It reuses the existing focused rating page template with a new mode flag
+  so the focus-mode rendering is not disturbed, and it skips openings with no remaining
+  rating tasks — if the uncertainty is inherent in the opportunity (wide prior, saturated
+  evidence), there is nothing for the operator to rate there (open space)
 - `top_k` lives in `scoring.yaml` next to `bar`/`rating_task_budget`, same
   unmeasured-placeholder status (→ scoring.yaml precedent)
 
 ## Not Doing
 
-- Any display change to `queue.html` beyond removing the two `focus` links — the glyph
-  for the new value is the sibling display leaf's job
+- Any display change to `queue.html` beyond removing the two `focus` links and adding a
+  single new entrance link — the glyph/value for the new signal is the sibling display
+  leaf's job
 - A pairwise or resampled multi-opening boundary comparison (→ scouting F30, F33)
 - Touching `rating_task_candidates`, `_swing`, or anything under `triage.py` — those
   remain the within-opening rating-VOI mechanism, untouched by this leaf

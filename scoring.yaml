@@ -56,3 +56,8 @@ dimension_ruling:
 # cost" that keeps attention on one opening instead of spreading across a dozen half-rated
 # ones. Unmeasured placeholder, same status as bar/bands above.
 rating_task_budget: 4
+
+# Attention allocation. The queue's competitive cutoff: the operator applies to
+# roughly the top K openings each week. K≈10 today and expected to grow with
+# capacity — unmeasured placeholder, same status as bar/rating_task_budget above.
+top_k: 10

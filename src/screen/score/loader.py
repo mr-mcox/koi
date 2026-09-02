@@ -67,4 +67,5 @@ def load_scoring_config(
         dimension_ruling_hw_max=float(scoring["dimension_ruling"]["hw_max"]),
         dimension_ruling_hw_min=float(scoring["dimension_ruling"]["hw_min"]),
         rating_task_budget=int(scoring["rating_task_budget"]),
+        top_k=int(scoring["top_k"]),
     )

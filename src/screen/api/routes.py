@@ -20,6 +20,7 @@ from screen.api.scoring import (
     latest_ruling_by_assertion,
     score_opening,
 )
+from screen.score.boundary import crossing_probability
 from screen.score.loader import load_scoring_config
 from screen.store.repo import (
     assertion_rulings_for_opening,
@@ -45,9 +46,16 @@ class ScoreResponse(BaseModel):
     reach: float
     ceiling: float
     unreachable: bool
+    crossing_probability: float | None = None
 
 
-def _to_response(company: Company, opening: Opening, result: OpeningScore) -> ScoreResponse:
+def _to_response(
+    company: Company,
+    opening: Opening,
+    result: OpeningScore,
+    *,
+    crossing_probability: float | None = None,
+) -> ScoreResponse:
     return ScoreResponse(
         opening_id=opening.id,
         company_id=company.id,
@@ -57,6 +65,7 @@ def _to_response(company: Company, opening: Opening, result: OpeningScore) -> Sc
         reach=result.reach,
         ceiling=result.ceiling,
         unreachable=result.unreachable,
+        crossing_probability=crossing_probability,
     )
 
 
@@ -87,7 +96,7 @@ def get_opening_score(opening_id: str, conn: Conn) -> ScoreResponse:
 @router.get("/queue", response_model=list[ScoreResponse])
 def get_queue(conn: Conn) -> list[ScoreResponse]:
     config = load_scoring_config()
-    items = []
+    scored: list[tuple[Opening, Company, OpeningScore]] = []
     for opening in list_openings(conn):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
@@ -106,7 +115,28 @@ def get_queue(conn: Conn) -> list[ScoreResponse]:
             rulings=ruled_fits,
             dimension_rulings=dimension_rulings,
         )
-        items.append(_to_response(company, opening, result))
+        scored.append((opening, company, result))
     # Standing is the only sort key (S5 · reach never sorts).
-    items.sort(key=lambda item: item.standing, reverse=True)
-    return items
+    scored.sort(key=lambda row: row[2].standing, reverse=True)
+
+    # Rank K's identity is a property of this sorted list, computed once per request
+    # under the shared config.seed. Fewer than top_k openings means no K-th opening
+    # exists, so crossing_probability stays None rather than defaulting to 0 or 1 — a
+    # small backlog isn't "everyone stable," it's "the boundary doesn't exist yet."
+    kth_result = (
+        scored[config.top_k - 1][2].standing_result if len(scored) >= config.top_k else None
+    )
+
+    return [
+        _to_response(
+            company,
+            opening,
+            result,
+            crossing_probability=(
+                crossing_probability(result.standing_result, kth_result)
+                if kth_result is not None
+                else None
+            ),
+        )
+        for opening, company, result in scored
+    ]

@@ -1184,106 +1184,6 @@ def test_focus_opening_stable_task_set_survives_multiple_submissions(
     assert '<h3 class="dimension-title">domain</h3>' in after_b.text
 
 
-def test_focus_redirect_to_highest_leverage_opening(client: TestClient, db_path: Path) -> None:
-    """`GET /focus` redirects to the focused view of the opening with the most aggregate
-    rating leverage (largest sum of top budgeted task swings)."""
-    # low leverage: one dimension, already ratified -> narrow, low swing
-    low = Assertion(
-        target="domain",
-        fit="Strong",
-        provenance="ratified",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    # high leverage: one dimension, model_proposed -> wide, high swing
-    high = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="low", opening_id="low--eng", assertions=[low])
-    _seed_opening(db_path, company_id="high", opening_id="high--eng", assertions=[high])
-
-    response = client.get("/focus", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/openings/high--eng/focus"
-
-
-def test_focus_redirect_skips_fully_rated_openings(client: TestClient, db_path: Path) -> None:
-    """`GET /focus` skips openings with no unrated tasks and picks the first one that still
-    has rating work available."""
-    rated = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="ratified",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=[rated])
-    conn = connect(db_path)
-    (a,) = assertions_for_opening(conn, "done--eng")
-    upsert_assertion_ruling(
-        conn,
-        AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
-    )
-    unrated = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="todo", opening_id="todo--eng", assertions=[unrated])
-
-    response = client.get("/focus", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/openings/todo--eng/focus"
-
-
-def test_focus_redirect_falls_back_to_queue_when_all_rated(
-    client: TestClient, db_path: Path
-) -> None:
-    """`GET /focus` with no remaining rating work redirects back to the queue."""
-    rated = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="ratified",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=[rated])
-    conn = connect(db_path)
-    (a,) = assertions_for_opening(conn, "done--eng")
-    upsert_assertion_ruling(
-        conn,
-        AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
-    )
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="done--eng",
-            target="stretch",
-            mean=1.0,
-            settledness=1.0,
-            created_at=_NOW,
-        ),
-    )
-
-    response = client.get("/focus", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/"
-
-
 def test_focus_view_shows_next_opening_link(client: TestClient, db_path: Path) -> None:
     """The focused view for an opening includes a link to the next opening in leverage
     order, so the operator can continue the session without returning to the queue."""
@@ -1454,3 +1354,137 @@ def test_focus_opening_context_assertions_under_dimension_task_are_collapsible(
     assert "provenance-glyph" in first_summary
     assert 'class="fit-indicator"' in first_summary
     assert "fit-static" not in first_summary
+
+
+def test_index_renders_contested_review_link(client: TestClient, db_path: Path) -> None:
+    """The queue page exposes a manual-testing entrance to the new
+    crossing-probability ordering, without displaying the numeric value."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Start contested review" in response.text
+    assert 'href="/contested"' in response.text
+
+
+def test_contested_redirect_to_highest_crossing_probability_opening(
+    client: TestClient, db_path: Path
+) -> None:
+    """`GET /contested` redirects to the opening with the highest crossing probability,
+    which is the highest-standing opening under deterministic seeding."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k):
+        poor_target = targets[0] if i > 0 else None
+        assertions = [
+            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
+        ]
+        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
+
+    response = client.get("/contested", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/openings/c0--eng/contested"
+
+
+def test_contested_redirect_falls_back_to_queue_when_fewer_than_top_k(
+    client: TestClient, db_path: Path
+) -> None:
+    """With fewer than `top_k` openings there is no K-th boundary, so the session
+    entry point falls back to the queue rather than defaulting an ordering."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.get("/contested", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
+def test_contested_per_opening_shows_next_link(client: TestClient, db_path: Path) -> None:
+    """A contested review session chains through openings ordered by the signal, without
+    rendering the probability value. It reuses the focused per-opening UI so the operator
+    sees only the high-leverage tasks worth rating."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k):
+        poor_target = targets[0] if i > 0 else None
+        assertions = [
+            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
+        ]
+        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
+
+    response = client.get("/openings/c0--eng/contested")
+
+    assert response.status_code == 200
+    assert "Next contested opening" in response.text
+    assert 'href="/openings/' in response.text
+    assert '/contested"' in response.text
+    # Focused UI: the page carries the stable-task-set snapshot and submits via focus=1.
+    assert 'name="focus_snapshot_assertion_ids"' in response.text
+    assert 'name="focus_snapshot_dimension_targets"' in response.text
+    assert '?focus=1"' in response.text
+
+
+def test_contested_per_opening_last_shows_back_to_queue(client: TestClient, db_path: Path) -> None:
+    """The last opening in the contested ordering offers a link back to the queue."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k):
+        poor_target = targets[0] if i > 0 else None
+        assertions = [
+            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
+        ]
+        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
+
+    response = client.get(f"/openings/c{config.top_k - 1}--eng/contested")
+
+    assert response.status_code == 200
+    assert "Back to queue" in response.text
+
+
+def test_contested_session_skips_openings_with_no_rating_tasks(
+    client: TestClient, db_path: Path
+) -> None:
+    """A contested opening with no remaining rating tasks has nothing for the operator
+    to evaluate there — the uncertainty is inherent in the opportunity, not actionable
+    by rating — so the session skips it even if its crossing probability is high."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+
+    def _strong() -> list[Assertion]:
+        return [_assertion(slug, "Strong") for slug in targets]
+
+    # Fully ruled/pinned: highest standing but no rating tasks left.
+    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=_strong())
+    conn = connect(db_path)
+    for a in assertions_for_opening(conn, "done--eng"):
+        upsert_assertion_ruling(
+            conn,
+            AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
+        )
+    for target in targets:
+        upsert_dimension_ruling(
+            conn,
+            DimensionRuling(
+                opening_id="done--eng",
+                target=target,
+                mean=1.0,
+                settledness=1.0,
+                created_at=_NOW,
+            ),
+        )
+    conn.close()
+
+    # Same evidence but unruled: second-highest standing and has rating tasks.
+    _seed_opening(db_path, company_id="active", opening_id="active--eng", assertions=_strong())
+
+    # Fill the rest of the queue so the boundary exists.
+    for i in range(config.top_k - 2):
+        poor = [_assertion(slug, "Poor") for slug in targets]
+        _seed_opening(db_path, company_id=f"f{i}", opening_id=f"f{i}--eng", assertions=poor)
+
+    response = client.get("/contested", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/openings/active--eng/contested"
