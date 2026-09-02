@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-01
 commit: b071c22
 branch: main
-status: implementing
+status: done
 parent: ./attention-allocation.md
 scouting: ./attention-allocation-scouting.md
 ---
@@ -18,18 +18,18 @@ testable math and wiring. Terrain: [attention-allocation-scouting.md](./attentio
 
 ## Done When
 
-- [ ] A pure function `(ScoreResult, kth_result) -> float` returns the fraction of samples
+- [x] A pure function `(ScoreResult, kth_result) -> float` returns the fraction of samples
       where the opening's `overall` trace exceeds the K-th-ranked opening's `overall`
       trace — test: for two synthetic `ScoreResult`s built from disjoint trace ranges, the
       function returns 0.0 or 1.0; for overlapping ranges, a mid-range value (→ scouting
       F33)
-- [ ] `top_k` is a named value in `scoring.yaml`, not a literal (→ scoring.yaml precedent,
+- [x] `top_k` is a named value in `scoring.yaml`, not a literal (→ scoring.yaml precedent,
       AGENTS.md "measure before model")
-- [ ] The JSON `/queue` route includes the crossing-probability value per opening,
+- [x] The JSON `/queue` route includes the crossing-probability value per opening,
       computed against the current queue's K-th-ranked opening under the shared
       `config.seed` — test: two calls against the same DB snapshot return identical values
       (→ scouting F33, F16)
-- [ ] `_focus_queue_items`, `_opening_leverage`, the `/focus` redirect route, and
+- [x] `_focus_queue_items`, `_opening_leverage`, the `/focus` redirect route, and
       `queue.html`'s "Start focused rating session" link are removed — the raw-swing
       cross-opening ranking they implement is superseded by the crossing-probability
       signal (→ scouting F26, F28). The per-opening `/openings/{id}/focus` route,
@@ -39,9 +39,9 @@ testable math and wiring. Terrain: [attention-allocation-scouting.md](./attentio
       `test_focus_opening_shows_only_budgeted_tasks` and sibling per-opening focus tests
       still pass unmodified; only the `test_focus_redirect_*` tests (cross-opening entry
       point) are removed
-- [ ] Existing JSON `/queue` and per-opening rating tests otherwise pass unmodified (→
+- [x] Existing JSON `/queue` and per-opening rating tests otherwise pass unmodified (→
       scouting F16)
-- [ ] A minimal UI entrance lets the operator start a session ordered by the new
+- [x] A minimal UI entrance lets the operator start a session ordered by the new
       crossing-probability signal, so it can be validated on live data without waiting
       for the display leaf. The probability value itself is not rendered — only the
       order and a "next" link. The session reuses the focused per-opening UI (filtered
