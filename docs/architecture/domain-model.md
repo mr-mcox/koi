@@ -104,8 +104,7 @@ the Q3 meters). The contract, amending the prototype's D14 for its O6 defect:
 
 A **versioned entity, not config**. Dimension definitions whose text is load-bearing —
 sliced verbatim into research prompts and review screens, so proposal and review are judged
-against identical words. Weights, constraint tolerability ranges, the dials (`bar`, band
-thresholds), and configured action costs. **Every change carries a reason; the change log is
+against identical words. Weights, constraint tolerability ranges, the dials (`bar`), and configured action costs. **Every change carries a reason; the change log is
 the dimension-stability instrument** (the prototype's Q2/Q5).
 
 The compensation baseline and the operator's extended résumé are **private config**,
@@ -114,7 +113,7 @@ injected at runtime, never committed (D23).
 ### Scorer
 
 A pure domain service: `(assertions, rubric) → per-target distributions → Monte Carlo trace
-→ standing, reach, ceiling, band`. Stateless, deterministic given a seed. The trace is the
+→ standing, reach, ceiling`. Stateless, deterministic given a seed. The trace is the
 source of truth — standing, hits, and sampling noise are computed from it on read, not
 stored as separately-frozen fields that could drift out of agreement with it.
 
@@ -132,12 +131,12 @@ Scorer's (see Ruling, below).
 `standing` and `reach` are not two fields of one result — they are the same result type
 scored against two different assertion sets. `standing` scores the assertions as they
 actually exist; `reach` scores a counterfactual where every unexamined target has received
-one hypothetical good research pass. Comparing the two pairs is what names the band
-(D20, D21): `standing` is the only sort key; `reach` never sorts (it saturates — an empty
+one hypothetical good research pass. Comparing the two numbers describes how much room
+remains: `standing` is the only sort key; `reach` never sorts (it saturates — an empty
 record out-reaches a researched good one); the cliff is analytic, not sampled; within-noise
 neighbors are marked as such.
 
-Implemented in `src/screen/score/` (`types.py`, `scorer.py`, `band.py`, `loader.py`),
+Implemented in `src/screen/score/` (`types.py`, `scorer.py`, `loader.py`),
 verified against real seed data.
 One open tension surfaced during implementation: constraints (location, internal_culture,
 extractive_business) are scored by affine-mapping an assertion's `Fit` onto the
@@ -182,7 +181,7 @@ The product is **ranking plus routing** — signal through noise, most promising
 a to-do generator. Three thin pieces:
 
 - **Queue** — a projection, not an entity. Live and over-the-cliff sections; standing/reach
-  band pair; sampling-noise marks; "what changed since you last looked" (re-entry is the
+  pair; sampling-noise marks; "what changed since you last looked" (re-entry is the
   primary mode); reorder lenses for urgency and obtainability.
 - **ResearchQueue** — proposed research targets ranked by value of information, where VOI
   means *"would knowing this change what happens to this opening"* rather than "how far does
@@ -221,7 +220,7 @@ tool.
 3. **Non-scoring targets never enter standing.** Obtainability multiplied in cost 14–21×
    in the tail and put every cold-apply company over the cliff (D24's measurement) — and it
    is the one axis an *action changes*, so scoring it inverts the exploration incentive.
-4. **Precision ranks; bands display.** A single review must never produce "6.7/10."
+4. **Precision ranks; displays avoid false precision.** A single review must never produce "6.7/10."
 5. **Unexamined ≠ clean, everywhere including display wording.** "Wide because negotiable"
    and "wide because nobody looked" never share a label.
 6. **Assertions are append-only; rubric changes carry reasons.**
@@ -232,7 +231,7 @@ tool.
 ## Steel thread, and the increments after it
 
 **Thread:** one Opening at a new Company, entered by link → one ResearchPass writes
-Assertions at both levels → Scorer produces a band from provenance-widened distributions →
+Assertions at both levels → Scorer produces a standing/reach pair from provenance-widened distributions →
 the operator rules on a handful of entries → re-score shows ratification narrowing → the
 queue reflects it. This exercises the three novel decisions (company/opening split,
 provenance-as-variance, pass contract) before anything is layered on them.
@@ -245,5 +244,5 @@ and the Inbox → PrecedentLookup (needs corpus volume) → intake adapters → 
 - Provenance-variance calibration: the actual widths per rung.
 - Rung count and anchor placement (the plane clusters say three fit buckets may be wrong).
 - Rise-above-the-noise: collected now, modeled only if a later stage needs approach-EV.
-- Band thresholds and `bar`: placeholders set off eleven observations, seven synthetic.
+- `bar`: placeholder set off eleven observations, seven synthetic.
 - Whether organizational pace earns its own dimension (folded into Stretch provisionally).

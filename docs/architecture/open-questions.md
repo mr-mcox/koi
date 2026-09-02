@@ -83,14 +83,14 @@ half already moved *into* Stretch, so the boundary may move again.
 **Settled by:** later-stage need. If the holding area / application stages never miss it,
 it stays collect-only.
 
-## 9 · Dials: `bar`, band thresholds, tolerability ranges
+## 9 · Dials: `bar` and tolerability ranges
 
 All placeholders set off eleven observations, seven synthetic. The current bar makes
 "heavy, not fatal" constraints fatal — accepted knowingly (lots of fish), and it resolves
 the moment `bar` moves.
 
-**Settled by:** batch ranking over a real queue. If the live section is empty or
-everything's a contender, the dials move — the model's shape doesn't.
+**Settled by:** batch ranking over a real queue. If the live section is empty or nothing
+stands above the bar, the dials move — the model's shape doesn't.
 
 ## 10 · Lightweight vs. heavy screening at intake
 

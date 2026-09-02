@@ -35,18 +35,6 @@ class ConstraintRange:
 
 
 @dataclass(frozen=True)
-class Bands:
-    """Queue band thresholds (S5 · The queue reads a standing/reach pair; reach never sorts,
-    docs/architecture/decisions.md). Ported from the prototype's `config.toml` — see
-    `scoring.yaml` and open-questions.md OQ9."""
-
-    reach_wide: float
-    reach_capped: float
-    contender: float
-    settled: float
-
-
-@dataclass(frozen=True)
 class ScoringConfig:
     """Everything the Scorer needs, pre-loaded. No I/O happens past this point —
     `screen.score.loader` is where `rubric.yaml`/`scoring.yaml` get read."""
@@ -55,7 +43,6 @@ class ScoringConfig:
     seed: int
     samples: int
     provenance_weight: dict[Provenance, float]
-    bands: Bands
     dimension_weights: dict[str, int]
     constraints: dict[str, ConstraintRange]
     dimension_ruling_hw_max: float

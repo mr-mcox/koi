@@ -287,8 +287,12 @@ def test_index_queue_no_raw_floats_and_renders_lollipop(client: TestClient, db_p
     assert f"{ceiling:.3f}" not in body
     assert "sparkline" in body
 
+    assert "band-" not in body
+    assert "chip band" not in body
+    for label in ("no path", "contender", "established", "capped", "wide open"):
+        assert label not in body
     row_match = re.search(
-        r'<li[^>]*class="[^"]*band-[^"]*"[^>]*>.*?acme--eng title.*?</li>',
+        r"<li[^>]*>.*?acme--eng title.*?</li>",
         body,
         re.DOTALL,
     )
@@ -347,6 +351,10 @@ def test_rate_opening_score_block_no_raw_floats_and_renders_lollipop(
     assert f"{reach:.3f}" not in body
     assert f"{ceiling:.3f}" not in body
     assert "sparkline" in body
+    assert "band-" not in body
+    assert "chip band" not in body
+    for label in ("no path", "contender", "established", "capped", "wide open"):
+        assert label not in body
 
     standing_pct, reach_pct, ceiling_pct, range_left, range_right = _lollipop_positions(body)
     assert standing_pct == pytest.approx(standing / scale_max, abs=0.01)

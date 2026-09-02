@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-from screen.score.types import Bands, ConstraintRange, ScoringConfig
+from screen.score.types import ConstraintRange, ScoringConfig
 from screen.types import Provenance
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -62,12 +62,6 @@ def load_scoring_config(
         seed=int(scoring["seed"]),
         samples=int(scoring["samples"]),
         provenance_weight=provenance_weight,
-        bands=Bands(
-            reach_wide=float(scoring["bands"]["reach_wide"]),
-            reach_capped=float(scoring["bands"]["reach_capped"]),
-            contender=float(scoring["bands"]["contender"]),
-            settled=float(scoring["bands"]["settled"]),
-        ),
         dimension_weights=dimension_weights,
         constraints=constraints,
         dimension_ruling_hw_max=float(scoring["dimension_ruling"]["hw_max"]),

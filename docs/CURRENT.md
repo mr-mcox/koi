@@ -1,1 +1,1 @@
-docs/features/review-ux/band-label-clarity.md
+docs/features/review-ux/attention-allocation-scouting.md

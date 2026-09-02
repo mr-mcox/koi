@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 import pytest
 
 from screen.api.scoring import score_opening
-from screen.score.band import band_for
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import resolve_favourably, score
 from screen.score.types import ScoringConfig
@@ -40,19 +39,17 @@ def config() -> ScoringConfig:
 
 
 def test_score_opening_matches_direct_scorer_calls(config: ScoringConfig) -> None:
-    """`score_opening`'s standing/reach/band must equal calling `score`/
-    `resolve_favourably`/`band_for` directly with the same config — this module
-    is a fixed recipe, not a second computation of the same numbers."""
+    """`score_opening`'s standing/reach/ceiling/unreachable must equal calling `score` and
+    `resolve_favourably` directly with the same config — this module is a fixed recipe,
+    not a second computation of the same numbers."""
     assertions = [_assertion("stretch", "Strong"), _assertion("location", "Strong")]
 
     result = score_opening(assertions, config)
 
     expected_standing = score(assertions, config)
     expected_reach = score(resolve_favourably(assertions, config), config)
-    expected_band = band_for(expected_standing, expected_reach, config.bands)
     assert result.standing == pytest.approx(expected_standing.standing)
     assert result.reach == pytest.approx(expected_reach.standing)
-    assert result.band == expected_band
     assert result.ceiling == pytest.approx(expected_standing.ceiling)
     assert result.unreachable == expected_standing.unreachable
 

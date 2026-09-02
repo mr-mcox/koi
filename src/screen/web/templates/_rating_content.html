@@ -1,7 +1,6 @@
 <div id="rating-content">
 {% from "_sparkline.html" import sparkline as sparkline_macro %}
   <section class="score-summary">
-    <span class="chip band-{{ score.band.replace(' ', '-') }}">{{ score.band }}</span>
     {{ sparkline_macro(score_sparkline) }}
   </section>
   <h2>Dimensions</h2>

@@ -3,11 +3,11 @@
 # rubric.yaml owns dimension/constraint definitions and dimension weights (R4: rubric text
 # and weights are load-bearing, versioned). This file owns the Monte Carlo mechanics: `bar`
 # is explicitly called out in rubric.yaml as "a config value, not set here" (rubric.yaml
-# line ~137); band thresholds and provenance-rung widths are dials expected to move with use,
-# not decisions worth a version bump each time they're retuned.
+# line ~137); provenance-rung widths are dials expected to move with use, not decisions
+# worth a version bump each time they're retuned.
 #
-# See docs/architecture/open-questions.md OQ1 (provenance-rung widths) and OQ9
-# (bar/band thresholds) — everything below is a named placeholder, not a measurement.
+# See docs/architecture/open-questions.md OQ1 (provenance-rung widths). Everything below is a
+# named placeholder, not a measurement.
 
 # The queue sorts on P(overall > bar). `overall` lives in [0, 1].
 bar: 0.60
@@ -41,21 +41,12 @@ provenance_weight:
   precedent_matched: 3.0
   ratified: 8.0
 
-# Queue band thresholds (S5, docs/architecture/decisions.md). Ported directly from the
-# prototype's config.toml — a settled placeholder, not unmeasured (OQ9): expected to move
-# with real ranking use, same as `bar`.
-bands:
-  reach_wide: 0.50
-  reach_capped: 0.05
-  contender: 0.15
-  settled: 0.02
-
 # DimensionRuling half-width bounds (review-ux/dimension-ruling bearing). The operator's
 # `settledness` (0 = loose opinion, 1 = strongest stated conviction) maps to half_width via
 #     half_width = hw_max - settledness * (hw_max - hw_min)
 # — rising conviction narrows the distribution but never to a point estimate (hw_min > 0):
 # the operator may be noisy even at maximum stated confidence. Unmeasured placeholders,
-# same status as bar/bands above.
+# same status as bar above.
 dimension_ruling:
   hw_max: 1.0
   hw_min: 0.05

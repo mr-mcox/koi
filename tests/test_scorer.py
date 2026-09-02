@@ -1,9 +1,8 @@
 """Acceptance tests for the Scorer (docs/architecture/domain-model.md, Scorer section).
-
-Runs the pure `score`/`resolve_favourably`/`band_for` functions against synthetic
-assertions covering every scoring target and constraint — chosen over reading real seed
-data so this suite doesn't depend on an uncommitted, gitignored `data/` directory sticking
-around in its current shape.
+Runs the pure `score`/`resolve_favourably` functions against synthetic assertions covering
+every scoring target and constraint — chosen over reading real seed data so this suite
+doesn't depend on an uncommitted, gitignored `data/` directory sticking around in its
+current shape.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from screen.score.band import band_for
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import resolve_favourably, score, unexamined_targets
 from screen.score.types import ScoringConfig
@@ -68,7 +66,6 @@ def config() -> ScoringConfig:
 def test_scores_partially_researched_opening(config: ScoringConfig) -> None:
     standing = score(PARTIALLY_RESEARCHED, config)
     reach = score(resolve_favourably(PARTIALLY_RESEARCHED, config), config)
-    band = band_for(standing, reach, config.bands)
 
     assert 0.0 <= standing.standing <= 1.0
     assert 0.0 <= reach.standing <= 1.0
@@ -76,7 +73,6 @@ def test_scores_partially_researched_opening(config: ScoringConfig) -> None:
     # help or leave the pair unchanged (S5, docs/architecture/decisions.md).
     assert reach.standing >= standing.standing - 1e-9
     assert standing.ceiling <= 1.0
-    assert band in {"no path", "contender", "established", "capped", "wide open"}
     # Every target here has counted evidence, so reach has nothing left to resolve.
     assert unexamined_targets(PARTIALLY_RESEARCHED, config) == []
     assert reach.standing == pytest.approx(standing.standing)
@@ -95,7 +91,6 @@ def test_scores_fully_unexamined(config: ScoringConfig) -> None:
     unexamined prior; this must produce a valid result, not an error."""
     standing = score([], config)
     reach = score(resolve_favourably([], config), config)
-    band = band_for(standing, reach, config.bands)
 
     assert 0.0 <= standing.standing <= 1.0
     assert unexamined_targets([], config) == [
@@ -107,7 +102,6 @@ def test_scores_fully_unexamined(config: ScoringConfig) -> None:
     # partially-researched opening, which is the counter-intuitive-but-correct behavior the
     # prototype measured directly (docs/architecture/prototype-decisions.md D21).
     assert reach.standing >= standing.standing
-    assert band in {"no path", "contender", "established", "capped", "wide open"}
 
 
 def test_non_scoring_target_excluded(config: ScoringConfig) -> None:

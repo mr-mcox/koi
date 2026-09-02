@@ -67,8 +67,7 @@ at the top of its support) is at or below the bar. "No sample cleared" and "no s
 ### S5 · The queue reads a standing/reach pair; reach never sorts · `demonstrated` (D21)
 
 `standing` = P(> bar) now, the only sort key. `reach` = P(> bar) after one good pass on
-every unexamined target; it names the band (wide open / capped / no path / contender /
-established) and collapses to standing at full coverage. **Reach saturates — an empty
+every unexamined target; it describes the remaining upside and collapses to standing at full coverage. **Reach saturates — an empty
 record (0.971) out-reaches a researched good company (0.721) — honest as a statement,
 nonsense as an ordering.** Rejected, all measured: pessimistic twin (all zeros), q50 bands
 (conflates bad with unknown), ceiling bands (no resolution), rank-relative bands (fake
@@ -76,7 +75,7 @@ precision).
 
 ### S6 · Precision ranks; bands display · `demonstrated` (D10)
 
-Distributions drive ranking. The UI shows bands and coarse probability, never decimals — a
+Distributions drive ranking. The UI shows sparklines and coarse probability, never decimals — a
 single aggregator review must not produce "6.7/10." Corollary from real use: "wide because
 negotiable" and "wide because unexamined" must never share a display label.
 

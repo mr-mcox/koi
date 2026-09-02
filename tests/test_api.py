@@ -105,7 +105,6 @@ def test_opening_score_matches_direct_scorer_call(client: TestClient, db_path: P
     expected = score([assertion], load_scoring_config())
     assert body["standing"] == pytest.approx(expected.standing)
     assert body["ceiling"] == pytest.approx(expected.ceiling)
-    assert body["band"] in {"no path", "contender", "established", "capped", "wide open"}
 
 
 def test_queue_is_empty_when_no_openings_exist(client: TestClient) -> None:
@@ -187,6 +186,5 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
     queue_item = next(item for item in body if item["opening_id"] == "acme--ruled")
     assert score_response["standing"] == pytest.approx(queue_item["standing"])
     assert score_response["reach"] == pytest.approx(queue_item["reach"])
-    assert score_response["band"] == queue_item["band"]
     assert score_response["ceiling"] == pytest.approx(queue_item["ceiling"])
     assert score_response["unreachable"] == queue_item["unreachable"]

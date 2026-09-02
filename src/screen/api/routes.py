@@ -43,7 +43,6 @@ class ScoreResponse(BaseModel):
     opening_title: str
     standing: float
     reach: float
-    band: str
     ceiling: float
     unreachable: bool
 
@@ -56,7 +55,6 @@ def _to_response(company: Company, opening: Opening, result: OpeningScore) -> Sc
         opening_title=opening.title,
         standing=result.standing,
         reach=result.reach,
-        band=result.band,
         ceiling=result.ceiling,
         unreachable=result.unreachable,
     )

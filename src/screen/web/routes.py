@@ -203,7 +203,6 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
             "opening_id": opening.id,
             "company_name": company.name,
             "opening_title": opening.title,
-            "band": result.band,
             "sparkline": _sparkline_for_score(result, scale_max=scale_max),
             "standing": result.standing,
         }

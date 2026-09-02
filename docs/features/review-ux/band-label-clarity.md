@@ -4,7 +4,7 @@ type: bearing
 date: 2026-08-31
 commit: efe0c2d
 branch: main
-status: orienting
+status: done
 parent: ../review-ux/scouting.md
 scouting: ./sort-and-presentation-scouting.md
 ---
@@ -23,20 +23,20 @@ this session's conversation on S4.
 
 ## Done When
 
-- [ ] `band_for` and its `Band` return type are deleted entirely — no function anywhere
+- [x] `band_for` and its `Band` return type are deleted entirely — no function anywhere
       derives a categorical label (`no path`/`contender`/`established`/`capped`/`wide
       open`) from `standing`/`reach` — test: `band.py` no longer exists / exports nothing
       band-shaped (→ scouting F4, operator this session: "get rid of all of them")
-- [ ] The four cosmetic thresholds (`scoring.yaml`'s `bands.contender/settled/
+- [x] The four cosmetic thresholds (`scoring.yaml`'s `bands.contender/settled/
       reach_capped/reach_wide`) are removed from config — test: `ScoringConfig`/`Bands`
       carries no cosmetic threshold fields (→ scouting F4, F5)
-- [ ] No queue or rating-page row renders a band chip or band text of any kind — test:
+- [x] No queue or rating-page row renders a band chip or band text of any kind — test:
       rendered pages contain no `band-*` CSS class and no band label string (→ scouting F4)
-- [ ] `unreachable` remains a computed property on `ScoreResult` (S4: analytic ceiling, not
+- [x] `unreachable` remains a computed property on `ScoreResult` (S4: analytic ceiling, not
       sampled) and continues to gate whatever grouping/sorting already depends on it — only
       its *label* is deleted, not the computation (→ S4, operator this session: "keep it
       computed, stop rendering a categorical word for it")
-- [ ] `standing`/`reach`/`ceiling` remain computed and available wherever the sparkline
+- [x] `standing`/`reach`/`ceiling` remain computed and available wherever the sparkline
       glyph needs them; only band labels and their CSS/config are deleted (→ scouting F6)
 
 ## Approach
