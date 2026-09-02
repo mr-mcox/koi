@@ -30,15 +30,17 @@ h1, h2 {
 
 .queue .title {
   flex: 1;
+  color: inherit;
+  text-decoration: none;
+}
+
+.queue .title:hover {
+  text-decoration: underline;
 }
 
 .score {
   font-variant-numeric: tabular-nums;
   color: #666;
-}
-
-.rate-link {
-  font-size: 0.9rem;
 }
 
 .chip {
@@ -247,6 +249,7 @@ h1, h2 {
 .boundary-glyph {
   display: inline-block;
   width: 6rem;
+  flex: 0 0 auto;
   height: 0.75rem;
   position: relative;
   vertical-align: middle;

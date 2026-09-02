@@ -13,11 +13,11 @@
       <form class="dimension-ruling-form" action="/openings/{{ opening.id }}/dimensions/{{ group.target }}/ruling"
             method="post" hx-post="/openings/{{ opening.id }}/dimensions/{{ group.target }}/ruling{{ '?focus=1' if focus else '' }}"
             hx-target="#rating-content" hx-swap="outerHTML" hx-trigger="submit">
-        <div class="dimension-ruling-pad{% if group.ruling %} dimension-ruling-pin{% endif %}" role="button" tabindex="0"
         {% if focus %}
         <input type="hidden" name="focus_snapshot_assertion_ids" value="{{ focus_snapshot_assertion_ids_csv }}">
         <input type="hidden" name="focus_snapshot_dimension_targets" value="{{ focus_snapshot_dimension_targets_csv }}">
         {% endif %}
+        <div class="dimension-ruling-pad{% if group.ruling %} dimension-ruling-pin{% endif %}" role="button" tabindex="0"
              aria-label="pin fit and conviction for {{ group.target }}"
              data-mean="{{ group.ruling.mean if group.ruling else 0 }}"
              data-settledness="{{ group.ruling.settledness if group.ruling else 0 }}">

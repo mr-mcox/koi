@@ -7,10 +7,8 @@
   <ol class="queue">
     {% for item in items %}
     <li>
-      <span class="title">{{ item.company_name }} — {{ item.opening_title }}</span>
+      <a class="title" href="/openings/{{ item.opening_id }}/rate">{{ item.company_name }} — {{ item.opening_title }}</a>
       {{ boundary_glyph(item.glyph) }}
-      <a class="rate-link" href="/openings/{{ item.opening_id }}/rate">rate</a>
-      <a class="focus-link" href="/openings/{{ item.opening_id }}/focus">focus</a>
     </li>
     {% endfor %}
   </ol>
