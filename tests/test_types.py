@@ -286,6 +286,7 @@ def _dimension_ruling(**overrides: object) -> dict:  # type: ignore[type-arg]
         "mean": 0.5,
         "settledness": 0.8,
         "created_at": "2026-08-30T12:00:00Z",
+        "covered_assertion_ids": ["assertion-1", "assertion-2"],
     }
     base.update(overrides)
     return base
@@ -298,6 +299,14 @@ def test_dimension_ruling_round_trip_minimum_valid() -> None:
     assert ruling.target == "stretch"
     assert ruling.mean == 0.5
     assert ruling.settledness == 0.8
+    assert ruling.covered_assertion_ids == ["assertion-1", "assertion-2"]
+
+
+def test_dimension_ruling_covered_assertion_ids_defaults_empty() -> None:
+    raw = _dimension_ruling()
+    del raw["covered_assertion_ids"]
+    ruling = DimensionRuling.model_validate(raw)
+    assert ruling.covered_assertion_ids == []
 
 
 def test_dimension_ruling_is_frozen() -> None:

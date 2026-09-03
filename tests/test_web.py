@@ -833,6 +833,61 @@ def test_rate_opening_shows_existing_dimension_ruling_distinctly(
     assert "dimension-ruling-pin" in response.text
 
 
+def test_rate_opening_shows_stale_border_when_pin_has_uncovered_assertions(
+    client: TestClient, db_path: Path
+) -> None:
+    """A pin whose snapshot predates an assertion filed under its target renders the
+    stale border class, distinct from a fresh pin (dimension-ruling-drift bearing Done
+    When)."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--eng",
+            target="stretch",
+            mean=0.5,
+            settledness=0.8,
+            created_at=_NOW,
+            covered_assertion_ids=[],
+        ),
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert "dimension-ruling-pin-stale" in response.text
+
+
+def test_rate_opening_omits_stale_border_when_pin_covers_every_assertion(
+    client: TestClient, db_path: Path
+) -> None:
+    """A pin whose snapshot covers every assertion currently under its target is not
+    stale and does not render the stale border class."""
+    stretch = _assertion("stretch", "Strong")
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=[stretch])
+    conn = connect(db_path)
+    upsert_dimension_ruling(
+        conn,
+        DimensionRuling(
+            opening_id="acme--eng",
+            target="stretch",
+            mean=0.5,
+            settledness=0.8,
+            created_at=_NOW,
+            covered_assertion_ids=[stretch.id],
+        ),
+    )
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert "dimension-ruling-pin-stale" not in response.text
+
+
 def test_submit_dimension_ruling_writes_and_swaps_partial(
     client: TestClient, db_path: Path
 ) -> None:
@@ -861,6 +916,31 @@ def test_submit_dimension_ruling_writes_and_swaps_partial(
     assert rulings[0].target == "stretch"
     assert rulings[0].mean == 0.5
     assert rulings[0].settledness == 0.8
+
+
+def test_submit_dimension_ruling_stamps_covered_assertion_ids(
+    client: TestClient, db_path: Path
+) -> None:
+    """A pin snapshots the target's current assertion ids so later drift detection can
+    tell exactly which assertions were and weren't seen (bearing Done When)."""
+    stretch_assertions = [_assertion("stretch", "Strong"), _assertion("stretch", "Poor")]
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[*stretch_assertions, _assertion("internal_culture", "Strong")],
+    )
+
+    client.post(
+        "/openings/acme--eng/dimensions/stretch/ruling",
+        data={"mean": "0.5", "settledness": "0.8"},
+    )
+
+    conn = connect(db_path)
+    rulings = dimension_rulings_for_opening(conn, "acme--eng")
+    assert len(rulings) == 1
+    stretch_ids = {a.id for a in stretch_assertions}
+    assert set(rulings[0].covered_assertion_ids) == stretch_ids
 
 
 def test_submit_dimension_ruling_replaces_prior_pin_for_same_target(
@@ -979,10 +1059,18 @@ def test_focus_opening_hides_fully_ruled_dimensions(client: TestClient, db_path:
         assertions=[_assertion("stretch", "Strong")],
     )
     conn = connect(db_path)
+    (stretch_id,) = [
+        a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "stretch"
+    ]
     upsert_dimension_ruling(
         conn,
         DimensionRuling(
-            opening_id="acme--eng", target="stretch", mean=0.9, settledness=1.0, created_at=_NOW
+            opening_id="acme--eng",
+            target="stretch",
+            mean=0.9,
+            settledness=1.0,
+            created_at=_NOW,
+            covered_assertion_ids=[stretch_id],
         ),
     )
 
@@ -1503,6 +1591,9 @@ def test_contested_session_skips_openings_with_no_rating_tasks(
             AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
         )
     for target in targets:
+        covered_ids = [
+            a.id for a in assertions_for_opening(conn, "done--eng") if a.target == target
+        ]
         upsert_dimension_ruling(
             conn,
             DimensionRuling(
@@ -1511,6 +1602,7 @@ def test_contested_session_skips_openings_with_no_rating_tasks(
                 mean=1.0,
                 settledness=1.0,
                 created_at=_NOW,
+                covered_assertion_ids=covered_ids,
             ),
         )
     conn.close()

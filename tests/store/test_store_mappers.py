@@ -97,6 +97,19 @@ def test_dimension_ruling_round_trips_through_row() -> None:
         mean=0.5,
         settledness=0.8,
         created_at=_CREATED_AT,
+        covered_assertion_ids=["assertion-1", "assertion-2"],
+    )
+    row = dimension_ruling_to_row(ruling)
+    assert dimension_ruling_from_row(row) == ruling
+
+
+def test_dimension_ruling_round_trips_with_empty_covered_assertion_ids() -> None:
+    ruling = DimensionRuling(
+        opening_id="acme--staff-engineer-abc123",
+        target="stretch",
+        mean=0.5,
+        settledness=0.8,
+        created_at=_CREATED_AT,
     )
     row = dimension_ruling_to_row(ruling)
     assert dimension_ruling_from_row(row) == ruling

@@ -138,6 +138,7 @@ def dimension_ruling_to_row(ruling: DimensionRuling) -> dict[str, object]:
         "mean": ruling.mean,
         "settledness": ruling.settledness,
         "created_at": ruling.created_at.isoformat(),
+        "covered_assertion_ids": json.dumps(ruling.covered_assertion_ids),
     }
 
 
@@ -150,5 +151,6 @@ def dimension_ruling_from_row(row: dict[str, object]) -> DimensionRuling:
             "mean": float(str(row["mean"])),
             "settledness": float(str(row["settledness"])),
             "created_at": datetime.fromisoformat(str(row["created_at"])),
+            "covered_assertion_ids": json.loads(str(row.get("covered_assertion_ids", "[]"))),
         }
     )

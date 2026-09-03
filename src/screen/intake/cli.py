@@ -50,6 +50,7 @@ from screen.store.repo import (
     get_opening,
     list_openings,
     upsert_company,
+    upsert_dimension_ruling,
     upsert_opening,
 )
 from screen.types import Assertion, Company, IdentificationResult, Opening
@@ -186,6 +187,34 @@ def backfill_research_turns_budget() -> None:
     for opening in openings:
         upsert_opening(conn, opening.model_copy(update={"research_turns_budget": budget}))
     click.echo(f"set research_turns_budget={budget} for {len(openings)} opening(s)")
+
+
+@click.command()
+def backfill_dimension_ruling_covered_assertion_ids() -> None:
+    """Reset every `DimensionRuling`'s `covered_assertion_ids` to the assertions currently
+    filed under its target, for rulings that predate the field (migration 0007).
+
+    A blanket reset, not a fill-if-empty: this approximates each pin's snapshot as "every
+    assertion under the target as of the backfill run" rather than "as of the pin's own
+    `created_at`" — the exact historical set isn't reconstructable once new assertions
+    have already landed, and this is the correction path for that. Manually re-running
+    it (e.g. after this command itself) overwrites again, same pattern as
+    `backfill-research-turns-budget` (dimension-ruling-drift bearing Done When).
+    """
+    conn = connect(_db_path_for(data_dir()))
+    openings = list_openings(conn)
+    updated = 0
+    for opening in openings:
+        assertion_ids_by_target: dict[str, list[str]] = {}
+        for a in assertions_for_opening(conn, opening.id):
+            assertion_ids_by_target.setdefault(a.target, []).append(a.id)
+        for ruling in dimension_rulings_for_opening(conn, opening.id):
+            covered = assertion_ids_by_target.get(ruling.target, [])
+            upsert_dimension_ruling(
+                conn, ruling.model_copy(update={"covered_assertion_ids": covered})
+            )
+            updated += 1
+    click.echo(f"backfilled covered_assertion_ids for {updated} dimension ruling(s)")
 
 
 @click.command()
@@ -501,6 +530,7 @@ def cli() -> None:
 cli.add_command(intake)
 cli.add_command(backfill_digests)
 cli.add_command(backfill_research_turns_budget)
+cli.add_command(backfill_dimension_ruling_covered_assertion_ids)
 cli.add_command(bump_research_turns_budget)
 cli.add_command(research)
 cli.add_command(research_batch)

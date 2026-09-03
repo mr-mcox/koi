@@ -312,6 +312,15 @@ h1 .entity-opening {
   border: 2px solid var(--ink);
 }
 
+/* Stale: the pin's snapshot no longer covers every assertion under the target (an
+   uncovered assertion has been filed since ruling) — the pin is still in effect for
+   scoring, but the operator's judgment is now incomplete evidence, not current evidence
+   (dimension-ruling-drift bearing). Intermediate between unpinned (--rule) and a fresh
+   pin (--ink). */
+.dimension-ruling-pad.dimension-ruling-pin-stale {
+  border: 2px solid var(--ink-muted);
+}
+
 .dimension-ruling-cursor {
   position: absolute;
   width: 0.55rem;

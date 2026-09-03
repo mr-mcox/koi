@@ -187,6 +187,12 @@ class DimensionRuling(BaseModel):
 
     Pins are not revertable: no delete path exists; resubmission upserts by
     `(opening_id, target)`, same pattern as `AssertionRuling`'s re-rating.
+
+    `covered_assertion_ids` snapshots the target's assertion ids at ruling time
+    (review-ux/dimension-ruling-drift bearing) — the exact partition between the
+    evidence the operator ruled on and anything filed after. Defaults to `[]` for
+    rulings predating this field; the drift backfill migration populates it for
+    existing rows.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -197,6 +203,7 @@ class DimensionRuling(BaseModel):
     mean: Annotated[float, Field(ge=-1.0, le=1.0)]
     settledness: Annotated[float, Field(ge=0.0, le=1.0)]
     created_at: Annotated[datetime, Field()]
+    covered_assertion_ids: Annotated[list[str], Field(default_factory=list)]
 
 
 class DimensionDigest(BaseModel):

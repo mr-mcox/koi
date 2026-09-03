@@ -172,11 +172,14 @@ def upsert_dimension_ruling(conn: sqlite3.Connection, ruling: DimensionRuling) -
     resubmission still replaces the value) — relies on the unique constraint from
     migration 0005."""
     conn.execute(
-        """INSERT INTO dimension_rulings (id, opening_id, target, mean, settledness, created_at)
-           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at)
+        """INSERT INTO dimension_rulings
+               (id, opening_id, target, mean, settledness, created_at, covered_assertion_ids)
+           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at,
+                   :covered_assertion_ids)
            ON CONFLICT (opening_id, target) DO UPDATE SET
                id = excluded.id, mean = excluded.mean, settledness = excluded.settledness,
-               created_at = excluded.created_at""",
+               created_at = excluded.created_at,
+               covered_assertion_ids = excluded.covered_assertion_ids""",
         dimension_ruling_to_row(ruling),
     )
     conn.commit()

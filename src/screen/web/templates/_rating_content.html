@@ -17,7 +17,7 @@
         <input type="hidden" name="focus_snapshot_assertion_ids" value="{{ focus_snapshot_assertion_ids_csv }}">
         <input type="hidden" name="focus_snapshot_dimension_targets" value="{{ focus_snapshot_dimension_targets_csv }}">
         {% endif %}
-        <div class="dimension-ruling-pad{% if group.ruling %} dimension-ruling-pin{% endif %}" role="button" tabindex="0"
+        <div class="dimension-ruling-pad{% if group.ruling %} dimension-ruling-pin{% endif %}{% if group.is_stale %} dimension-ruling-pin-stale{% endif %}" role="button" tabindex="0"
              aria-label="pin fit and conviction for {{ group.target }}"
              data-mean="{{ group.ruling.mean if group.ruling else 0 }}"
              data-settledness="{{ group.ruling.settledness if group.ruling else 0 }}">

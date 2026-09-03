@@ -150,11 +150,14 @@ def test_dimension_ruling_insert_and_select_round_trips_through_the_real_schema(
         mean=0.5,
         settledness=0.8,
         created_at=datetime.now(UTC),
+        covered_assertion_ids=["assertion-1", "assertion-2"],
     )
     row = dimension_ruling_to_row(ruling)
     conn.execute(
-        """INSERT INTO dimension_rulings (id, opening_id, target, mean, settledness, created_at)
-           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at)""",
+        """INSERT INTO dimension_rulings
+               (id, opening_id, target, mean, settledness, created_at, covered_assertion_ids)
+           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at,
+                   :covered_assertion_ids)""",
         row,
     )
     fetched = conn.execute(

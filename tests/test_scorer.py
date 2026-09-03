@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from screen.score.loader import load_scoring_config
-from screen.score.scorer import resolve_favourably, score, unexamined_targets
+from screen.score.scorer import resolve_favourably, score, stats_for_target, unexamined_targets
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, DimensionRuling, Fit, Provenance, Target
 
@@ -132,8 +132,7 @@ def test_order_independent(config: ScoringConfig) -> None:
 def test_ruling_override_changes_target_stats(config: ScoringConfig) -> None:
     """`score()` accepts an optional mapping of assertion id -> overridden fit; the ruled
     fit replaces the assertion's own `fit` when computing that target's stats, and only
-    that target's stats move (bearing Done When: overriding one assertion changes the
-    score trace for its target)."""
+    that target's stats move."""
     target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
     assert target_assertion.target == "stretch"
 
@@ -147,9 +146,7 @@ def test_dimension_ruling_override_changes_target_stats_independent_of_assertion
     config: ScoringConfig,
 ) -> None:
     """A `DimensionRuling` pin for a target supersedes the whole computed `_TargetStats`
-    for that target, regardless of what the underlying assertions say (bearing Done When:
-    pinning a dimension changes its target's contribution to standing independent of the
-    assertions filed against it)."""
+    for that target, regardless of what the underlying assertions say."""
     unruled = score(PARTIALLY_RESEARCHED, config)
     # PARTIALLY_RESEARCHED's stretch assertion is Strong/ratified — pin it to the worst
     # possible fit with maximum stated conviction (should pull standing down sharply).
@@ -166,8 +163,7 @@ def test_dimension_ruling_override_ignores_assertion_level_rulings_for_same_targ
     config: ScoringConfig,
 ) -> None:
     """A dimension pin is the aggregate judgment and supersedes assertion-level rulings
-    underneath it entirely (bearing Done When: "superseding any per-assertion rulings
-    underneath")."""
+    underneath it entirely."""
     target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
     pin = DimensionRuling(
         opening_id="opening-1", target="stretch", mean=1.0, settledness=1.0, created_at=_NOW
@@ -190,7 +186,7 @@ def test_dimension_ruling_settledness_maps_to_half_width_via_config_bounds(
     config: ScoringConfig,
 ) -> None:
     """Higher settledness narrows half_width but never reaches zero, per
-    `hw_max`/`hw_min` in `scoring.yaml` (bearing Approach)."""
+    `hw_max`/`hw_min` in `scoring.yaml`."""
     loose = DimensionRuling(
         opening_id="opening-1", target="stretch", mean=0.5, settledness=0.0, created_at=_NOW
     )
@@ -204,3 +200,101 @@ def test_dimension_ruling_settledness_maps_to_half_width_via_config_bounds(
     # Same mean, tighter half_width -> the confident pin's ceiling contribution for
     # `stretch` should be closer to its mean than the loose pin's (narrower spread).
     assert confident_result.ceiling <= loose_result.ceiling + 1e-9
+
+
+def test_dimension_ruling_with_zero_new_assertions_matches_exact_override(
+    config: ScoringConfig,
+) -> None:
+    """A pin whose `covered_assertion_ids` already accounts for every assertion under its
+    target reproduces today's shipped exact-override contract precisely — no regression
+    from folding drift into the blend."""
+    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    pin = DimensionRuling(
+        opening_id="opening-1",
+        target="stretch",
+        mean=0.5,
+        settledness=0.7,
+        created_at=_NOW,
+        covered_assertion_ids=[target_assertion.id],
+    )
+    hw_max, hw_min = config.dimension_ruling_hw_max, config.dimension_ruling_hw_min
+    expected_half_width = hw_max - pin.settledness * (hw_max - hw_min)
+
+    stats = stats_for_target(PARTIALLY_RESEARCHED, config, "stretch", None, {"stretch": pin})
+
+    assert stats.mean == pytest.approx(pin.mean)
+    assert stats.half_width == pytest.approx(expected_half_width)
+    assert not stats.is_unexamined
+
+
+def test_dimension_ruling_drifts_toward_new_uncovered_assertions(
+    config: ScoringConfig,
+) -> None:
+    """A new assertion filed under a pinned target, not covered by the pin's snapshot,
+    measurably moves standing toward what that new evidence says."""
+    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    pin = DimensionRuling(
+        opening_id="opening-1",
+        target="stretch",
+        mean=1.0,
+        settledness=1.0,
+        created_at=_NOW,
+        covered_assertion_ids=[covered.id],
+    )
+    new_poor_assertion = _assertion("stretch", "Poor", "ratified")
+
+    before = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
+    after = score(
+        [*PARTIALLY_RESEARCHED, new_poor_assertion], config, dimension_rulings={"stretch": pin}
+    )
+
+    assert after.standing < before.standing
+
+
+def test_dimension_ruling_pre_existing_assertions_never_move_the_blend(
+    config: ScoringConfig,
+) -> None:
+    """Rating (confirming or overriding) an assertion already covered by the pin's
+    snapshot changes nothing — only uncovered assertions count as new evidence in the
+    blend."""
+    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    pin = DimensionRuling(
+        opening_id="opening-1",
+        target="stretch",
+        mean=1.0,
+        settledness=1.0,
+        created_at=_NOW,
+        covered_assertion_ids=[covered.id],
+    )
+
+    unrated = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
+    rated_override = score(
+        PARTIALLY_RESEARCHED,
+        config,
+        rulings={covered.id: "Poor"},
+        dimension_rulings={"stretch": pin},
+    )
+
+    assert unrated.standing == rated_override.standing
+
+
+def test_dimension_ruling_large_new_weight_moves_close_to_unpinned_aggregate(
+    config: ScoringConfig,
+) -> None:
+    """Enough new weight can move a pin arbitrarily close to the plain assertion
+    aggregate — asymptotic drift, no floor."""
+    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
+    pin = DimensionRuling(
+        opening_id="opening-1",
+        target="stretch",
+        mean=1.0,
+        settledness=1.0,
+        created_at=_NOW,
+        covered_assertion_ids=[covered.id],
+    )
+    flood = [_assertion("stretch", "Poor", "ratified") for _ in range(200)]
+
+    unpinned_aggregate = score([covered, *flood], config)
+    heavily_diluted_pin = score([covered, *flood], config, dimension_rulings={"stretch": pin})
+
+    assert abs(heavily_diluted_pin.standing - unpinned_aggregate.standing) < 0.02

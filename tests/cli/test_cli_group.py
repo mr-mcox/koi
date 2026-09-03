@@ -15,6 +15,7 @@ def test_cli_group_lists_all_scaffolding_commands() -> None:
     for name in (
         "backfill-digests",
         "backfill-research-turns-budget",
+        "backfill-dimension-ruling-covered-assertion-ids",
         "bump-research-turns-budget",
         "intake",
         "research",

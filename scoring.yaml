@@ -47,6 +47,14 @@ provenance_weight:
 # — rising conviction narrows the distribution but never to a point estimate (hw_min > 0):
 # the operator may be noisy even at maximum stated confidence. Unmeasured placeholders,
 # same status as bar above.
+#
+# These bounds also set the pin's implicit weight for dimension-ruling-drift (bearing
+# Approach): a pin's half_width is interpreted as the equivalent evidence count
+#     n_pin = 1 / half_width^2
+# so settledness naturally determines how much pseudo-evidence the operator's pin carries.
+# That derivation means a zero-conviction pin (settledness=0, half_width=hw_max=1.0) carries
+# the same weight as the ordinary unexamined-target prior, and a maximum-conviction pin
+# dominates a single new assertion. No separate weight dial needed.
 dimension_ruling:
   hw_max: 1.0
   hw_min: 0.05

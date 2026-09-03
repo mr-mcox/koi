@@ -67,6 +67,7 @@ def _swing(
             mean=1.0,
             settledness=1.0,
             created_at=override_dimension_rulings[target].created_at,
+            covered_assertion_ids=[],
         )
         worst_dim[target] = DimensionRuling(
             id=str(uuid4()),
@@ -75,6 +76,7 @@ def _swing(
             mean=-1.0,
             settledness=1.0,
             created_at=override_dimension_rulings[target].created_at,
+            covered_assertion_ids=[],
         )
 
     best = score(assertions, config, best_rulings, best_dim)
@@ -88,23 +90,31 @@ def rating_task_candidates(
     rulings: dict[str, Fit] | None = None,
     dimension_rulings: dict[str, DimensionRuling] | None = None,
 ) -> list[RatingTaskCandidate]:
-    """Every unrated assertion and unrated (unpinned) dimension target on one opening,
-    ranked by estimated swing, truncated to `config.rating_task_budget`.
+    """Every unrated assertion and unrated-or-stale dimension target on one opening, ranked
+    by estimated swing, truncated to `config.rating_task_budget`.
 
-    An assertion under a pinned dimension is excluded — the pin supersedes it in scoring
-    (scorer.py `stats_for_target`), so rating it can't move anything. A dimension target
-    with zero assertions is excluded too — there is nothing to review, so "rate this
-    dimension" isn't an actionable task; that gap is a research question, not a rating
-    one.
+    An assertion covered by a pin's snapshot is excluded — the pin already accounts for it
+    (scorer.py `stats_for_target`), so rating it can't move anything. An assertion filed
+    after the pin's snapshot is uncovered, new evidence the pin hasn't priced in yet, and
+    stays a candidate like any other unrated assertion (dimension-ruling-drift bearing:
+    reopening is binary on any uncovered assertion). A dimension target with zero
+    assertions is excluded too — there is nothing to review, so "rate this dimension" isn't
+    an actionable task; that gap is a research question, not a rating one. A pinned target
+    is itself a whole-dimension candidate again once it has any uncovered assertion (the
+    pin is stale) — an unpinned target is always eligible, a pinned one only when stale.
     """
     rulings = rulings or {}
     dimension_rulings = dimension_rulings or {}
 
     targets_with_assertions = {a.target for a in assertions}
 
+    def covered_ids(target: str) -> set[str]:
+        pin = dimension_rulings.get(target)
+        return set(pin.covered_assertion_ids) if pin is not None else set()
+
     candidates: list[RatingTaskCandidate] = []
     for a in assertions:
-        if a.id in rulings or a.target in dimension_rulings:
+        if a.id in rulings or a.id in covered_ids(a.target):
             continue
         swing = _swing(
             assertions, config, rulings, dimension_rulings, override_rulings={a.id: a.fit}
@@ -114,7 +124,11 @@ def rating_task_candidates(
     all_targets = list(config.dimension_weights) + list(config.constraints)
     for slug in all_targets:
         target = cast(Target, slug)
-        if target in dimension_rulings or target not in targets_with_assertions:
+        if target not in targets_with_assertions:
+            continue
+        target_assertion_ids = {a.id for a in assertions if a.target == target}
+        is_stale = target in dimension_rulings and not target_assertion_ids <= covered_ids(target)
+        if target in dimension_rulings and not is_stale:
             continue
         placeholder = DimensionRuling(
             id=str(uuid4()),
@@ -123,6 +137,7 @@ def rating_task_candidates(
             mean=0.0,
             settledness=0.0,
             created_at=_PLACEHOLDER_TIME,
+            covered_assertion_ids=[],
         )
         swing = _swing(
             assertions,

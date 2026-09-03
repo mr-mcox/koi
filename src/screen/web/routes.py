@@ -69,6 +69,17 @@ class _DimensionGroup:
     operator feedback): the digest and dimension-ruling pad belong to the bigger,
     unselected task and would be noise for a pure assertion-rating task."""
 
+    @property
+    def is_stale(self) -> bool:
+        """A pin is stale once an assertion exists under its target that its snapshot
+        didn't cover (dimension-ruling-drift bearing) — the pin's contribution to scoring
+        no longer accounts for everything filed, though it's still in effect until the
+        operator re-rules."""
+        if self.ruling is None:
+            return False
+        covered = set(self.ruling.covered_assertion_ids)
+        return any(a.id not in covered for a in self.assertions)
+
 
 @dataclass(frozen=True)
 class BoundaryGlyph:
@@ -646,6 +657,9 @@ def submit_dimension_ruling(
     focused-view's narrowed context, matching `submit_ruling`."""
     if get_opening(conn, opening_id) is None:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
+    covered_assertion_ids = [
+        a.id for a in assertions_for_opening(conn, opening_id) if a.target == target
+    ]
     ruling = DimensionRuling(
         id=str(uuid4()),
         opening_id=opening_id,
@@ -653,6 +667,7 @@ def submit_dimension_ruling(
         mean=mean,
         settledness=settledness,
         created_at=datetime.now(UTC),
+        covered_assertion_ids=covered_assertion_ids,
     )
     upsert_dimension_ruling(conn, ruling)
     context = (
