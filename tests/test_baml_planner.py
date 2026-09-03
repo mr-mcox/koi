@@ -79,10 +79,8 @@ def _state(
         url="https://example.com/jobs/1",
         rubric_text="stretch: ...",
         assertions=assertions if assertions is not None else [],
-        search_budget=5,
-        searches_used=0,
-        token_budget=50000,
-        tokens_used=0,
+        turn_budget=5,
+        turns_used=0,
         last_context=last_context,
     )
 

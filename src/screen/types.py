@@ -29,6 +29,7 @@ class Opening(BaseModel):
     title: Annotated[str, Field(min_length=1)]
     url: Annotated[str, Field(min_length=1)]
     research_trace_id: Annotated[str, Field(min_length=1)]
+    research_turns_budget: Annotated[int, Field(ge=0)]
     created_at: Annotated[datetime, Field()]
 
 

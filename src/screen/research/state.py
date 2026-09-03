@@ -1,9 +1,12 @@
 """Loop state types: LoopState (input) and PassSummary (output).
 result is threaded forward through each dispatch cycle.
 
-Budget fields land here so DecidePlan can see them. The dispatcher
-enforces the search cap (searches_used ≥ search_budget → stop) alongside
-the first budget-consuming action in the loop-search feature.
+Budget fields land here so DecidePlan can see them. The dispatcher enforces the
+turn cap (turns_used ≥ turn_budget → stop) alongside the first budget-consuming
+action in the loop-search feature. A turn is one `search` or `fetch` action —
+not `stop`/`decide_plan` — the operator-facing unit (docs/features/research-
+resumability/bearing.md §Approach); token accounting was never wired to a real
+meter and is dropped rather than kept as a second, unused budget.
 """
 
 from typing import Annotated
@@ -31,10 +34,8 @@ class LoopState(BaseModel):
     url: Annotated[str, Field(min_length=1)]
     rubric_text: Annotated[str, Field(min_length=1)]
     assertions: list[Assertion]
-    search_budget: Annotated[int, Field(ge=0)]
-    searches_used: Annotated[int, Field(ge=0)]
-    token_budget: Annotated[int, Field(ge=0)]
-    tokens_used: Annotated[int, Field(ge=0)]
+    turn_budget: Annotated[int, Field(ge=0)]
+    turns_used: Annotated[int, Field(ge=0)]
     last_context: SearchContext | FetchContext | None = None
     visited_urls: list[str] = []
     prior_queries: list[str] = []
@@ -48,6 +49,5 @@ class PassSummary(BaseModel):
     opening_id: Annotated[str, Field(min_length=1)]
     company_id: Annotated[str, Field(min_length=1)]
     assertions_written: Annotated[int, Field(ge=0)]
-    searches_used: Annotated[int, Field(ge=0)]
-    tokens_used: Annotated[int, Field(ge=0)]
+    turns_used: Annotated[int, Field(ge=0)]
     stopped_reason: Annotated[str, Field(min_length=1)]

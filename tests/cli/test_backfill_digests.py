@@ -36,6 +36,7 @@ def _seed_opening(db_path: Path, opening_id: str, company_id: str) -> None:
             title="Eng",
             url=f"https://example.com/{opening_id}",
             research_trace_id=f"tx-{opening_id}",
+            research_turns_budget=5,
             created_at=datetime.now(UTC),
         ),
     )

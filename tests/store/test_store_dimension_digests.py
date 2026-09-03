@@ -48,6 +48,7 @@ def _seed_opening(conn) -> None:
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )

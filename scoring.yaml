@@ -61,3 +61,10 @@ rating_task_budget: 4
 # roughly the top K openings each week. K≈5 today and expected to grow with
 # capacity — unmeasured placeholder, same status as bar/rating_task_budget above.
 top_k: 5
+
+# Research resumability (research-resumability bearing). Per-opening lifetime cap on
+# research turns (one `search` or `fetch` action). Seeded onto every opening at intake;
+# existing openings are backfilled to this same value. Manually bumpable per opening —
+# no formula from queue position yet, that's the deferred research-pass bandit's job.
+# Unmeasured placeholder, same status as bar/top_k above.
+research_turns_budget: 5

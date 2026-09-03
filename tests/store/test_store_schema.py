@@ -66,11 +66,15 @@ def test_opening_insert_and_select_round_trips_through_the_real_schema() -> None
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
         created_at=datetime.now(UTC),
     )
     conn.execute(
-        """INSERT INTO openings (id, company_id, title, url, research_trace_id, created_at)
-           VALUES (:id, :company_id, :title, :url, :research_trace_id, :created_at)""",
+        """INSERT INTO openings
+               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
+           VALUES
+               (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
+                :created_at)""",
         opening_to_row(opening),
     )
     row = conn.execute("SELECT * FROM openings WHERE id = 'acme--eng-abc123'").fetchone()
@@ -134,9 +138,10 @@ def test_dimension_ruling_insert_and_select_round_trips_through_the_real_schema(
         {"now": datetime.now(UTC).isoformat()},
     )
     conn.execute(
-        """INSERT INTO openings (id, company_id, title, url, research_trace_id, created_at)
+        """INSERT INTO openings
+               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
            VALUES ('acme--eng-abc123', 'acme', 'Staff Engineer', 'https://example.com/jobs/1',
-                   'tx0123456789abcdef', :now)""",
+                   'tx0123456789abcdef', 5, :now)""",
         {"now": datetime.now(UTC).isoformat()},
     )
     ruling = DimensionRuling(

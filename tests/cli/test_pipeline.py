@@ -12,6 +12,7 @@ from click.testing import CliRunner
 from screen.browser import BrowserError, TavilyBrowser
 from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeTavily
+from screen.score.loader import load_scoring_config
 from tests.cli.helpers import (
     env_for,
     fake_identifier,
@@ -56,6 +57,27 @@ def test_cli_writes_domain_rows_to_sqlite_not_json_files(
     assert list(tmp_path.rglob("company.json")) == []
     assert list(tmp_path.rglob("opening.json")) == []
     assert list(tmp_path.rglob("assertions.jsonl")) == []
+
+
+def test_cli_seeds_research_turns_budget_from_scoring_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """intake seeds Opening.research_turns_budget from scoring.yaml, not a literal."""
+    url = "https://example.com/jobs/42"
+    fake = _fake_tavily_for(url)
+    monkeypatch.setattr(TavilyBrowser, "extract", lambda self, urls: fake.extract(urls))
+    monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
+    patch_extractor(monkeypatch)
+    patch_planner(monkeypatch)
+    patch_digester(monkeypatch)
+
+    result = CliRunner().invoke(
+        cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False
+    )
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
+    conn = sqlite3.connect(tmp_path / "screen.db")
+    budget = conn.execute("SELECT research_turns_budget FROM openings").fetchone()
+    assert budget == (load_scoring_config().research_turns_budget,)
 
 
 def test_cli_records_partial_research_trace_on_failed_extract(

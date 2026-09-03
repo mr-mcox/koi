@@ -69,6 +69,7 @@ def test_upsert_opening_then_select(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
@@ -87,6 +88,7 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -110,6 +112,7 @@ def test_assertions_for_opening_returns_empty_list_when_none_exist(tmp_path: Pat
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -142,10 +145,31 @@ def test_get_opening_returns_the_row(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
     assert get_opening(conn, "acme--eng-abc123") == opening
+
+
+def test_upsert_opening_again_bumps_research_turns_budget(tmp_path: Path) -> None:
+    """Re-upserting an existing opening with a new `research_turns_budget` replaces
+    the stored value — the mechanism a manual budget bump relies on."""
+    conn = connect(tmp_path / "screen.db")
+    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
+    opening = Opening(
+        id="acme--eng-abc123",
+        company_id="acme",
+        title="Staff Engineer",
+        url="https://example.com/jobs/1",
+        research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
+        created_at=_NOW,
+    )
+    upsert_opening(conn, opening)
+    bumped = opening.model_copy(update={"research_turns_budget": 12})
+    upsert_opening(conn, bumped)
+    assert get_opening(conn, "acme--eng-abc123") == bumped
 
 
 def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
@@ -157,6 +181,7 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
         created_at=_NOW,
     )
     second = Opening(
@@ -165,6 +190,7 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         title="Product Manager",
         url="https://example.com/jobs/2",
         research_trace_id="tx9876543210fedcba",
+        research_turns_budget=5,
         created_at=_NOW.replace(hour=13),
     )
     upsert_opening(conn, second)
@@ -187,6 +213,7 @@ def _seed_opening_with_assertion(conn) -> Assertion:  # type: ignore[no-untyped-
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -237,6 +264,7 @@ def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
             title="Product Manager",
             url="https://example.com/jobs/2",
             research_trace_id="tx9876543210fedcba",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -319,6 +347,7 @@ def test_dimension_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
             title="Product Manager",
             url="https://example.com/jobs/2",
             research_trace_id="tx9876543210fedcba",
+            research_turns_budget=5,
             created_at=_NOW,
         ),
     )

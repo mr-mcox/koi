@@ -69,10 +69,8 @@ class BAMLPlanner:
             opening_title=state.opening_title,
             rubric_text=state.rubric_text,
             targets_covered=_targets_covered(state),
-            searches_used=state.searches_used,
-            search_budget=state.search_budget,
-            tokens_used=state.tokens_used,
-            token_budget=state.token_budget,
+            turns_used=state.turns_used,
+            turn_budget=state.turn_budget,
             last_context_text=last_context_text(state),
             coverage_summary=coverage_summary(state.assertions),
         )

@@ -28,15 +28,19 @@ from screen.intake.identify import IdentifierProtocol, identify_opening
 from screen.intake.opening_id import derive_opening_id
 from screen.intake.research_trace_id import derive_research_trace_id
 from screen.intake.research_trace_io import append_line
+from screen.intake.research_trace_replay import replay_research_trace
 from screen.paths import data_dir
 from screen.research.baml_planner import BAMLPlanner
 from screen.research.dispatcher import dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
+from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
     assertions_for_opening,
+    get_company,
+    get_opening,
     list_openings,
     upsert_company,
     upsert_opening,
@@ -108,6 +112,8 @@ def _persist_company_and_opening(
     url: str,
     research_trace_id: str,
     now: datetime,
+    *,
+    research_turns_budget: int,
 ) -> tuple[Company, Opening]:
     company_id = derive_company_id(identification.company_name, url)
     opening_id = derive_opening_id(identification.opening_title, url)
@@ -122,6 +128,7 @@ def _persist_company_and_opening(
         title=identification.opening_title,
         url=url,
         research_trace_id=research_trace_id,
+        research_turns_budget=research_turns_budget,
         created_at=now,
     )
     upsert_company(conn, company)
@@ -156,6 +163,156 @@ def backfill_digests() -> None:
             now=datetime.now(UTC),
         )
     click.echo(f"warmed digests for {len(openings)} opening(s)")
+
+
+@click.command()
+def backfill_research_turns_budget() -> None:
+    """Reset every opening's research_turns_budget to the current scoring.yaml value.
+
+    A blanket reset, not a fill-if-zero: existing openings created before this dial
+    existed default to 0 (migration 0006); openings with a manually bumped budget are
+    reset too, same as intake seeding a new opening (F23).
+    """
+    conn = connect(_db_path_for(data_dir()))
+    openings = list_openings(conn)
+    budget = load_scoring_config().research_turns_budget
+    for opening in openings:
+        upsert_opening(conn, opening.model_copy(update={"research_turns_budget": budget}))
+    click.echo(f"set research_turns_budget={budget} for {len(openings)} opening(s)")
+
+
+@click.command()
+@click.argument("opening_id")
+@click.argument("new_budget", type=int)
+def bump_research_turns_budget(opening_id: str, new_budget: int) -> None:
+    """Manually raise (or lower) one opening's research_turns_budget (F23).
+
+    No formula from queue position — that heuristic belongs to the deferred
+    research-pass bandit; this is the operator's direct override.
+    """
+    conn = connect(_db_path_for(data_dir()))
+    opening = get_opening(conn, opening_id)
+    if opening is None:
+        raise click.ClickException(f"no opening with id {opening_id!r}")
+    upsert_opening(conn, opening.model_copy(update={"research_turns_budget": new_budget}))
+    click.echo(f"set research_turns_budget={new_budget} for opening {opening_id}")
+
+
+def _resume_opening(
+    conn: sqlite3.Connection, data_root: Path, opening: Opening, turns_requested: int
+) -> int:
+    """Resume one opening's research from its trace, spending at most
+    `min(turns_requested, remaining lifetime budget)` turns. Returns the
+    number of turns actually spent (0 if no budget remained or the planner
+    stopped early — e.g. the coverage-based stop condition, F21).
+    """
+    company = get_company(conn, opening.company_id)
+    if company is None:  # pragma: no cover — FK constraint on openings.company_id
+        raise click.ClickException(f"no company with id {opening.company_id!r}")
+    research_trace_path = _research_trace_path_for(data_root, opening.research_trace_id)
+    page_content, url = _read_page_content(research_trace_path)
+    replay = replay_research_trace(research_trace_path)
+    remaining = max(opening.research_turns_budget - replay.turns_used, 0)
+    to_spend = min(turns_requested, remaining)
+    if to_spend <= 0:
+        return 0
+
+    assertions = assertions_for_opening(conn, opening.id)
+    _run_dispatch(
+        conn,
+        opening.id,
+        url,
+        assertions,
+        company_id=company.id,
+        page_content=page_content,
+        company_name=company.name,
+        opening_title=opening.title,
+        turn_budget=replay.turns_used + to_spend,
+        turns_used=replay.turns_used,
+        visited_urls=replay.visited_urls,
+        prior_queries=replay.prior_queries,
+        on_event=lambda event: _record_event(research_trace_path, event),
+    )
+    turns_used_after = replay_research_trace(research_trace_path).turns_used
+    return turns_used_after - replay.turns_used
+
+
+@click.command()
+@click.argument("opening_id")
+@click.argument("turns", type=int)
+def research(opening_id: str, turns: int) -> None:
+    """Resume research for an already-identified opening.
+
+    Replays the opening's trace to recover turns_used/visited_urls/prior_queries
+    (F2/F16: state is computed from the transcript, never independently
+    persisted), then runs at most `turns` more turns capped by whatever
+    remains of the opening's lifetime research_turns_budget (F25).
+    """
+    data_root = data_dir()
+    conn = connect(_db_path_for(data_root))
+    opening = get_opening(conn, opening_id)
+    if opening is None:
+        raise click.ClickException(f"no opening with id {opening_id!r}")
+    spent = _resume_opening(conn, data_root, opening, turns)
+    if spent == 0:
+        click.echo(f"no remaining research_turns_budget for opening {opening_id}")
+
+
+def _round_robin_pass(
+    conn: sqlite3.Connection, data_root: Path, turns_left: int, touched: list[str]
+) -> tuple[int, int]:
+    """One round-robin pass over every opening, spending 1 turn each while
+    budget/turns_left allow. Returns (turns_left, turns_spent_this_round)."""
+    spent_this_round = 0
+    for opening in list_openings(conn):
+        if turns_left <= 0:
+            break
+        spent = _resume_opening(conn, data_root, opening, 1)
+        if spent > 0:
+            turns_left -= spent
+            spent_this_round += spent
+            if opening.id not in touched:
+                touched.append(opening.id)
+    return turns_left, spent_this_round
+
+
+@click.command(name="research-batch")
+@click.argument("batch_size", type=int)
+def research_batch(batch_size: int) -> None:
+    """Run up to `batch_size` turns round-robin across every opening that still
+    has research_turns_budget headroom (bearing: simple deterministic fill,
+    stable-order placeholder for the deferred research-pass bandit).
+    """
+    data_root = data_dir()
+    conn = connect(_db_path_for(data_root))
+    turns_left = batch_size
+    touched: list[str] = []
+    total_spent = 0
+    while turns_left > 0:
+        turns_left, spent_this_round = _round_robin_pass(conn, data_root, turns_left, touched)
+        total_spent += spent_this_round
+        if spent_this_round == 0:
+            break
+    click.echo(f"batch complete: spent {total_spent} turn(s) across {len(touched)} opening(s)")
+    for opening_id in touched:
+        click.echo(f"  {opening_id}")
+
+
+@click.command(name="research-status")
+def research_status() -> None:
+    """List actual vs budgeted research turns per opening, computed by
+    replaying each opening's trace (F22: the report side of reconciliation).
+    """
+    data_root = data_dir()
+    conn = connect(_db_path_for(data_root))
+    openings = list_openings(conn)
+    if not openings:
+        click.echo("no openings")
+        return
+    for opening in openings:
+        research_trace_path = _research_trace_path_for(data_root, opening.research_trace_id)
+        turns_used = replay_research_trace(research_trace_path).turns_used
+        click.echo(f"{opening.id}: {turns_used}/{opening.research_turns_budget}")
 
 
 def _fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
@@ -193,7 +350,12 @@ def _identify_research_trace(research_trace_path: Path, data_dir: Path) -> None:
     research_trace_id = research_trace_path.stem
     conn = connect(_db_path_for(data_dir))
     company, opening = _persist_company_and_opening(
-        conn, identification, url, research_trace_id, datetime.now(UTC)
+        conn,
+        identification,
+        url,
+        research_trace_id,
+        datetime.now(UTC),
+        research_turns_budget=load_scoring_config().research_turns_budget,
     )
     click.echo(f"wrote company {company.id}")
     click.echo(f"wrote opening {opening.id}")
@@ -243,6 +405,10 @@ def _run_dispatch(
     page_content: str,
     company_name: str,
     opening_title: str,
+    turn_budget: int | None = None,
+    turns_used: int = 0,
+    visited_urls: list[str] | None = None,
+    prior_queries: list[str] | None = None,
     planner: PlannerProtocol | None = None,
     browser: BrowserProtocol | None = None,
     extractor: ExtractorProtocol | None = None,
@@ -265,10 +431,14 @@ def _run_dispatch(
         url=url,
         rubric_text=rubric,
         assertions=assertions,
-        search_budget=int(os.environ.get("SCREEN_SEARCH_BUDGET", "5")),
-        searches_used=0,
-        token_budget=int(os.environ.get("SCREEN_TOKEN_BUDGET", "50000")),
-        tokens_used=0,
+        turn_budget=(
+            turn_budget
+            if turn_budget is not None
+            else int(os.environ.get("SCREEN_TURN_BUDGET", "5"))
+        ),
+        turns_used=turns_used,
+        visited_urls=visited_urls or [],
+        prior_queries=prior_queries or [],
     )
     pl = planner if planner is not None else _build_planner()
     br = browser if browser is not None else _build_client()
@@ -284,3 +454,30 @@ def _run_dispatch(
         rubric_text=rubric,
         now=datetime.now(UTC),
     )
+
+
+@click.group()
+def cli() -> None:
+    """Scaffolding entry point for the resumability commands (`research`,
+    `research-batch`, `research-status`, `bump-research-turns-budget`,
+    `backfill-research-turns-budget`, `backfill-digests`) that aren't wired
+    into the stable `python -m screen` / `./run` surface. Run directly:
+
+        uv run python -m screen.intake.cli research <opening-id> <turns>
+
+    `intake` stays reachable both here and via `python -m screen` —
+    `screen/__main__.py` is the stable single-command surface; this group is
+    the temporary one for everything else.
+    """
+
+
+cli.add_command(intake)
+cli.add_command(backfill_digests)
+cli.add_command(backfill_research_turns_budget)
+cli.add_command(bump_research_turns_budget)
+cli.add_command(research)
+cli.add_command(research_batch)
+cli.add_command(research_status)
+
+if __name__ == "__main__":
+    cli()

@@ -52,10 +52,8 @@ def _loop_state(**kwargs: object) -> LoopState:
         "url": "https://example.com/jobs/1",
         "rubric_text": "stretch: ...",
         "assertions": [_assertion()],
-        "search_budget": 5,
-        "searches_used": 0,
-        "token_budget": 50000,
-        "tokens_used": 0,
+        "turn_budget": 5,
+        "turns_used": 0,
     }
     defaults.update(kwargs)
     return LoopState(**defaults)  # type: ignore[arg-type]
@@ -75,7 +73,7 @@ def test_loop_state_round_trips() -> None:
 def test_loop_state_frozen() -> None:
     state = _loop_state()
     with pytest.raises((TypeError, ValidationError)):
-        state.searches_used = 1  # type: ignore[misc]
+        state.turns_used = 1  # type: ignore[misc]
 
 
 def test_loop_state_extra_forbid() -> None:
@@ -87,19 +85,17 @@ def test_loop_state_extra_forbid() -> None:
             url="https://example.com",
             rubric_text="r",
             assertions=[],
-            search_budget=5,
-            searches_used=0,
-            token_budget=50000,
-            tokens_used=0,
+            turn_budget=5,
+            turns_used=0,
             unexpected_field="boom",  # type: ignore[call-arg]
         )
 
 
 def test_loop_state_model_copy_produces_new_instance() -> None:
     state = _loop_state()
-    updated = state.model_copy(update={"searches_used": 1})
-    assert updated.searches_used == 1
-    assert state.searches_used == 0  # original unchanged
+    updated = state.model_copy(update={"turns_used": 1})
+    assert updated.turns_used == 1
+    assert state.turns_used == 0  # original unchanged
     assert updated is not state
 
 
@@ -136,8 +132,7 @@ def test_pass_summary_round_trips() -> None:
         opening_id="op-abc",
         company_id="co-xyz",
         assertions_written=3,
-        searches_used=0,
-        tokens_used=0,
+        turns_used=0,
         stopped_reason="All rubric dimensions addressed.",
     )
     restored = PassSummary.model_validate_json(summary.model_dump_json())
@@ -149,8 +144,7 @@ def test_pass_summary_frozen() -> None:
         opening_id="op-abc",
         company_id="co-xyz",
         assertions_written=1,
-        searches_used=0,
-        tokens_used=0,
+        turns_used=0,
         stopped_reason="done",
     )
     with pytest.raises((TypeError, ValidationError)):
@@ -163,8 +157,7 @@ def test_pass_summary_extra_forbid() -> None:
             opening_id="op-abc",
             company_id="co-xyz",
             assertions_written=1,
-            searches_used=0,
-            tokens_used=0,
+            turns_used=0,
             stopped_reason="done",
             unexpected="boom",  # type: ignore[call-arg]
         )

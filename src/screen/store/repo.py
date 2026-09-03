@@ -42,13 +42,17 @@ def upsert_company(conn: sqlite3.Connection, company: Company) -> None:
 
 def upsert_opening(conn: sqlite3.Connection, opening: Opening) -> None:
     conn.execute(
-        """INSERT INTO openings (id, company_id, title, url, research_trace_id, created_at)
-           VALUES (:id, :company_id, :title, :url, :research_trace_id, :created_at)
+        """INSERT INTO openings
+               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
+           VALUES
+               (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
+                :created_at)
            ON CONFLICT (id) DO UPDATE SET
                company_id = excluded.company_id,
                title = excluded.title,
                url = excluded.url,
                research_trace_id = excluded.research_trace_id,
+               research_turns_budget = excluded.research_turns_budget,
                created_at = excluded.created_at""",
         opening_to_row(opening),
     )

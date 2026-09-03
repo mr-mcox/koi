@@ -34,10 +34,8 @@ function DecidePlan(
   opening_title: string,
   rubric_text: string,
   targets_covered: string,
-  searches_used: int,
-  search_budget: int,
-  tokens_used: int,
-  token_budget: int,
+  turns_used: int,
+  turn_budget: int,
   last_context_text: string,
   coverage_summary: string,
 ) -> Action[] {
@@ -51,9 +49,10 @@ function DecidePlan(
 
     ## When to stop
     Stop when any of the following is true:
-    - All rubric targets listed below have at least one assertion.
-    - The search budget is exhausted (searches_used >= search_budget).
-    - The token budget is exhausted (tokens_used >= token_budget).
+    - Every rubric target already has multiple assertions from independent sources
+      and no unexplored, relevant lead remains in the last action's result.
+    - The turn budget is exhausted (turns_used >= turn_budget). A turn is one
+      `search` or `fetch` action.
     - There is nothing further to research with the available tools.
 
     ## When to fetch
@@ -82,8 +81,7 @@ function DecidePlan(
     Opening: {{ opening_title }} ({{ opening_id }})
     Rubric targets covered so far: {{ targets_covered }}
     Coverage summary: {{ coverage_summary }}
-    Searches used: {{ searches_used }} / {{ search_budget }}
-    Tokens used: {{ tokens_used }} / {{ token_budget }}
+    Turns used: {{ turns_used }} / {{ turn_budget }}
     {% if last_context_text %}
     Last action result: {{ last_context_text }}
     {% endif %}
@@ -122,10 +120,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, peer"
     coverage_summary "stretch(1), peer(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 1200
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer. Snippet: '...see compensation benchmarks at https://levels.fyi/companies/acme ...'"
   }
   @@assert({{ this|length > 0 }})
@@ -149,10 +145,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch"
     coverage_summary "stretch(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 1200
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch. Snippet: '...read our engineering blog at https://eng.acme.com and see compensation at https://levels.fyi/companies/acme and culture notes at https://glassdoor.com/acme ...'"
   }
   // Model must return exactly one action
@@ -178,10 +172,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, peer, trajectory, mission, agentic, domain"
     coverage_summary "stretch(1), peer(1), trajectory(1), mission(1), agentic(1), domain(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 1200
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer, trajectory, mission, agentic, domain. Snippet: '...compensation details: https://example.com/contact-us, https://example.com/home, https://levels.fyi/companies/acme, https://example.com/login, ...'"
   }
   @@assert({{ this|length == 1 }})
@@ -209,10 +201,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, peer, trajectory, mission, agentic, domain"
     coverage_summary "stretch(1), peer(1), trajectory(1), mission(1), agentic(1), domain(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 1200
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer, trajectory, mission, agentic, domain. Snippet: 'Quick links: https://example.com/home | https://example.com/about | https://example.com/contact | https://example.com/login'"
   }
   @@assert({{ this|length == 1 }})
@@ -235,10 +225,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, peer, trajectory, mission, agentic, compensation, domain"
     coverage_summary "stretch(1), peer(1), trajectory(1), mission(1), agentic(1), compensation(1), domain(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 1200
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text "Last action: fetched https://example.com/hub. Assertions added for targets: (none). Snippet: 'Navigation menu: Home | About | Contact'"
   }
   @@assert({{ this|length > 0 }})
@@ -262,10 +250,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, agentic"
     coverage_summary "stretch(2), agentic(1)"
-    searches_used 1
-    search_budget 5
-    tokens_used 1800
-    token_budget 50000
+    turns_used 1
+    turn_budget 5
     last_context_text "Last action: search for 'Acme Corp staff engineer compensation 2024'. Results:\n1. Levels.fyi — https://levels.fyi/companies/acme\n   Staff engineer total comp at Acme ranges $380k–$450k TC.\n2. Glassdoor — https://glassdoor.com/acme-salaries\n   Engineers report strong salary but unclear equity.\n3. Blind — https://teamblind.com/acme\n   Recent posts on Acme comp and culture."
   }
   @@assert({{ this|length > 0 }})
@@ -290,10 +276,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     "#
     targets_covered "stretch, agentic, domain"
     coverage_summary "stretch(2), agentic(1)"
-    searches_used 0
-    search_budget 5
-    tokens_used 0
-    token_budget 50000
+    turns_used 0
+    turn_budget 5
     last_context_text ""
   }
   @@assert({{ this|length > 0 }})

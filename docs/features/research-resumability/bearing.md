@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-01
 commit: 1fba424
 branch: main
-status: orienting
+status: implementing
 scouting: ./scouting.md
 ---
 
@@ -20,22 +20,22 @@ Vetco") or run a fixed-size batch across whichever openings still have room. Ter
 
 ## Done When
 
-- [ ] `intake <url>` runs its research pass against a `research_turns_budget` seeded from
+- [x] `intake <url>` runs its research pass against a `research_turns_budget` seeded from
       `scoring.yaml`, stored on the opening (→ scouting F23, F25)
-- [ ] Existing openings (already in the DB) can be backfilled with the same
+- [x] Existing openings (already in the DB) can be backfilled with the same
       `scoring.yaml`-seeded budget (→ scouting F23)
-- [ ] The operator can bump one opening's `research_turns_budget` up (→ scouting F23)
-- [ ] A `research` CLI command can resume one opening and run up to N additional turns (or
+- [x] The operator can bump one opening's `research_turns_budget` up (→ scouting F23)
+- [x] A `research` CLI command can resume one opening and run up to N additional turns (or
       until its budget is reached), appending new events to the existing trace — test:
       second run produces strictly more `tavily_search`/`tavily_extract` events and new
       assertions for that opening, without re-extracting the original posting page (→
       scouting F1, F18)
-- [ ] A `research --batch N` command runs N additional turns across openings with budget
+- [x] A `research --batch N` command runs N additional turns across openings with budget
       remaining, resuming each from its trace and stopping when the batch or every
       opening's budget is exhausted (→ scouting F22)
-- [ ] A report/list command shows actual vs budgeted turns per opening, computed from the
+- [x] A report/list command shows actual vs budgeted turns per opening, computed from the
       trace file (→ scouting F22)
-- [ ] The old per-pass env-var budgets (`SCREEN_SEARCH_BUDGET`, `SCREEN_TOKEN_BUDGET`) are
+- [x] The old per-pass env-var budgets (`SCREEN_SEARCH_BUDGET`, `SCREEN_TOKEN_BUDGET`) are
       replaced by the single turns budget (→ scouting F4, F17, F24)
 
 ## Approach

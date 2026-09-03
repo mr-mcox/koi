@@ -37,10 +37,8 @@ def _plan_request(state: LoopState) -> dict[str, object]:
         "company_id": state.company_id,
         "company_name": state.company_name,
         "opening_title": state.opening_title,
-        "searches_used": state.searches_used,
-        "search_budget": state.search_budget,
-        "tokens_used": state.tokens_used,
-        "token_budget": state.token_budget,
+        "turns_used": state.turns_used,
+        "turn_budget": state.turn_budget,
         "prior_queries": list(state.prior_queries),
         "visited_urls": list(state.visited_urls),
         "targets_covered": _targets_covered(state),
@@ -84,14 +82,13 @@ def dispatch(
             return result
         current = result
         # Budget guard fires after state is updated, before the next plan() call.
-        if current.searches_used >= current.search_budget:
+        if current.turns_used >= current.turn_budget:
             return PassSummary(
                 opening_id=current.opening_id,
                 company_id=current.company_id,
                 assertions_written=len(current.assertions),
-                searches_used=current.searches_used,
-                tokens_used=current.tokens_used,
-                stopped_reason="search budget exhausted",
+                turns_used=current.turns_used,
+                stopped_reason="turn budget exhausted",
             )
 
 
@@ -108,8 +105,7 @@ def _dispatch_one(
             opening_id=state.opening_id,
             company_id=state.company_id,
             assertions_written=len(state.assertions),
-            searches_used=state.searches_used,
-            tokens_used=state.tokens_used,
+            turns_used=state.turns_used,
             stopped_reason=action.reason,
         )
 
@@ -151,7 +147,7 @@ def _handle_search(
 
     return state.model_copy(
         update={
-            "searches_used": state.searches_used + 1,
+            "turns_used": state.turns_used + 1,
             "prior_queries": list(state.prior_queries) + [action.query],
             "last_context": SearchContext(query=action.query, hits=list(hits)),
         }
@@ -208,6 +204,7 @@ def _handle_fetch(
         update={
             "assertions": list(state.assertions) + new_assertions,
             "visited_urls": list(state.visited_urls) + [action.url],
+            "turns_used": state.turns_used + 1,
             "last_context": FetchContext(
                 url=action.url,
                 targets_added=targets_added,

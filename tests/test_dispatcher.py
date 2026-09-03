@@ -2,9 +2,9 @@
 Pins:
 - dispatch([stop]) returns PassSummary with correct counts
 - unknown action tag raises RuntimeError (not silently skipped)
-- searches_used and tokens_used thread from state into summary unchanged
+- turns_used threads from state into summary unchanged
 - SearchAction happy path: browser.search called, event recorded, state updated
-- SearchAction budget guard: searches_used >= search_budget → PassSummary, no extra plan() call
+- SearchAction budget guard: turns_used >= turn_budget → PassSummary, no extra plan() call
 - FetchAction happy path: browser.fetch called, event recorded, assertions appended
 - FetchAction duplicate: URL already in visited_urls → skip, no event, empty targets_added
 - FetchAction zero assertions: does not raise, loop continues
@@ -53,8 +53,7 @@ def _assertion(target: str = "stretch") -> Assertion:
 def _state(
     *,
     assertions: list[Assertion] | None = None,
-    searches_used: int = 0,
-    tokens_used: int = 1234,
+    turns_used: int = 0,
     visited_urls: list[str] | None = None,
 ) -> LoopState:
     return LoopState(
@@ -66,10 +65,8 @@ def _state(
         url="https://example.com/jobs/1",
         rubric_text="stretch: ...",
         assertions=assertions if assertions is not None else [_assertion()],
-        search_budget=5,
-        searches_used=searches_used,
-        token_budget=50000,
-        tokens_used=tokens_used,
+        turn_budget=5,
+        turns_used=turns_used,
         visited_urls=visited_urls if visited_urls is not None else [],
     )
 
@@ -102,7 +99,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
     the action(s) it returned."""
     stop = StopAction(reason="Nothing left to check.")
     events: list[object] = []
-    state = _state(searches_used=2, tokens_used=999)
+    state = _state(turns_used=2)
 
     dispatch(
         state,
@@ -122,15 +119,14 @@ def test_decide_plan_event_records_request_and_response() -> None:
     assert event.request["company_id"] == "co-xyz"
     assert event.request["company_name"] == "Acme Corp"
     assert event.request["opening_title"] == "Staff Software Engineer"
-    assert event.request["searches_used"] == 2
-    assert event.request["tokens_used"] == 999
+    assert event.request["turns_used"] == 2
     assert event.request["targets_covered"] == ["stretch"]
     assert event.request["last_context"] is None
     assert event.response == {"actions": [{"tag": "stop", "reason": "Nothing left to check."}]}
 
 
 def test_dispatch_threads_budget_counters() -> None:
-    state = _state(searches_used=2, tokens_used=8000)
+    state = _state(turns_used=2)
     summary = dispatch(
         state,
         planner=FakePlanner(),
@@ -139,8 +135,7 @@ def test_dispatch_threads_budget_counters() -> None:
         on_event=_noop,
     )
 
-    assert summary.searches_used == 2
-    assert summary.tokens_used == 8000
+    assert summary.turns_used == 2
 
 
 def test_dispatch_unknown_tag_raises_runtime_error() -> None:
@@ -178,7 +173,7 @@ def test_dispatch_empty_action_list_raises_runtime_error() -> None:
 
 def test_search_action_happy_path() -> None:
     """SearchAction calls browser.search, records a tavily_search event,
-    increments searches_used, appends to prior_queries, and sets last_context
+    increments turns_used, appends to prior_queries, and sets last_context
     to a SearchContext with the returned hits."""
     query = "Company A staff eng compensation 2024"
     hits = [
@@ -195,7 +190,7 @@ def test_search_action_happy_path() -> None:
     )
 
     events: list[object] = []
-    state = _state(searches_used=0)
+    state = _state(turns_used=0)
 
     summary = dispatch(
         state,
@@ -217,18 +212,18 @@ def test_search_action_happy_path() -> None:
     assert event.request == {"query": query}
 
     # summary reflects one search used
-    assert summary.searches_used == 1
+    assert summary.turns_used == 1
     assert isinstance(summary, PassSummary)
 
 
 def test_budget_guard_fires() -> None:
-    """After a SearchAction that pushes searches_used to search_budget,
-    the dispatcher returns PassSummary with stopped_reason='search budget exhausted'
+    """After a SearchAction that pushes turns_used to turn_budget,
+    the dispatcher returns PassSummary with stopped_reason='turn budget exhausted'
     without calling planner.plan again."""
     query = "Company A comp"
     hits: list[object] = []
 
-    # search_budget=1, searches_used starts at 0 — one search exhausts the budget
+    # turn_budget=1, turns_used starts at 0 — one search exhausts the budget
     browser = FakeBrowser(search_fixtures={query: hits})
     # If the guard misfires and calls plan() again, the second element would return stop;
     # but the guard must fire BEFORE the next plan() call.
@@ -248,8 +243,8 @@ def test_budget_guard_fires() -> None:
 
     planner.plan = counting_plan  # type: ignore[method-assign]
 
-    state = _state(searches_used=0)
-    state = state.model_copy(update={"search_budget": 1})
+    state = _state(turns_used=0)
+    state = state.model_copy(update={"turn_budget": 1})
 
     summary = dispatch(
         state,
@@ -262,8 +257,8 @@ def test_budget_guard_fires() -> None:
     # plan() was called exactly once (for the SearchAction)
     assert len(plan_calls) == 1
     # summary says budget exhausted
-    assert summary.stopped_reason == "search budget exhausted"
-    assert summary.searches_used == 1
+    assert summary.stopped_reason == "turn budget exhausted"
+    assert summary.turns_used == 1
 
 
 def test_fetch_action_happy_path() -> None:
@@ -307,6 +302,9 @@ def test_fetch_action_happy_path() -> None:
 
     # new assertion was appended to the summary count
     assert summary.assertions_written == 2  # original + new_assertion
+
+    # fetch is a budget-consuming turn
+    assert summary.turns_used == 1
 
     # FetchContext in last_context carried the new target
     # (accessible by inspecting the state passed to the second planner.plan call
