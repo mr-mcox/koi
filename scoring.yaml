@@ -68,3 +68,10 @@ top_k: 5
 # no formula from queue position yet, that's the deferred research-pass bandit's job.
 # Unmeasured placeholder, same status as bar/top_k above.
 research_turns_budget: 5
+
+# Research targeting (research-resumability/research-targeting bearing). Per-target
+# action cap while a target is sticky: once the planner picks a primary target, it
+# stays on that target for up to this many actions before the ranking is allowed to
+# switch. Prevents mid-chain thrash when a fetch on one target incidentally yields an
+# assertion about another target. Unmeasured placeholder, same status as bar/top_k above.
+research_target_action_cap: 3

@@ -50,6 +50,7 @@ class ScoringConfig:
     rating_task_budget: int
     top_k: int
     research_turns_budget: int
+    research_target_action_cap: int
 
     @property
     def total_weight(self) -> int:

@@ -18,9 +18,10 @@ from pydantic import ConfigDict
 from screen.extract.fakes import FakeExtractor
 from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
-from screen.research.dispatcher import dispatch
+from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research.state import LoopState, PassSummary
+from screen.score.loader import load_scoring_config
 from screen.types import Assertion, Citation
 
 
@@ -55,24 +56,40 @@ def _state(
     assertions: list[Assertion] | None = None,
     turns_used: int = 0,
     visited_urls: list[str] | None = None,
+    **kwargs: object,
 ) -> LoopState:
-    return LoopState(
-        opening_id="op-abc",
-        company_id="co-xyz",
-        company_name="Acme Corp",
-        opening_title="Staff Software Engineer",
-        page_content="Some posting text.",
-        url="https://example.com/jobs/1",
-        rubric_text="stretch: ...",
-        assertions=assertions if assertions is not None else [_assertion()],
-        turn_budget=5,
-        turns_used=turns_used,
-        visited_urls=visited_urls if visited_urls is not None else [],
-    )
+    defaults: dict[str, object] = {
+        "opening_id": "op-abc",
+        "company_id": "co-xyz",
+        "company_name": "Acme Corp",
+        "opening_title": "Staff Software Engineer",
+        "page_content": "Some posting text.",
+        "url": "https://example.com/jobs/1",
+        "rubric_text": "stretch: ...",
+        "assertions": assertions if assertions is not None else [_assertion()],
+        "turn_budget": 5,
+        "turns_used": turns_used,
+        "visited_urls": visited_urls if visited_urls is not None else [],
+    }
+    defaults.update(kwargs)
+    return LoopState(**defaults)  # type: ignore[arg-type]
 
 
 def _fake_extractor(results: list[list[Assertion]] | None = None) -> FakeExtractor:
     return FakeExtractor(results or [[]])
+
+
+def _deps(
+    *,
+    browser: FakeBrowser | None = None,
+    extractor: FakeExtractor | None = None,
+    on_event: object = _noop,
+) -> DispatchDeps:
+    return DispatchDeps(
+        browser=browser if browser is not None else FakeBrowser(),
+        extractor=extractor if extractor is not None else _fake_extractor(),
+        on_event=on_event,  # type: ignore[arg-type]
+    )
 
 
 def test_dispatch_stop_returns_pass_summary() -> None:
@@ -81,9 +98,7 @@ def test_dispatch_stop_returns_pass_summary() -> None:
     summary = dispatch(
         state,
         planner=FakePlanner(sequence=[[stop]]),
-        browser=FakeBrowser(),
-        extractor=_fake_extractor(),
-        on_event=_noop,
+        deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
     assert isinstance(summary, PassSummary)
@@ -104,9 +119,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
     dispatch(
         state,
         planner=FakePlanner(sequence=[[stop]]),
-        browser=FakeBrowser(),
-        extractor=_fake_extractor(),
-        on_event=events.append,
+        deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=events.append),
     )
 
     plan_events = [
@@ -130,9 +143,7 @@ def test_dispatch_threads_budget_counters() -> None:
     summary = dispatch(
         state,
         planner=FakePlanner(),
-        browser=FakeBrowser(),
-        extractor=_fake_extractor(),
-        on_event=_noop,
+        deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
     assert summary.turns_used == 2
@@ -152,9 +163,7 @@ def test_dispatch_unknown_tag_raises_runtime_error() -> None:
         dispatch(
             _state(),
             planner=planner,
-            browser=FakeBrowser(),
-            extractor=_fake_extractor(),
-            on_event=_noop,
+            deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
 
@@ -165,9 +174,7 @@ def test_dispatch_empty_action_list_raises_runtime_error() -> None:
         dispatch(
             _state(),
             planner=planner,
-            browser=FakeBrowser(),
-            extractor=_fake_extractor(),
-            on_event=_noop,
+            deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
 
@@ -195,9 +202,7 @@ def test_search_action_happy_path() -> None:
     summary = dispatch(
         state,
         planner=planner,
-        browser=browser,
-        extractor=_fake_extractor(),
-        on_event=events.append,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
     # browser.search was called with the right query
@@ -249,9 +254,7 @@ def test_budget_guard_fires() -> None:
     summary = dispatch(
         state,
         planner=planner,
-        browser=browser,
-        extractor=_fake_extractor(),
-        on_event=_noop,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
     )
 
     # plan() was called exactly once (for the SearchAction)
@@ -284,9 +287,7 @@ def test_fetch_action_happy_path() -> None:
     summary = dispatch(
         state,
         planner=planner,
-        browser=browser,
-        extractor=extractor,
-        on_event=events.append,
+        deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
     # browser.fetch was called with the right URL
@@ -332,9 +333,7 @@ def test_fetch_action_duplicate_skipped() -> None:
     summary = dispatch(
         state,
         planner=planner,
-        browser=browser,
-        extractor=extractor,
-        on_event=events.append,
+        deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
     # browser.fetch was NOT called
@@ -368,9 +367,7 @@ def test_fetch_action_zero_assertions_continues() -> None:
     summary = dispatch(
         state,
         planner=planner,
-        browser=browser,
-        extractor=extractor,
-        on_event=_noop,
+        deps=_deps(browser=browser, extractor=extractor, on_event=_noop),
     )
 
     # No assertion added — extraction returned []
@@ -378,3 +375,51 @@ def test_fetch_action_zero_assertions_continues() -> None:
     # Loop completed normally — no exception raised
     assert isinstance(summary, PassSummary)
     assert summary.stopped_reason == "Nothing more to do."
+
+
+def test_dispatch_sticky_target_increments_action_counter() -> None:
+    """When the planner keeps the same primary target across turns, the
+    dispatcher increments active_target_actions rather than resetting it."""
+    config = load_scoring_config()
+    query = "Acme Corp compensation"
+    browser = FakeBrowser(search_fixtures={query: []})
+    stop = StopAction(reason="Done.")
+    planner = FakePlanner(
+        sequence=[
+            [SearchAction(query=query)],
+            [SearchAction(query=query)],
+            [stop],
+        ]
+    )
+
+    state = _state(
+        targets=["stretch", "compensation"],
+        active_target="compensation",
+        active_target_actions=1,
+        active_target_action_cap=10,
+    )
+
+    recorded: list[LoopState] = []
+    original_plan = planner.plan
+
+    def recording_plan(s: LoopState) -> list[Action]:
+        recorded.append(s)
+        return original_plan(s)
+
+    planner.plan = recording_plan  # type: ignore[method-assign]
+
+    dispatch(
+        state,
+        planner=planner,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
+        scoring_config=config,
+    )
+
+    # First plan call saw the initial state.
+    assert recorded[0].active_target_actions == 1
+    # Second plan call saw the state after one action on the same target.
+    assert recorded[1].active_target == "compensation"
+    assert recorded[1].active_target_actions == 2
+    # Third plan call saw the state after two actions on the same target.
+    assert recorded[2].active_target == "compensation"
+    assert recorded[2].active_target_actions == 3

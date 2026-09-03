@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-01
 commit: 1fba424
 branch: main
-status: implementing
+status: decomposed
 scouting: ./scouting.md
 ---
 

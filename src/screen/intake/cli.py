@@ -19,7 +19,12 @@ from screen.digest.protocol import DigesterProtocol
 from screen.digest.service import update_digests_for_opening
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.extract import extract_assertions
-from screen.extract.prompt import rubric_text_for_baml
+from screen.extract.prompt import (
+    all_constraint_slugs,
+    all_dimension_slugs,
+    all_non_scoring_slugs,
+    rubric_text_for_baml,
+)
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.company_id import derive_company_id
@@ -31,14 +36,16 @@ from screen.intake.research_trace_io import append_line
 from screen.intake.research_trace_replay import replay_research_trace
 from screen.paths import data_dir
 from screen.research.baml_planner import BAMLPlanner
-from screen.research.dispatcher import dispatch
+from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
 from screen.score.loader import load_scoring_config
+from screen.score.types import ScoringConfig
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
     assertions_for_opening,
+    dimension_rulings_for_opening,
     get_company,
     get_opening,
     list_openings,
@@ -69,8 +76,8 @@ def _build_digester() -> DigesterProtocol:
     return BAMLDigester()
 
 
-def _build_planner() -> PlannerProtocol:
-    return BAMLPlanner()
+def _build_planner(config: ScoringConfig | None = None) -> PlannerProtocol:
+    return BAMLPlanner(config=config)
 
 
 def _noop_on_event(_event: object) -> None:
@@ -418,10 +425,13 @@ def _run_dispatch(
     """Build LoopState from in-memory values and run one dispatch cycle.
     The CLI echoes the stop reason. No disk re-read: assertions list
     comes from the caller. Assertions the dispatch loop's own fetch actions
-    add are not persisted here or by dispatch itself — unchanged from prior
-    behavior, tracked by test_cli_dispatch_does_not_re_extract.
+    add are persisted immediately via `append_assertions`, one fetch at a
+    time, so a pass interrupted mid-loop still keeps what it found.
     """
     rubric = rubric_text_for_baml()
+    scoring_config = load_scoring_config()
+    rulings = {ruling.target: ruling for ruling in dimension_rulings_for_opening(conn, opening_id)}
+    targets = all_dimension_slugs() + all_constraint_slugs() + all_non_scoring_slugs()
     state = LoopState(
         opening_id=opening_id,
         company_id=company_id,
@@ -434,18 +444,35 @@ def _run_dispatch(
         turn_budget=(
             turn_budget
             if turn_budget is not None
-            else int(os.environ.get("SCREEN_TURN_BUDGET", "5"))
+            else int(os.environ.get("SCREEN_TURN_BUDGET", scoring_config.research_turns_budget))
         ),
         turns_used=turns_used,
         visited_urls=visited_urls or [],
         prior_queries=prior_queries or [],
+        rulings=rulings,
+        targets=targets,
+        active_target_action_cap=scoring_config.research_target_action_cap,
     )
     pl = planner if planner is not None else _build_planner()
     br = browser if browser is not None else _build_client()
     xt = extractor if extractor is not None else _build_extractor()
     dg = digester if digester is not None else _build_digester()
     ev_callback: Callable[..., None] = on_event if on_event is not None else _noop_on_event
-    summary = dispatch(state, planner=pl, browser=br, extractor=xt, on_event=ev_callback)
+
+    def _persist_assertions(new_assertions: list[Assertion]) -> None:
+        append_assertions(conn, new_assertions, opening_id=opening_id)
+
+    summary = dispatch(
+        state,
+        planner=pl,
+        deps=DispatchDeps(
+            browser=br,
+            extractor=xt,
+            on_event=ev_callback,
+            on_assertions=_persist_assertions,
+        ),
+        scoring_config=scoring_config,
+    )
     click.echo(f"pass complete: {summary.stopped_reason}")
     update_digests_for_opening(
         conn,

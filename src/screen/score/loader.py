@@ -69,4 +69,5 @@ def load_scoring_config(
         rating_task_budget=int(scoring["rating_task_budget"]),
         top_k=int(scoring["top_k"]),
         research_turns_budget=int(scoring["research_turns_budget"]),
+        research_target_action_cap=int(scoring["research_target_action_cap"]),
     )

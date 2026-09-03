@@ -3,39 +3,32 @@
 Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
 `test_loop_baml_shape.py` pins this at test time.
+
+Also owns the deterministic composite-uncertainty ranking that picks the
+planner's `primary_target` for each turn. The ranking is pure: it reads the
+current assertions and operator rulings, never a stored history.
 """
+
+import math
+from typing import assert_never
 
 from screen.baml_client.sync_client import b
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
-from screen.types import Assertion
+from screen.score.types import ScoringConfig
+from screen.types import Assertion, DimensionRuling, Provenance
 
 
-def _targets_covered(state: LoopState) -> str:
-    """Comma-separated list of unique targets already asserted.
+def _prior_queries_text(state: LoopState) -> str:
+    """Render prior search queries as a short semicolon-joined string.
 
-    `domain` (domain coolness) is manual-only per domain-model.md's wall on
-    Company — an automated pass never researches it. It is always reported
-    as covered so DecidePlan never treats it as a gap worth a search.
+    Grounds the prompt's "avoid repeating a prior query" instruction in an
+    actual value instead of leaving it a dangling template reference.
     """
-    seen = dict.fromkeys(a.target for a in state.assertions)
-    seen.setdefault("domain", None)
-    return ", ".join(seen)
-
-
-def coverage_summary(assertions: list[Assertion]) -> str:
-    """One-line summary of how many assertions per target have been collected.
-
-    Format: "stretch(2), peer(1)" — only non-zero targets appear so the
-    string is short enough to be useful in a prompt.
-    """
-    counts: dict[str, int] = {}
-    for a in assertions:
-        counts[a.target] = counts.get(a.target, 0) + 1
-    if not counts:
+    if not state.prior_queries:
         return "(none)"
-    return ", ".join(f"{t}({n})" for t, n in counts.items())
+    return "; ".join(state.prior_queries)
 
 
 def last_context_text(state: LoopState) -> str:
@@ -56,23 +49,109 @@ def last_context_text(state: LoopState) -> str:
     if isinstance(ctx, SearchContext):
         n = len(ctx.hits)
         return f"Last action: searched {ctx.query!r}. Got {n} hit(s)."
-    return ""  # pragma: no cover — exhaustive over the two context types
+    assert_never(ctx)  # pragma: no cover
+
+
+def _assertion_weight_by_target(
+    assertions: list[Assertion], provenance_weight: dict[Provenance, float]
+) -> dict[str, float]:
+    """Provenance-weighted effective count per target."""
+    counts: dict[str, float] = {}
+    for a in assertions:
+        counts[a.target] = counts.get(a.target, 0.0) + provenance_weight.get(a.provenance, 0.0)
+    return counts
+
+
+def _target_uncertainty(
+    target: str,
+    *,
+    n_by_target: dict[str, float],
+    rulings: dict[str, DimensionRuling],
+    hw_max: float,
+    hw_min: float,
+) -> float:
+    """Composite uncertainty for one target.
+
+    If the operator has pinned a `DimensionRuling` for this target, the
+    operator's stated settledness drives the signal: low settledness means
+    high uncertainty (dig here), high settledness means low uncertainty
+    (leave it). For targets without a ruling, fall back to assertion-derived
+    half-width from the provenance-weighted count.
+
+    The two signals are never averaged; the operator pin overrides the
+    assertion count when present, matching the wall that models do not
+    manufacture or update rulings (F16).
+    """
+    ruling = rulings.get(target)
+    if ruling is not None:
+        settledness = getattr(ruling, "settledness", 0.0)
+        return hw_max - settledness * (hw_max - hw_min)
+    n = n_by_target.get(target, 0.0)
+    return 1.0 / math.sqrt(n + 1.0)
+
+
+def rank_targets(state: LoopState, config: ScoringConfig) -> list[tuple[str, float]]:
+    """Rank all known targets by composite uncertainty, descending.
+
+    Ties are broken by target slug for deterministic ordering.
+    """
+    n_by_target = _assertion_weight_by_target(state.assertions, config.provenance_weight)
+    targets = state.targets or list(dict.fromkeys(list(n_by_target) + list(state.rulings)))
+    uncertainties = {
+        target: _target_uncertainty(
+            target,
+            n_by_target=n_by_target,
+            rulings=state.rulings,
+            hw_max=config.dimension_ruling_hw_max,
+            hw_min=config.dimension_ruling_hw_min,
+        )
+        for target in targets
+    }
+    return sorted(uncertainties.items(), key=lambda item: (-item[1], item[0]))
+
+
+def select_primary_target(state: LoopState, config: ScoringConfig) -> str:
+    """Pick the target the planner should focus on this turn.
+
+    Sticky target: while `active_target` is set and the per-target action cap
+    has not been reached, stay on that target. This prevents mid-chain thrash
+    when a fetch on one target incidentally yields assertions about another.
+    Once the cap is reached, re-rank and start a new sticky session.
+    """
+    if (
+        state.active_target is not None
+        and state.active_target_actions < state.active_target_action_cap
+    ):
+        return state.active_target
+    ranked = rank_targets(state, config)
+    return ranked[0][0] if ranked else "stretch"
 
 
 class BAMLPlanner:
-    """Calls DecidePlan via the generated BAML sync client."""
+    """Calls DecidePlan via the generated BAML sync client.
+
+    If `state.primary_target` is already set (the dispatcher owns the sticky
+    target logic), it is passed through. Otherwise this planner computes it
+    from the composite signal — useful for direct tests of the planner without
+    the full dispatcher loop.
+    """
+
+    def __init__(self, config: ScoringConfig | None = None) -> None:
+        self._config = config
 
     def plan(self, state: LoopState) -> list[Action]:
+        primary_target = state.primary_target
+        if primary_target is None and self._config is not None:
+            primary_target = select_primary_target(state, self._config)
+        if primary_target is None:
+            primary_target = "stretch"
         generated = b.DecidePlan(
-            opening_id=state.opening_id,
             company_name=state.company_name,
             opening_title=state.opening_title,
             rubric_text=state.rubric_text,
-            targets_covered=_targets_covered(state),
-            turns_used=state.turns_used,
-            turn_budget=state.turn_budget,
+            primary_target=primary_target,
             last_context_text=last_context_text(state),
-            coverage_summary=coverage_summary(state.assertions),
+            prior_queries=_prior_queries_text(state),
         )
         return [_coerce(g) for g in generated]
 

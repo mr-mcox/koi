@@ -3,24 +3,31 @@
 BAMLPlanner._coerce is exercised directly to cover the error branch
 without requiring a live BAML call.
 
-last_context_text() and coverage_summary() are pure functions; they are
-tested with known inputs so the criterion "both produce correct strings
-for known inputs" is mechanically verified.
+last_context_text() is a pure function; it is tested with known inputs so
+the criterion "produces correct strings for known inputs" is mechanically
+verified.
 """
+
+from datetime import UTC, datetime
 
 import pytest
 
 from screen.browser import SearchHit
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.baml_planner import (
+    BAMLPlanner,
     _coerce,
-    _targets_covered,
-    coverage_summary,
+    _prior_queries_text,
+    _target_uncertainty,
     last_context_text,
+    rank_targets,
+    select_primary_target,
 )
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
-from screen.types import Assertion, Citation
+from screen.score.loader import load_scoring_config
+from screen.score.types import ScoringConfig
+from screen.types import Assertion, Citation, DimensionRuling
 
 
 class _FakeStop:
@@ -69,20 +76,25 @@ def _state(
     *,
     assertions: list[Assertion] | None = None,
     last_context: FetchContext | SearchContext | None = None,
+    **kwargs: object,
 ) -> LoopState:
-    return LoopState(
-        opening_id="op-abc",
-        company_id="co-xyz",
-        company_name="Acme Corp",
-        opening_title="Staff Software Engineer",
-        page_content="Some posting text.",
-        url="https://example.com/jobs/1",
-        rubric_text="stretch: ...",
-        assertions=assertions if assertions is not None else [],
-        turn_budget=5,
-        turns_used=0,
-        last_context=last_context,
-    )
+    # turn_budget/turns_used stay in LoopState (dispatcher's budget guard reads
+    # them) but are not passed to DecidePlan itself — the dispatcher owns budget.
+    defaults: dict[str, object] = {
+        "opening_id": "op-abc",
+        "company_id": "co-xyz",
+        "company_name": "Acme Corp",
+        "opening_title": "Staff Software Engineer",
+        "page_content": "Some posting text.",
+        "url": "https://example.com/jobs/1",
+        "rubric_text": "stretch: ...",
+        "assertions": assertions if assertions is not None else [],
+        "turn_budget": 5,
+        "turns_used": 0,
+        "last_context": last_context,
+    }
+    defaults.update(kwargs)
+    return LoopState(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -114,51 +126,6 @@ def test_coerce_search_returns_search_action() -> None:
 def test_coerce_unknown_tag_raises_runtime_error() -> None:
     with pytest.raises(RuntimeError, match="future_tag"):
         _coerce(_FakeUnknown())
-
-
-# ---------------------------------------------------------------------------
-# coverage_summary
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# _targets_covered
-# ---------------------------------------------------------------------------
-
-
-def test_targets_covered_no_assertions() -> None:
-    state = _state(assertions=[])
-    assert _targets_covered(state) == "domain"
-
-
-def test_targets_covered_deduplicates() -> None:
-    state = _state(assertions=[_assertion("stretch"), _assertion("stretch"), _assertion("peer")])
-    result = _targets_covered(state)
-    assert result == "stretch, peer, domain"
-
-
-def test_targets_covered_domain_not_duplicated_when_actually_asserted() -> None:
-    state = _state(assertions=[_assertion("domain")])
-    assert _targets_covered(state) == "domain"
-
-
-def test_coverage_summary_no_assertions() -> None:
-    assert coverage_summary([]) == "(none)"
-
-
-def test_coverage_summary_single_target() -> None:
-    result = coverage_summary([_assertion("stretch"), _assertion("stretch")])
-    assert result == "stretch(2)"
-
-
-def test_coverage_summary_multiple_targets() -> None:
-    assertions = [
-        _assertion("stretch"),
-        _assertion("peer"),
-        _assertion("stretch"),
-    ]
-    result = coverage_summary(assertions)
-    assert "stretch(2)" in result
-    assert "peer(1)" in result
 
 
 # ---------------------------------------------------------------------------
@@ -202,3 +169,202 @@ def test_last_context_text_search_context() -> None:
     text = last_context_text(state)
     assert "Acme staff salary" in text
     assert "2" in text
+
+
+# ---------------------------------------------------------------------------
+# Composite uncertainty / primary target selection
+# ---------------------------------------------------------------------------
+
+
+def _config() -> ScoringConfig:
+    config: ScoringConfig = load_scoring_config()
+    return config
+
+
+# ---------------------------------------------------------------------------
+# _prior_queries_text
+# ---------------------------------------------------------------------------
+
+
+def test_prior_queries_text_empty_returns_none_marker() -> None:
+    assert _prior_queries_text(_state(prior_queries=[])) == "(none)"
+
+
+def test_prior_queries_text_joins_in_order() -> None:
+    state = _state(prior_queries=["Acme salary", "Acme culture"])
+    assert _prior_queries_text(state) == "Acme salary; Acme culture"
+
+
+def _ruling(target: str, settledness: float) -> DimensionRuling:
+    return DimensionRuling(
+        opening_id="op-abc",
+        target=target,
+        mean=0.0,
+        settledness=settledness,
+        created_at=datetime.now(UTC),
+    )
+
+
+def test_target_uncertainty_uses_ruling_settledness() -> None:
+    """When a DimensionRuling exists, its settledness overrides the assertion
+    half_width calculation."""
+    config = _config()
+    ruling = _ruling("stretch", settledness=0.2)
+    uncertainty = _target_uncertainty(
+        "stretch",
+        n_by_target={"stretch": 10.0},  # would be ~0.302 without ruling
+        rulings={"stretch": ruling},
+        hw_max=config.dimension_ruling_hw_max,
+        hw_min=config.dimension_ruling_hw_min,
+    )
+    expected = 1.0 - 0.2 * (1.0 - 0.05)
+    assert uncertainty == pytest.approx(expected)
+
+
+def test_rank_targets_prefers_unexamined_target() -> None:
+    """An unexamined target outranks a target with one assertion."""
+    config = _config()
+    state = _state(
+        assertions=[_assertion("stretch")],
+        targets=["stretch", "compensation"],
+    )
+    ranked = rank_targets(state, config)
+    assert ranked[0][0] == "compensation"
+
+
+def test_rank_targets_ruling_overrides_assertion_count() -> None:
+    """A low-settledness ruling keeps a target urgent even when many assertions
+    would otherwise shrink its half_width."""
+    config = _config()
+    assertions = [_assertion("stretch") for _ in range(10)]
+    ruling = _ruling("stretch", settledness=0.1)
+    state = _state(
+        assertions=assertions,
+        targets=["stretch"],
+        rulings={"stretch": ruling},
+    )
+    ranked = rank_targets(state, config)
+    assert ranked[0][1] == pytest.approx(1.0 - 0.1 * (1.0 - 0.05))
+
+
+def test_rank_targets_falls_back_to_assertions_and_rulings() -> None:
+    """When `state.targets` is empty, the ranking derives targets from whatever
+    assertions and rulings exist."""
+    config = _config()
+    state = _state(
+        assertions=[_assertion("stretch")],
+        rulings={"compensation": _ruling("compensation", settledness=0.5)},
+        targets=[],
+    )
+    ranked = dict(rank_targets(state, config))
+    assert "stretch" in ranked
+    assert "compensation" in ranked
+
+
+def test_select_primary_target_stays_active_until_cap() -> None:
+    config = _config()
+    state = _state(
+        assertions=[_assertion("stretch")],
+        targets=["stretch", "compensation"],
+        active_target="compensation",
+        active_target_actions=1,
+        active_target_action_cap=3,
+    )
+    assert select_primary_target(state, config) == "compensation"
+
+
+def test_select_primary_target_releases_at_cap() -> None:
+    config = _config()
+    state = _state(
+        assertions=[_assertion("stretch")],
+        targets=["stretch", "compensation"],
+        active_target="stretch",
+        active_target_actions=3,
+        active_target_action_cap=3,
+    )
+    # cap reached, re-rank; unexamined compensation wins
+    assert select_primary_target(state, config) == "compensation"
+
+
+# ---------------------------------------------------------------------------
+# BAMLPlanner.plan dispatches the generated DecidePlan call
+# ---------------------------------------------------------------------------
+
+
+class _FakeBamlStop:
+    tag = "stop"
+    reason = "Mock stop."
+
+
+def test_baml_planner_plan_uses_state_primary_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The planner passes the primary_target already set on LoopState to the
+    generated BAML client without recomputing it, using only the lean set of
+    fields DecidePlan actually needs."""
+    calls: list[dict[str, object]] = []
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        calls.append(kwargs)
+        return [_FakeBamlStop()]
+
+    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
+
+    planner = BAMLPlanner()
+    state = _state(primary_target="compensation", prior_queries=["Acme Corp salary"])
+    actions = planner.plan(state)
+    assert len(actions) == 1
+    assert actions[0].tag == "stop"
+    assert calls[0] == {
+        "company_name": "Acme Corp",
+        "opening_title": "Staff Software Engineer",
+        "rubric_text": "stretch: ...",
+        "primary_target": "compensation",
+        "last_context_text": "",
+        "prior_queries": "Acme Corp salary",
+    }
+
+
+def test_baml_planner_plan_computes_primary_target_from_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a primary_target on state, the planner uses the config to
+    select the top-ranked target before calling DecidePlan."""
+    calls: list[dict[str, object]] = []
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        calls.append(kwargs)
+        return [_FakeBamlStop()]
+
+    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
+
+    planner = BAMLPlanner(config=_config())
+    state = _state(
+        assertions=[_assertion("stretch")],
+        targets=["stretch", "compensation"],
+    )
+    actions = planner.plan(state)
+
+    assert actions[0].tag == "stop"
+    assert calls[0]["primary_target"] == "compensation"
+
+
+def test_baml_planner_plan_fallback_to_stretch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If neither state nor the planner carries a config, the planner falls
+    back to a hard-coded 'stretch' primary target so DecidePlan always has a
+    value."""
+    calls: list[dict[str, object]] = []
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        calls.append(kwargs)
+        return [_FakeBamlStop()]
+
+    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
+
+    planner = BAMLPlanner()
+    state = _state(primary_target=None)
+    planner.plan(state)
+
+    assert calls[0]["primary_target"] == "stretch"

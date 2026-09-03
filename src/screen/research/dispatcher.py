@@ -9,6 +9,7 @@ an updated LoopState, which is threaded into the next call.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from screen.browser import BrowserProtocol
@@ -16,9 +17,24 @@ from screen.extract.extract import extract_assertions
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
+from screen.research.baml_planner import select_primary_target
 from screen.research.context import FetchContext, SearchContext
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState, PassSummary
+from screen.score.types import ScoringConfig
+from screen.types import Assertion
+
+
+@dataclass(frozen=True)
+class DispatchDeps:
+    """The dispatch loop's effect ports, bundled so adding a new hook (as
+    `on_assertions` did) touches this one type instead of every handler's
+    signature and every call site that relays it."""
+
+    browser: BrowserProtocol
+    extractor: ExtractorProtocol
+    on_event: Callable[..., None]
+    on_assertions: Callable[[list[Assertion]], None] | None = None
 
 
 def _targets_covered(state: LoopState) -> list[str]:
@@ -39,6 +55,9 @@ def _plan_request(state: LoopState) -> dict[str, object]:
         "opening_title": state.opening_title,
         "turns_used": state.turns_used,
         "turn_budget": state.turn_budget,
+        "primary_target": state.primary_target,
+        "active_target": state.active_target,
+        "active_target_actions": state.active_target_actions,
         "prior_queries": list(state.prior_queries),
         "visited_urls": list(state.visited_urls),
         "targets_covered": _targets_covered(state),
@@ -48,23 +67,50 @@ def _plan_request(state: LoopState) -> dict[str, object]:
     }
 
 
+def _advance_active_target(state: LoopState) -> LoopState:
+    """Increment the sticky-target counter after a budget-consuming action.
+
+    If the action was planned for a new primary target, start a new sticky
+    session at 1. If it was planned for the current active target, increment.
+    If `primary_target` is not set (e.g. tests with a FakePlanner), leave the
+    state unchanged.
+    """
+    if state.primary_target is None:
+        return state
+    if state.primary_target == state.active_target:
+        return state.model_copy(update={"active_target_actions": state.active_target_actions + 1})
+    return state.model_copy(
+        update={
+            "active_target": state.primary_target,
+            "active_target_actions": 1,
+        }
+    )
+
+
 def dispatch(
     state: LoopState,
     *,
     planner: PlannerProtocol,
-    browser: BrowserProtocol,
-    extractor: ExtractorProtocol,
-    on_event: Callable[..., None],
+    deps: DispatchDeps,
+    scoring_config: ScoringConfig | None = None,
 ) -> PassSummary:
     """Run one research pass and return a summary.
     Loops until StopAction or search budget exhaustion.
     Raises RuntimeError on empty action lists or unrecognized tags.
+
+    `scoring_config` is required for the composite uncertainty ranking that
+    selects the planner's `primary_target` each turn. When omitted, the loop
+    trusts whatever `primary_target` is already on `state` (used by tests).
     """
     current = state
     while True:
+        if scoring_config is not None:
+            primary_target = select_primary_target(current, scoring_config)
+            current = current.model_copy(update={"primary_target": primary_target})
+
         request = _plan_request(current)
         actions = planner.plan(current)
-        on_event(
+        deps.on_event(
             ResearchTraceEvent(
                 ts=datetime.now(UTC),
                 tool="decide_plan",
@@ -77,10 +123,11 @@ def dispatch(
                 "Planner returned an empty action list — must include at least [stop]."
             )
         action = actions[0]
-        result = _dispatch_one(action, current, browser, extractor, on_event)
+        result = _dispatch_one(action, current, deps)
         if isinstance(result, PassSummary):
             return result
-        current = result
+        current = _advance_active_target(result)
+
         # Budget guard fires after state is updated, before the next plan() call.
         if current.turns_used >= current.turn_budget:
             return PassSummary(
@@ -95,9 +142,7 @@ def dispatch(
 def _dispatch_one(
     action: Action,
     state: LoopState,
-    browser: BrowserProtocol,
-    extractor: ExtractorProtocol,
-    on_event: Callable[..., None],
+    deps: DispatchDeps,
 ) -> PassSummary | LoopState:
     if action.tag == "stop":
         assert isinstance(action, StopAction)
@@ -111,11 +156,11 @@ def _dispatch_one(
 
     if action.tag == "search":
         assert isinstance(action, SearchAction)
-        return _handle_search(action, state, browser, on_event)
+        return _handle_search(action, state, deps)
 
     if action.tag == "fetch":
         assert isinstance(action, FetchAction)
-        return _handle_fetch(action, state, browser, extractor, on_event)
+        return _handle_fetch(action, state, deps)
 
     raise RuntimeError(
         f"Unrecognized action tag '{action.tag}'. "
@@ -126,17 +171,16 @@ def _dispatch_one(
 def _handle_search(
     action: SearchAction,
     state: LoopState,
-    browser: BrowserProtocol,
-    on_event: Callable[..., None],
+    deps: DispatchDeps,
 ) -> LoopState:
     """Issue a search query, record the event, and return updated state.
 
     Zero hits is valid; last_context records the empty result and the
     planner decides whether to refine the query.
     """
-    hits = browser.search(action.query)
+    hits = deps.browser.search(action.query)
 
-    on_event(
+    deps.on_event(
         ResearchTraceEvent(
             ts=datetime.now(UTC),
             tool="tavily_search",
@@ -157,15 +201,16 @@ def _handle_search(
 def _handle_fetch(
     action: FetchAction,
     state: LoopState,
-    browser: BrowserProtocol,
-    extractor: ExtractorProtocol,
-    on_event: Callable[..., None],
+    deps: DispatchDeps,
 ) -> LoopState:
     """Fetch a URL, extract assertions, return updated state for the next cycle.
 
     Duplicate URLs are silently skipped — FetchContext records the URL with
     empty targets_added so the planner can see it was attempted.
     Zero new assertions is not an error and does not force stop.
+
+    `deps.on_assertions`, when set, is called with the new assertions (never
+    empty) so the caller can persist them — `dispatch` does no I/O itself.
     """
     if action.url in state.visited_urls:
         return state.model_copy(
@@ -178,10 +223,10 @@ def _handle_fetch(
             }
         )
 
-    hit = browser.fetch(action.url)
+    hit = deps.browser.fetch(action.url)
     raw_content: str = hit.get("raw_content") or ""
 
-    on_event(
+    deps.on_event(
         ResearchTraceEvent(
             ts=datetime.now(UTC),
             tool="tavily_extract",
@@ -194,8 +239,11 @@ def _handle_fetch(
         raw_content,
         state.rubric_text,
         list(state.assertions),
-        extractor=extractor,
+        extractor=deps.extractor,
     )
+
+    if new_assertions and deps.on_assertions is not None:
+        deps.on_assertions(new_assertions)
 
     targets_added = [a.target for a in new_assertions]
     snippet = raw_content[:500]

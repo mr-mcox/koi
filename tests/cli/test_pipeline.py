@@ -12,6 +12,8 @@ from click.testing import CliRunner
 from screen.browser import BrowserError, TavilyBrowser
 from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeTavily
+from screen.research.actions import FetchAction, StopAction
+from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.score.loader import load_scoring_config
 from tests.cli.helpers import (
     env_for,
@@ -150,19 +152,44 @@ def test_cli_echoes_stop_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     ), f"Stop reason not in CLI output. Got:\n{result.output}"
 
 
-def test_cli_dispatch_does_not_re_extract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Dispatch does not persist more assertions: row count is unchanged after dispatch."""
+def test_cli_dispatch_persists_fetch_assertions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Assertions added by the dispatch loop's own fetch actions are persisted
+    to the DB, not just held in memory for the rest of the pass."""
     url = "https://example.com/jobs/42"
     fake = _fake_tavily_for(url)
     monkeypatch.setattr(TavilyBrowser, "extract", lambda self, urls: fake.extract(urls))
     monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
     patch_extractor(monkeypatch)
-    patch_planner(monkeypatch)
     patch_digester(monkeypatch)
+
+    fetch_url = "https://levels.fyi/companies/example-co"
+    monkeypatch.setattr(
+        cli_module,
+        "_build_planner",
+        lambda: FakePlanner(
+            sequence=[
+                [FetchAction(url=fetch_url)],
+                [StopAction(reason="Second fetch done.")],
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_build_client",
+        lambda: FakeBrowser(
+            fetch_fixtures={
+                url: {"raw_content": "Synthetic job posting fixture."},
+                fetch_url: {"raw_content": "Example Co pays $400k TC."},
+            }
+        ),
+    )
 
     runner = CliRunner()
     result = runner.invoke(cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False)
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
     conn = sqlite3.connect(tmp_path / "screen.db")
-    # FakeExtractor returned exactly one assertion; dispatch must not add more.
-    assert conn.execute("SELECT COUNT(*) FROM assertions").fetchone() == (1,)
+    # FakeExtractor returns one assertion per call: one from the intake extraction,
+    # one from the dispatch loop's own fetch of `fetch_url`.
+    assert conn.execute("SELECT COUNT(*) FROM assertions").fetchone() == (2,)

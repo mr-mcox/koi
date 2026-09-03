@@ -14,7 +14,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 from screen.research.context import FetchContext, SearchContext
-from screen.types import Assertion
+from screen.types import Assertion, DimensionRuling
 
 
 class LoopState(BaseModel):
@@ -39,6 +39,21 @@ class LoopState(BaseModel):
     last_context: SearchContext | FetchContext | None = None
     visited_urls: list[str] = []
     prior_queries: list[str] = []
+    # Operator pins for this opening. The research planner reads settledness to
+    # raise or suppress urgency, but never writes rulings (domain-model.md wall).
+    rulings: dict[str, DimensionRuling] = {}
+    # All rubric targets the planner may be asked to research. Needed so an
+    # unexamined target can outrank a thinly examined one in the uncertainty ranking.
+    targets: list[str] = []
+    # Sticky target: once selected, the planner stays on it until it either reports
+    # no leads or hits the per-target action cap. Prevents search/fetch thrash when
+    # a fetch on one target incidentally yields assertions about another.
+    active_target: str | None = None
+    active_target_actions: int = 0
+    active_target_action_cap: int = 3
+    # Transient directive computed by the dispatcher (or planner in tests) and
+    # passed to DecidePlan so the model knows which target to focus this turn.
+    primary_target: str | None = None
 
 
 class PassSummary(BaseModel):
