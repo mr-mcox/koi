@@ -41,6 +41,7 @@ def test_fake_tavily_has_no_extract_one() -> None:
 
 
 def test_browser_error_is_exception() -> None:
+
     assert issubclass(BrowserError, Exception)
 
 
@@ -92,3 +93,30 @@ def test_fake_tavily_fetch_raises_on_empty_fixture() -> None:
     except BrowserError:
         raised = True
     assert raised
+
+
+def test_browser_error_details_default_to_empty_dict() -> None:
+    """BrowserError constructed without `details` exposes an empty dict, not None,
+    so callers can always write `exc.details` into a trace event."""
+    exc = BrowserError("boom")
+    assert exc.details == {}
+
+
+def test_browser_error_carries_details() -> None:
+    """details holds whatever raw failure info the transport gave us, for the
+    caller to record verbatim in the trace (no classification here)."""
+    exc = BrowserError(
+        "fetch failed", details={"failed_results": [{"error": "Failed to fetch url"}]}
+    )
+    assert exc.details == {"failed_results": [{"error": "Failed to fetch url"}]}
+
+
+def test_fake_tavily_fetch_error_carries_failed_results_details() -> None:
+    """FakeTavily.fetch's BrowserError.details exposes the failed_results entry,
+    mirroring what TavilyBrowser would surface from a real Tavily failure."""
+    fake = FakeTavily(fixtures={})
+    try:
+        fake.fetch("https://nowhere.example/missing")
+        assert False, "expected BrowserError"
+    except BrowserError as exc:
+        assert "failed_results" in exc.details

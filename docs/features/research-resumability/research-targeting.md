@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-02
 commit: e0b5661
 branch: resumable-research
-status: implementing
+status: done
 parent: ./bearing.md
 scouting: ./research-targeting-scouting.md
 ---

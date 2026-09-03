@@ -63,11 +63,17 @@ class FakeBrowser:
         self.fetch_calls.append(url)
         fixture = self._fetch_fixtures.get(url)
         if fixture is None:
-            raise BrowserError(f"FakeBrowser: no fixture for {url}")
+            raise BrowserError(
+                f"FakeBrowser: no fixture for {url}",
+                details={"failed_results": [{"url": url, "error": "no fixture"}]},
+            )
         return SearchHit(url=url, raw_content=fixture.get("raw_content", ""))
 
     def search(self, query: str) -> list[SearchHit]:
         self.search_calls.append(query)
         if query not in self._search_fixtures:
-            raise BrowserError(f"FakeBrowser: no search fixture for {query!r}")
+            raise BrowserError(
+                f"FakeBrowser: no search fixture for {query!r}",
+                details={"exception": f"no search fixture for {query!r}"},
+            )
         return list(self._search_fixtures[query])

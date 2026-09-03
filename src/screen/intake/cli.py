@@ -336,7 +336,7 @@ def _fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
             ts=started,
             tool="tavily_extract",
             request=request_payload,
-            response={"error": str(exc)},
+            response={"error": str(exc), "details": exc.details},
         )
         _record_event(research_trace_path, event)
         raise click.ClickException(f"intake failed for {url}: {exc}") from exc

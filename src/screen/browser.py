@@ -12,7 +12,19 @@ from tavily import TavilyClient
 
 
 class BrowserError(Exception):
-    """Raised by BrowserProtocol implementations on fetch failure."""
+    """Raised by BrowserProtocol implementations on fetch failure.
+
+    `details` carries whatever raw information the underlying transport gave
+    us (e.g. Tavily's `failed_results` entry or the exception text). Tavily's
+    own error message collapses distinct causes (404, bot-block, JS-only
+    page, timeout) into the same generic string, so we do not attempt to
+    classify further here — callers record `details` verbatim in the trace
+    for the operator to inspect.
+    """
+
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.details: dict[str, Any] = details if details is not None else {}
 
 
 class SearchHit(TypedDict, total=False):
@@ -54,7 +66,7 @@ class TavilyBrowser:
         try:
             return cast(dict[str, Any], cast(Any, self._client.extract(urls=list(urls))))
         except Exception as exc:
-            raise BrowserError(str(exc)) from exc
+            raise BrowserError(str(exc), details={"exception": str(exc)}) from exc
 
     def fetch(self, url: str) -> SearchHit:
         """Fetch a single URL and return the first result hit."""
@@ -64,15 +76,18 @@ class TavilyBrowser:
             return cast(SearchHit, results[0])
         failed = response.get("failed_results") or []
         if failed:
-            raise BrowserError(f"fetch failed for {url}: {failed[0]}")
-        raise BrowserError(f"fetch returned no results for {url}")
+            raise BrowserError(
+                f"fetch failed for {url}: {failed[0]}",
+                details={"failed_results": failed},
+            )
+        raise BrowserError(f"fetch returned no results for {url}", details={"failed_results": []})
 
     def search(self, query: str) -> list[SearchHit]:
         """Search Tavily and return hits."""
         try:
             response = cast(dict[str, Any], cast(Any, self._client).search(query=query))
         except Exception as exc:
-            raise BrowserError(str(exc)) from exc
+            raise BrowserError(str(exc), details={"exception": str(exc)}) from exc
         results = response.get("results") or []
         hits: list[SearchHit] = []
         for r in results:

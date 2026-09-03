@@ -28,10 +28,12 @@ class FakeTavily:
     def fetch(self, url: str) -> SearchHit:
         response = self.extract([url])
         if response["failed_results"]:
-            raise BrowserError(f"no fixture for {url}")
+            raise BrowserError(
+                f"no fixture for {url}", details={"failed_results": response["failed_results"]}
+            )
         results = response["results"]
         if not results:
-            raise BrowserError(f"empty fixture for {url}")
+            raise BrowserError(f"empty fixture for {url}", details={"failed_results": []})
         return SearchHit(**{k: v for k, v in results[0].items() if k in ("url", "raw_content")})
 
     def search(self, _query: str) -> list[SearchHit]:  # pragma: no cover

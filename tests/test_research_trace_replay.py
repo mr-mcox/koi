@@ -136,3 +136,41 @@ def test_replay_counts_search_with_no_query_field(tmp_path: Path) -> None:
     replay = replay_research_trace(path)
     assert replay.turns_used == 1
     assert replay.prior_queries == []
+
+
+def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> None:
+    """A dispatcher-recorded fetch failure (bearing research-fetch-resilience)
+    carries an explicit empty `results` list alongside `error`/`details`,
+    distinguishing it from the intake-time fatal failure (no `results` key
+    at all). It still counts as a turn — the API call was made — but adds
+    no visited URL since there is no result to fold."""
+    path = tmp_path / "trace.jsonl"
+    event = ResearchTraceEvent(
+        ts=datetime.now(UTC),
+        tool="tavily_extract",
+        request={"urls": ["https://blocked.example/job/1"]},
+        response={"error": "fetch failed", "details": {"failed_results": []}, "results": []},
+    )
+    append_line(path, event.model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.turns_used == 1
+    assert replay.visited_urls == []
+
+
+def test_replay_counts_failed_research_pass_search_as_a_turn(tmp_path: Path) -> None:
+    """A dispatcher-recorded search failure still spends a turn and does not
+    add to prior_queries beyond the attempted query (existing fold already
+    reads request['query'] regardless of response shape)."""
+    path = tmp_path / "trace.jsonl"
+    event = ResearchTraceEvent(
+        ts=datetime.now(UTC),
+        tool="tavily_search",
+        request={"query": "Acme Corp culture"},
+        response={"error": "search failed", "details": {"exception": "boom"}},
+    )
+    append_line(path, event.model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.turns_used == 1
+    assert replay.prior_queries == ["Acme Corp culture"]

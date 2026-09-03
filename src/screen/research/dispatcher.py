@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from screen.browser import BrowserProtocol
+from screen.browser import BrowserError, BrowserProtocol
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent
@@ -174,12 +174,30 @@ def _handle_search(
     deps: DispatchDeps,
 ) -> LoopState:
     """Issue a search query, record the event, and return updated state.
-
     Zero hits is valid; last_context records the empty result and the
-    planner decides whether to refine the query.
+    planner decides whether to refine the query. A BrowserError (e.g. Tavily
+    transport failure) is recorded the same way — as a turn with zero hits —
+    so a single failed search doesn't abort the pass when the planner can
+    try something else.
     """
-    hits = deps.browser.search(action.query)
-
+    try:
+        hits = deps.browser.search(action.query)
+    except BrowserError as exc:
+        deps.on_event(
+            ResearchTraceEvent(
+                ts=datetime.now(UTC),
+                tool="tavily_search",
+                request={"query": action.query},
+                response={"error": str(exc), "details": exc.details},
+            )
+        )
+        return state.model_copy(
+            update={
+                "turns_used": state.turns_used + 1,
+                "prior_queries": list(state.prior_queries) + [action.query],
+                "last_context": SearchContext(query=action.query, hits=[]),
+            }
+        )
     deps.on_event(
         ResearchTraceEvent(
             ts=datetime.now(UTC),
@@ -188,7 +206,6 @@ def _handle_search(
             response={"results": list(hits)},
         )
     )
-
     return state.model_copy(
         update={
             "turns_used": state.turns_used + 1,
@@ -223,9 +240,29 @@ def _handle_fetch(
             }
         )
 
-    hit = deps.browser.fetch(action.url)
+    try:
+        hit = deps.browser.fetch(action.url)
+    except BrowserError as exc:
+        deps.on_event(
+            ResearchTraceEvent(
+                ts=datetime.now(UTC),
+                tool="tavily_extract",
+                request={"urls": [action.url]},
+                response={"error": str(exc), "details": exc.details, "results": []},
+            )
+        )
+        return state.model_copy(
+            update={
+                "visited_urls": list(state.visited_urls) + [action.url],
+                "turns_used": state.turns_used + 1,
+                "last_context": FetchContext(
+                    url=action.url,
+                    targets_added=[],
+                    snippet="",
+                ),
+            }
+        )
     raw_content: str = hit.get("raw_content") or ""
-
     deps.on_event(
         ResearchTraceEvent(
             ts=datetime.now(UTC),

@@ -8,6 +8,8 @@ Pins:
 - FetchAction happy path: browser.fetch called, event recorded, assertions appended
 - FetchAction duplicate: URL already in visited_urls → skip, no event, empty targets_added
 - FetchAction zero assertions: does not raise, loop continues
+- SearchAction BrowserError: recorded as a failed tavily_search event, counts as a turn, pass continues
+- FetchAction BrowserError: recorded as a failed tavily_extract event, adds URL to visited_urls, counts as a turn, pass continues
 """
 
 from typing import Literal
@@ -423,3 +425,106 @@ def test_dispatch_sticky_target_increments_action_counter() -> None:
     # Third plan call saw the state after two actions on the same target.
     assert recorded[2].active_target == "compensation"
     assert recorded[2].active_target_actions == 3
+
+
+def test_search_action_browser_error_recorded_and_continues() -> None:
+    """A failed search records a tavily_search event with the error and
+    details, counts as a turn, and lets the planner continue rather than
+    aborting the pass."""
+    query = "Acme Corp compensation"
+    browser = FakeBrowser(search_fixtures={})  # no fixture → BrowserError
+    stop = StopAction(reason="Nothing more to try.")
+    planner = FakePlanner(
+        sequence=[
+            [SearchAction(query=query)],
+            [stop],
+        ]
+    )
+
+    events: list[object] = []
+    state = _state()
+
+    summary = dispatch(
+        state,
+        planner=planner,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
+    )
+
+    search_events = [
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_search"
+    ]
+    assert len(search_events) == 1
+    assert search_events[0].response["error"]
+    assert "details" in search_events[0].response
+
+    # The failed search still consumed a turn.
+    assert summary.turns_used == 1
+    assert isinstance(summary, PassSummary)
+
+
+def test_fetch_action_browser_error_recorded_and_continues() -> None:
+    """A failed fetch records a tavily_extract event with the error and
+    details, adds the URL to visited_urls (so it isn't retried), counts
+    as a turn, and lets the planner continue rather than aborting the pass."""
+    url = "https://servicetitan.wd1.myworkdayjobs.com/blocked-posting"
+    browser = FakeBrowser(fetch_fixtures={})  # no fixture → BrowserError
+    stop = StopAction(reason="Nothing more to try.")
+    planner = FakePlanner(
+        sequence=[
+            [FetchAction(url=url)],
+            [stop],
+        ]
+    )
+
+    events: list[object] = []
+    state = _state(assertions=[])
+
+    summary = dispatch(
+        state,
+        planner=planner,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
+    )
+
+    extract_events = [
+        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
+    ]
+    assert len(extract_events) == 1
+    assert extract_events[0].response["error"]
+    assert "details" in extract_events[0].response
+
+    # No assertions extracted, but the pass did not abort.
+    assert summary.assertions_written == 0
+    # The failed fetch still consumed a turn.
+    assert summary.turns_used == 1
+    assert isinstance(summary, PassSummary)
+
+
+def test_fetch_action_browser_error_marks_url_visited() -> None:
+    """A failed fetch adds the URL to visited_urls so a subsequent plan()
+    call sees it and the planner doesn't retry the same dead URL forever."""
+    url = "https://www.zocdoc.com/about/careers-list/blocked"
+    browser = FakeBrowser(fetch_fixtures={})
+    stop = StopAction(reason="Done.")
+    planner = FakePlanner(
+        sequence=[
+            [FetchAction(url=url)],
+            [stop],
+        ]
+    )
+
+    recorded: list[LoopState] = []
+    original_plan = planner.plan
+
+    def recording_plan(s: LoopState) -> list[Action]:
+        recorded.append(s)
+        return original_plan(s)
+
+    planner.plan = recording_plan  # type: ignore[method-assign]
+
+    dispatch(
+        _state(assertions=[]),
+        planner=planner,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
+    )
+
+    assert url in recorded[1].visited_urls

@@ -193,3 +193,70 @@ def test_cli_dispatch_persists_fetch_assertions(
     # FakeExtractor returns one assertion per call: one from the intake extraction,
     # one from the dispatch loop's own fetch of `fetch_url`.
     assert conn.execute("SELECT COUNT(*) FROM assertions").fetchone() == (2,)
+
+
+def test_cli_intake_records_failure_details_in_trace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The initial intake URL failure remains fatal, but the recorded event
+    carries BrowserError.details verbatim for the operator to inspect."""
+
+    def _raise(self, urls):  # type: ignore[no-untyped-def]
+        raise BrowserError("simulated transport failure", details={"exception": "boom"})
+
+    monkeypatch.setattr(TavilyBrowser, "extract", _raise)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.intake,
+        ["https://example.com/jobs/42"],
+        env=env_for(tmp_path),
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    research_traces = list(tmp_path.rglob("*.jsonl"))
+    parsed = json.loads(research_traces[0].read_text(encoding="utf-8").splitlines()[0])
+    assert parsed["response"]["details"] == {"exception": "boom"}
+
+
+def test_cli_dispatch_continues_past_failed_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A research-pass FetchAction that fails (no fixture, simulating a
+    blocked/unfetchable page) does not abort the pipeline — the pass records
+    the failure and continues to the planner's next action."""
+    url = "https://example.com/jobs/42"
+    fake = _fake_tavily_for(url)
+    monkeypatch.setattr(TavilyBrowser, "extract", lambda self, urls: fake.extract(urls))
+    monkeypatch.setattr(cli_module, "_build_identifier", fake_identifier)
+    patch_extractor(monkeypatch)
+    patch_digester(monkeypatch)
+
+    blocked_url = "https://www.zocdoc.com/about/careers-list/blocked"
+    monkeypatch.setattr(
+        cli_module,
+        "_build_planner",
+        lambda: FakePlanner(
+            sequence=[
+                [FetchAction(url=blocked_url)],
+                [StopAction(reason="Gave up after block.")],
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_build_client",
+        lambda: FakeBrowser(
+            fetch_fixtures={url: {"raw_content": "Synthetic job posting fixture."}}
+        ),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli_module.intake, [url], env=env_for(tmp_path), catch_exceptions=False)
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
+    assert "Gave up after block." in result.output
+
+    research_traces = list(tmp_path.rglob("*.jsonl"))
+    lines = research_traces[0].read_text(encoding="utf-8").splitlines()
+    failure_events = [json.loads(line) for line in lines if "error" in json.loads(line)["response"]]
+    assert any(e["response"].get("details") for e in failure_events)
