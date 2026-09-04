@@ -1,5 +1,5 @@
 """Tests for screen.score.bandit: aggregate remaining-uncertainty per opening, the
-weighting signal for research-batch's per-turn draw (research-pass-bandit bearing)."""
+weighting signal for research-batch's per-turn draw."""
 
 from __future__ import annotations
 

@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-04
 commit: 3e76d7d
 branch: resumable-research
-status: orienting
+status: done
 scouting: ./scouting.md
 ---
 

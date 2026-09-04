@@ -1,5 +1,5 @@
 """Aggregate remaining-uncertainty per opening: the draw-weight signal for
-`research-batch`'s per-turn opening choice (research-pass-bandit bearing).
+`research-batch`'s per-turn opening choice.
 
 Pure `(assertions, rulings, dimension_rulings, config) -> float` — no I/O, mirroring
 `triage.py`/`scorer.py`.
@@ -23,7 +23,8 @@ def aggregate_uncertainty(
     """Dimension-weighted sum of `TargetStats.half_width` across every dimension and
     constraint. Constraints are weighted at `max(config.dimension_weights.values())` — a
     one-line policy constant rather than a new `scoring.yaml` dial, acknowledging their
-    measured dominance without adding an unmeasured knob (bearing Approach)."""
+    measured dominance (docs/architecture/decisions.md S8 · provenance sets variance)
+    without adding an unmeasured knob."""
     max_dimension_weight = max(config.dimension_weights.values())
     total = 0.0
     for slug, weight in config.dimension_weights.items():
@@ -36,10 +37,12 @@ def aggregate_uncertainty(
 
 
 def draw_opening[K](weights: dict[K, float], rng: np.random.Generator) -> K:
-    """Draw one key from `weights`, probability proportional to its value — the
-    weighted-not-argmax sampling the operator asked for (bearing Agreed). `rng` is
-    threaded across successive calls by the caller, not reseeded per draw, so a batch's
-    whole sequence is reproducible from one `config.seed` (bearing Approach)."""
+    """Draw one key from `weights`, probability proportional to its value — weighted
+    sampling, not argmax: an opening's remaining uncertainty should raise its odds of
+    the next turn, never guarantee it, so no eligible opening's budget can be starved by
+    another's persistently wider half-width. `rng` is threaded across successive calls by
+    the caller, not reseeded per draw, so a whole batch's sequence is reproducible from
+    one `config.seed`."""
     keys = list(weights)
     values = np.array([weights[k] for k in keys], dtype=float)
     probabilities = values / values.sum()

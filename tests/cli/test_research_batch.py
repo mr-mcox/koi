@@ -219,8 +219,7 @@ def test_batch_draws_the_higher_uncertainty_opening_more_often(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A wide-half-width (unexamined) opening receives turns more often than one whose
-    targets are already heavily, consistently examined, over a batch of many draws
-    (research-pass-bandit bearing Done When)."""
+    targets are already heavily, consistently examined, over a batch of many draws."""
     config = load_scoring_config()
     all_targets = list(config.dimension_weights) + list(config.constraints)
     _seed_opening_with_trace(tmp_path, "wide--eng", "wide", budget=50)
@@ -285,7 +284,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Two invocations against identical seed data produce identical draw sequences
-    (config.seed determinism, research-pass-bandit bearing Done When)."""
+    (config.seed determinism)."""
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=50)
     _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets", budget=50)
     monkeypatch.setattr(

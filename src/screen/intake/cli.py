@@ -324,7 +324,8 @@ def _eligible_weights(
     """Every opening with remaining `research_turns_budget` headroom, mapped to its
     current aggregate-uncertainty weight. Recomputed fresh on every call — the caller
     redraws from this after each turn so a just-spent turn's new assertions immediately
-    affect the next draw (bearing Approach)."""
+    affect the next draw — a turn spent on one target should immediately lower that
+    target's rank instead of running the rest of the batch against a stale snapshot."""
     return {
         opening.id: _opening_weight(conn, opening, config)
         for opening in list_openings(conn)
@@ -337,10 +338,10 @@ def _eligible_weights(
 def research_batch(batch_size: int) -> None:
     """Spend up to `batch_size` turns, one per draw, weighted by each eligible opening's
     aggregate remaining uncertainty (dimension-weighted half-width sum) rather than round-
-    robin or argmax — spreads turns toward thinner evidence, resampled after every turn so
-    a turn's new assertions immediately affect the next draw (research-pass-bandit bearing
-    Agreed). The draw is seeded from `config.seed`, so a batch run against an unchanged DB
-    snapshot reproduces the same sequence of draws.
+    robin or argmax — spreads turns toward thinner evidence rather than draining one
+    opening's budget or spreading flatly, resampled after every turn so a turn's new
+    assertions immediately affect the next draw. The draw is seeded from `config.seed`, so
+    a batch run against an unchanged DB snapshot reproduces the same sequence of draws.
     """
     data_root = data_dir()
     conn = connect(_db_path_for(data_root))
