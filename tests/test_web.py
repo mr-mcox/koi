@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import re
+import socket
+import threading
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+import httpx
 import pytest
+import uvicorn
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from screen.api.app import create_app
 from screen.digest.fakes import FakeDigester
+from screen.extract.fakes import FakeExtractor
+from screen.research.actions import SearchAction, StopAction
+from screen.research.batch import BatchEngine, opening_research_status
+from screen.research.fakes import FakeBrowser
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.mappers import assertion_ruling_to_row
@@ -22,6 +34,7 @@ from screen.store.repo import (
     assertion_rulings_for_opening,
     assertions_for_opening,
     dimension_rulings_for_opening,
+    get_opening,
     upsert_assertion_ruling,
     upsert_company,
     upsert_dimension_digest,
@@ -1619,3 +1632,192 @@ def test_contested_session_skips_openings_with_no_rating_tasks(
 
     assert response.status_code == 302
     assert response.headers["location"] == "/openings/active--eng/contested"
+
+
+_LIVE_NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
+
+
+def _seed_research_trace(data_root: Path, opening_id: str) -> None:
+    """Write a minimal research trace so the batch engine can resume the opening."""
+    trace_path = data_root / "research_traces" / f"tx-{opening_id}.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    url = f"https://example.com/{opening_id}"
+    trace_path.write_text(
+        json.dumps(
+            {
+                "ts": _LIVE_NOW.isoformat(),
+                "tool": "tavily_extract",
+                "request": {"urls": [url]},
+                "response": {
+                    "results": [{"url": url, "raw_content": f"Posting for {opening_id}."}]
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _seed_live_opening(db_path: Path, opening_id: str, budget: int = 5) -> None:
+    conn = connect(db_path)
+    company_id = opening_id.split("--", maxsplit=1)[0]
+    upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=_LIVE_NOW))
+    upsert_opening(
+        conn,
+        Opening(
+            id=opening_id,
+            company_id=company_id,
+            title=f"{opening_id} title",
+            url=f"https://example.com/{opening_id}",
+            research_trace_id=f"tx-{opening_id}",
+            research_turns_budget=budget,
+            created_at=_LIVE_NOW,
+        ),
+    )
+    conn.close()
+    _seed_research_trace(db_path.parent, opening_id)
+
+
+@contextlib.contextmanager
+def _live_server(app: FastAPI) -> Iterator[str]:
+    """Run `app` in a uvicorn thread and yield its base URL."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    for _ in range(50):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
+                break
+        except OSError:
+            time.sleep(0.05)
+    else:
+        server.should_exit = True
+        thread.join(timeout=1)
+        raise RuntimeError("live server did not start")
+
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=2)
+
+
+class PausablePlanner:
+    """Fake planner that blocks on the first `plan()` call until `gate` is set,
+    then returns one `SearchAction` and stops on subsequent calls."""
+
+    def __init__(self, gate: threading.Event) -> None:
+        self._gate = gate
+        self._called = 0
+
+    def plan(self, _state: object) -> list:
+        self._called += 1
+        if self._called == 1:
+            self._gate.wait()
+            return [SearchAction(query="paused query")]
+        return [StopAction(reason="done")]
+
+
+def _pausable_engine(gate: threading.Event) -> BatchEngine:
+    """Engine whose first-turn planner blocks on `gate`, then spends one fake turn."""
+    shared_planner = PausablePlanner(gate)
+    return BatchEngine(
+        planner_factory=lambda: shared_planner,
+        browser_factory=lambda: FakeBrowser(search_fixtures={"paused query": []}),
+        extractor_factory=lambda: FakeExtractor([[_assertion("stretch", "Strong")]]),
+        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+    )
+
+
+def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
+    """POST /batch schedules the work in a background task and returns immediately,
+    before the slow planner even finishes its first `plan()` call."""
+    _seed_live_opening(db_path, "acme--eng")
+    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
+    gate = threading.Event()
+    app.state.batch_engine = _pausable_engine(gate)
+
+    with _live_server(app) as base, httpx.Client() as client:
+        t0 = time.time()
+        response = client.post(f"{base}/batch", data={"batch_size": "3"})
+        t1 = time.time()
+        assert response.status_code == 200, response.text
+        assert "Batch running" in response.text
+        # The response must land before the gate is released.
+        assert t1 - t0 < 0.5
+
+        # Poll the status endpoint while the batch is still blocked; the current
+        # opening id may take a moment to appear as the background thread starts.
+        current_opening_id: str | None = None
+        for _ in range(50):
+            status = client.get(f"{base}/batch-status")
+            assert status.status_code == 200
+            if "Batch running" in status.text:
+                if "working on acme--eng" in status.text:
+                    current_opening_id = "acme--eng"
+                    break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("batch did not show running status")
+        assert current_opening_id == "acme--eng"
+
+        # Now let the background task finish its first (and only) turn.
+        gate.set()
+        for _ in range(50):
+            status = client.get(f"{base}/batch-status")
+            if "No batch running" in status.text:
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("batch never finished")
+        assert "Batch running" not in status.text
+
+        # One turn was actually spent.
+        conn = connect(db_path)
+        opening = get_opening(conn, "acme--eng")
+        assert opening is not None
+        used, budget = opening_research_status(db_path.parent, opening)
+        conn.close()
+        assert (used, budget) == (2, 5)
+
+
+def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> None:
+    """Two rapid POST /batch requests only run one batch; the second gets a clear error."""
+    _seed_live_opening(db_path, "acme--eng")
+    _seed_live_opening(db_path, "widgets--eng")
+    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
+    gate = threading.Event()
+    app.state.batch_engine = _pausable_engine(gate)
+
+    with _live_server(app) as base, httpx.Client() as client:
+        first = client.post(f"{base}/batch", data={"batch_size": "3"})
+        assert first.status_code == 200
+        assert "Batch running" in first.text
+
+        second = client.post(f"{base}/batch", data={"batch_size": "3"})
+        assert second.status_code == 200
+        assert "already running" in second.text
+
+        gate.set()
+
+
+def test_queue_shows_research_turns_used_and_budget(client: TestClient, db_path: Path) -> None:
+    """Each queue item renders the same turns-used/budget line the retired
+    `research-status` CLI printed."""
+    _seed_live_opening(db_path, "acme--eng", budget=5)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "1/5" in response.text  # one tavily_extract turn in the seeded trace
+
+
+def test_batch_start_form_validates_batch_size(client: TestClient) -> None:
+    """The batch start form rejects non-positive batch sizes."""
+    response = client.post("/batch", data={"batch_size": "0"})
+    assert response.status_code == 422

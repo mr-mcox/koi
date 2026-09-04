@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated, cast
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -34,6 +34,7 @@ from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
 from screen.extract.prompt import rubric_text_for_baml
+from screen.research.batch import opening_research_status
 from screen.score.boundary import crossing_probability
 from screen.score.loader import load_scoring_config
 from screen.score.triage import rating_task_candidates
@@ -252,7 +253,7 @@ def _kth_result(
     return scored[config.top_k - 1][2] if len(scored) >= config.top_k else None
 
 
-def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
+def _queue_items(conn: sqlite3.Connection, data_root: Path) -> list[dict[str, object]]:
     """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
     config = load_scoring_config()
     scored = _scored_openings(conn, config)
@@ -260,6 +261,7 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
     items = []
     for opening, company, result in scored:
         company_hue, opening_hue = _accent_hues(company.id, opening.id)
+        turns_used, turns_budget = opening_research_status(data_root, opening)
         items.append(
             {
                 "opening_id": opening.id,
@@ -267,6 +269,8 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
                 "opening_title": opening.title,
                 "company_hue": company_hue,
                 "opening_hue": opening_hue,
+                "turns_used": turns_used,
+                "turns_budget": turns_budget,
                 "glyph": _boundary_glyph_for_score(
                     result,
                     boundary=kth.median if kth is not None else None,
@@ -333,8 +337,10 @@ def _focus_queue_items(conn: sqlite3.Connection) -> list[str]:
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, conn: Conn) -> HTMLResponse:
     """The queue view: ranked openings as HTML."""
-    items = _queue_items(conn)
-    return templates.TemplateResponse(request, "queue.html", {"items": items})
+    data_root = request.app.state.database.data_root
+    items = _queue_items(conn, data_root)
+    status = request.app.state.batch_status
+    return templates.TemplateResponse(request, "queue.html", {"items": items, "status": status})
 
 
 @router.get("/contested")
@@ -684,6 +690,53 @@ def submit_dimension_ruling(
         else _rating_context_for_request(request, conn, opening_id)
     )
     return templates.TemplateResponse(request, "_rating_content.html", context)
+
+
+@router.post("/batch", response_class=HTMLResponse)
+def start_batch(
+    request: Request,
+    conn: Conn,
+    background_tasks: BackgroundTasks,
+    batch_size: Annotated[int, Form(gt=0)],
+) -> HTMLResponse:
+    """Start a research batch and return immediately. The heavy work runs in a
+    `BackgroundTasks` callback with its own DB connection, so the HTTP response
+    lands before the first turn is spent.
+
+    A second request while a batch is running is rejected with a clear message
+    rather than queued or double-run.
+    """
+    status = request.app.state.batch_status
+    if status.get("running"):
+        return templates.TemplateResponse(
+            request,
+            "_batch_status.html",
+            {
+                "status": status,
+                "error": "A batch is already running.",
+            },
+        )
+    new_status: dict[str, object] = {
+        "running": True,
+        "total": batch_size,
+        "spent": 0,
+        "current_opening_id": None,
+        "touched": [],
+    }
+    request.app.state.batch_status = new_status
+    engine = request.app.state.batch_engine
+    background_tasks.add_task(
+        engine.run, request.app.state.database.db_path, batch_size, new_status
+    )
+    return templates.TemplateResponse(request, "_batch_status.html", {"status": new_status})
+
+
+@router.get("/batch-status", response_class=HTMLResponse)
+def batch_status(request: Request) -> HTMLResponse:
+    """Polling endpoint for the currently running (or last completed) batch.
+    Rendered as a small partial the queue page swaps in via HTMX."""
+    status = request.app.state.batch_status
+    return templates.TemplateResponse(request, "_batch_status.html", {"status": status})
 
 
 # Static files: CSS, later HTMX assets, etc.

@@ -3,6 +3,15 @@
 {% block title %}Queue{% endblock %}
 {% block content %}
   <h1>Queue</h1>
+  <div id="batch-status">
+    {% include "_batch_status.html" %}
+  </div>
+  <form class="batch-start" hx-post="/batch" hx-target="#batch-status" hx-swap="outerHTML">
+    <label>Research turns
+      <input type="number" name="batch_size" min="1" value="5" />
+    </label>
+    <button type="submit">Start batch</button>
+  </form>
   <p><a class="start-contested-review" href="/contested">Start contested review</a></p>
   <ol class="queue">
     {% for item in items %}
@@ -12,6 +21,7 @@
         <span class="entity-sep">—</span>
         <span class="entity-opening" style="--accent-hue: {{ item.opening_hue }};">{{ item.opening_title }}</span>
       </a>
+      <span class="research-status">{{ item.turns_used }}/{{ item.turns_budget }}</span>
       {{ boundary_glyph(item.glyph) }}
     </li>
     {% endfor %}

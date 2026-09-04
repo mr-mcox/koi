@@ -19,6 +19,7 @@ from screen.api.routes import router as api_router
 from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
 from screen.paths import data_dir
+from screen.research.batch import BatchEngine
 from screen.store.db import connect as db_connect
 from screen.web.routes import router as web_router
 from screen.web.routes import static_files
@@ -30,6 +31,11 @@ class Database:
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
+
+    @property
+    def data_root(self) -> Path:
+        """Research traces and other per-data-root files live next to the DB."""
+        return self.db_path.parent
 
     def connect(self) -> sqlite3.Connection:
         return db_connect(self.db_path)
@@ -56,6 +62,14 @@ def create_app(db_path: Path | None = None, digester: DigesterProtocol | None = 
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database
     app.state.digester = digester if digester is not None else BAMLDigester()
+    app.state.batch_engine = BatchEngine()
+    app.state.batch_status = {
+        "running": False,
+        "total": 0,
+        "spent": 0,
+        "current_opening_id": None,
+        "touched": [],
+    }
     app.include_router(web_router)
     app.include_router(api_router)
     app.mount("/static", static_files, name="static")

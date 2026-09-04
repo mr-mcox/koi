@@ -1,0 +1,20 @@
+<div id="batch-status"
+  {% if status.running %}
+    hx-get="/batch-status"
+    hx-trigger="every 2s"
+    hx-swap="outerHTML"
+  {% endif %}>
+  {% if error %}
+    <p class="batch-error">{{ error }}</p>
+  {% endif %}
+  {% if status.running %}
+    <p class="batch-running">
+      Batch running: {{ status.spent }}/{{ status.total }} turns spent
+      {% if status.current_opening_id %}
+        (working on {{ status.current_opening_id }})
+      {% endif %}
+    </p>
+  {% else %}
+    <p class="batch-idle">No batch running.</p>
+  {% endif %}
+</div>
