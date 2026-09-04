@@ -1,1 +1,1 @@
-dimension-ruling-drift is done. The next live, evidenced, unbearinged thread is the research-pass bandit — deferred out of research-targeting, research-fetch-resilience, and research-resumability (see each bearing's §Not Doing): which opening benefits most from the next batch turn, and how a per-opening budget heuristic would replace the flat seeded dial. No scouting exists yet for it.
+docs/features/research-pass-bandit/bearing.md

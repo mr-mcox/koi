@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import click
+import numpy as np
 
 from screen.browser import (
     BrowserError,
@@ -39,11 +40,13 @@ from screen.research.baml_planner import BAMLPlanner
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
+from screen.score.bandit import aggregate_uncertainty, draw_opening
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
+    assertion_rulings_for_opening,
     assertions_for_opening,
     dimension_rulings_for_opening,
     get_company,
@@ -53,7 +56,7 @@ from screen.store.repo import (
     upsert_dimension_ruling,
     upsert_opening,
 )
-from screen.types import Assertion, Company, IdentificationResult, Opening
+from screen.types import Assertion, Company, Fit, IdentificationResult, Opening
 
 
 def _db_path_for(data_dir: Path) -> Path:
@@ -294,41 +297,83 @@ def research(opening_id: str, turns: int) -> None:
         click.echo(f"no remaining research_turns_budget for opening {opening_id}")
 
 
-def _round_robin_pass(
-    conn: sqlite3.Connection, data_root: Path, turns_left: int, touched: list[str]
-) -> tuple[int, int]:
-    """One round-robin pass over every opening, spending 1 turn each while
-    budget/turns_left allow. Returns (turns_left, turns_spent_this_round)."""
-    spent_this_round = 0
-    for opening in list_openings(conn):
-        if turns_left <= 0:
-            break
-        spent = _resume_opening(conn, data_root, opening, 1)
-        if spent > 0:
-            turns_left -= spent
-            spent_this_round += spent
-            if opening.id not in touched:
-                touched.append(opening.id)
-    return turns_left, spent_this_round
+def _remaining_budget(data_root: Path, opening: Opening) -> int:
+    research_trace_path = _research_trace_path_for(data_root, opening.research_trace_id)
+    turns_used = replay_research_trace(research_trace_path).turns_used
+    return max(opening.research_turns_budget - turns_used, 0)
+
+
+def _opening_weight(conn: sqlite3.Connection, opening: Opening, config: ScoringConfig) -> float:
+    """Aggregate remaining uncertainty for one opening, assembled the same way
+    `get_queue` assembles rulings for scoring (api/routes.py) — the latest ruling per
+    assertion id, one `DimensionRuling` pin per target."""
+    assertions = assertions_for_opening(conn, opening.id)
+    rulings: dict[str, Fit] = {
+        ruling.assertion_id: ruling.fit
+        for ruling in assertion_rulings_for_opening(conn, opening.id)
+    }
+    dimension_rulings = {
+        ruling.target: ruling for ruling in dimension_rulings_for_opening(conn, opening.id)
+    }
+    return aggregate_uncertainty(assertions, config, rulings, dimension_rulings)
+
+
+def _eligible_weights(
+    conn: sqlite3.Connection, data_root: Path, config: ScoringConfig
+) -> dict[str, float]:
+    """Every opening with remaining `research_turns_budget` headroom, mapped to its
+    current aggregate-uncertainty weight. Recomputed fresh on every call — the caller
+    redraws from this after each turn so a just-spent turn's new assertions immediately
+    affect the next draw (bearing Approach)."""
+    return {
+        opening.id: _opening_weight(conn, opening, config)
+        for opening in list_openings(conn)
+        if _remaining_budget(data_root, opening) > 0
+    }
 
 
 @click.command(name="research-batch")
 @click.argument("batch_size", type=int)
 def research_batch(batch_size: int) -> None:
-    """Run up to `batch_size` turns round-robin across every opening that still
-    has research_turns_budget headroom (bearing: simple deterministic fill,
-    stable-order placeholder for the deferred research-pass bandit).
+    """Spend up to `batch_size` turns, one per draw, weighted by each eligible opening's
+    aggregate remaining uncertainty (dimension-weighted half-width sum) rather than round-
+    robin or argmax — spreads turns toward thinner evidence, resampled after every turn so
+    a turn's new assertions immediately affect the next draw (research-pass-bandit bearing
+    Agreed). The draw is seeded from `config.seed`, so a batch run against an unchanged DB
+    snapshot reproduces the same sequence of draws.
     """
     data_root = data_dir()
     conn = connect(_db_path_for(data_root))
-    turns_left = batch_size
+    config = load_scoring_config()
+    rng = np.random.default_rng(config.seed)
     touched: list[str] = []
     total_spent = 0
-    while turns_left > 0:
-        turns_left, spent_this_round = _round_robin_pass(conn, data_root, turns_left, touched)
-        total_spent += spent_this_round
-        if spent_this_round == 0:
+    for _ in range(batch_size):
+        weights = _eligible_weights(conn, data_root, config)
+        if not weights:
             break
+        opening_id = draw_opening(weights, rng)
+        draw_weight = weights[opening_id]
+        draw_probability = draw_weight / sum(weights.values())
+        rank_before = sorted(weights.values(), reverse=True).index(draw_weight) + 1
+
+        opening = cast(Opening, get_opening(conn, opening_id))
+        spent = _resume_opening(conn, data_root, opening, 1)
+        if spent == 0:
+            continue
+        total_spent += spent
+        if opening_id not in touched:
+            touched.append(opening_id)
+
+        weights_after = _eligible_weights(conn, data_root, config)
+        after_weight = weights_after.get(opening_id, 0.0)
+        ranked_after = sorted(weights_after.values(), reverse=True)
+        rank_after = (
+            ranked_after.index(after_weight) + 1 if opening_id in weights_after else len(weights)
+        )
+        click.echo(
+            f"drew {opening_id} (p={draw_probability:.3f}, rank {rank_before}->{rank_after})"
+        )
     click.echo(f"batch complete: spent {total_spent} turn(s) across {len(touched)} opening(s)")
     for opening_id in touched:
         click.echo(f"  {opening_id}")
