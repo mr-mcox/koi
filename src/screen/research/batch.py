@@ -55,6 +55,14 @@ class NoSuchOpeningError(RuntimeError):
     """Raised when an opening id doesn't exist in the DB."""
 
 
+@dataclass
+class ResumeResult:
+    """What `resume_opening` spent and why it stopped."""
+
+    turns_spent: int
+    stopped_reason: str
+
+
 class ResearchTraceMissingError(RuntimeError):
     """Raised when an opening's research trace file is missing or has no
     tavily_extract event with raw_content."""
@@ -204,10 +212,10 @@ def resume_opening(
     browser: BrowserProtocol | None = None,
     extractor: ExtractorProtocol | None = None,
     digester: DigesterProtocol | None = None,
-) -> int:
+) -> ResumeResult:
     """Resume one opening's research from its trace, spending at most
     `min(turns_requested, remaining lifetime budget)` turns. Returns the
-    number of turns actually spent.
+    number of turns actually spent and the dispatch stop reason.
     """
     company = get_company(conn, opening.company_id)
     if company is None:  # pragma: no cover — FK constraint on openings.company_id
@@ -218,10 +226,10 @@ def resume_opening(
     remaining = max(opening.research_turns_budget - replay.turns_used, 0)
     to_spend = min(turns_requested, remaining)
     if to_spend <= 0:
-        return 0
+        return ResumeResult(turns_spent=0, stopped_reason="no remaining budget")
 
     assertions = assertions_for_opening(conn, opening.id)
-    run_dispatch(
+    stopped_reason = run_dispatch(
         conn,
         opening.id,
         url,
@@ -241,7 +249,9 @@ def resume_opening(
         on_event=lambda event: record_event(research_trace_path, event),
     )
     turns_used_after = replay_research_trace(research_trace_path).turns_used
-    return turns_used_after - replay.turns_used
+    return ResumeResult(
+        turns_spent=turns_used_after - replay.turns_used, stopped_reason=stopped_reason
+    )
 
 
 def remaining_budget(data_root: Path, opening: Opening) -> int:
@@ -281,12 +291,29 @@ def eligible_weights(
 
 @dataclass
 class DrawEvent:
-    """One turn's draw, reported for tracing (CLI echo, web progress dict)."""
+    """Summary of one bandit draw (one opportunity to work a line of inquiry
+    on an opening). Reported for tracing: which opening was drawn, how its rank
+    and assertion count changed across the whole block, and why it stopped."""
 
     opening_id: str
     draw_probability: float
     rank_before: int
     rank_after: int
+    assertions_before: int
+    assertions_after: int
+    turns_spent: int
+    stopped_reason: str
+
+
+def print_draw_event(event: DrawEvent) -> None:
+    """Console trace for one bandit opportunity, mirroring the retired
+    `research-batch` echo but summarized per opportunity rather than per action."""
+    print(
+        f"drew {event.opening_id} (p={event.draw_probability:.3f}, "
+        f"rank {event.rank_before}->{event.rank_after}, "
+        f"assertions {event.assertions_before}->{event.assertions_after}, "
+        f"spent {event.turns_spent} turns, stopped: {event.stopped_reason})"
+    )
 
 
 @dataclass
@@ -302,17 +329,32 @@ class BatchProgress:
 
 
 def _draw_event(
-    weights: dict[str, float], opening_id: str, weights_after: dict[str, float]
+    opening_id: str,
+    weights_before: dict[str, float],
+    weights_after: dict[str, float],
+    *,
+    assertions_before: int,
+    assertions_after: int,
+    result: ResumeResult,
 ) -> DrawEvent:
-    draw_weight = weights[opening_id]
-    draw_probability = draw_weight / sum(weights.values())
-    rank_before = sorted(weights.values(), reverse=True).index(draw_weight) + 1
+    draw_weight = weights_before[opening_id]
+    draw_probability = draw_weight / sum(weights_before.values())
+    rank_before = sorted(weights_before.values(), reverse=True).index(draw_weight) + 1
     after_weight = weights_after.get(opening_id, 0.0)
     ranked_after = sorted(weights_after.values(), reverse=True)
     rank_after = (
-        ranked_after.index(after_weight) + 1 if opening_id in weights_after else len(weights)
+        ranked_after.index(after_weight) + 1 if opening_id in weights_after else len(weights_before)
     )
-    return DrawEvent(opening_id, draw_probability, rank_before, rank_after)
+    return DrawEvent(
+        opening_id=opening_id,
+        draw_probability=draw_probability,
+        rank_before=rank_before,
+        rank_after=rank_after,
+        assertions_before=assertions_before,
+        assertions_after=assertions_after,
+        turns_spent=result.turns_spent,
+        stopped_reason=result.stopped_reason,
+    )
 
 
 def _run_batch_turn(
@@ -322,6 +364,8 @@ def _run_batch_turn(
     weights: dict[str, float],
     rng: np.random.Generator,
     *,
+    batch_size: int,
+    total_spent: int,
     touched: list[str],
     progress: MutableMapping[str, object] | None,
     planner_factory: Callable[[], PlannerProtocol] | None,
@@ -329,31 +373,52 @@ def _run_batch_turn(
     browser: BrowserProtocol | None,
     extractor: ExtractorProtocol | None,
     digester: DigesterProtocol | None,
-) -> tuple[str, int, DrawEvent] | None:
-    """Draw one opening, spend one turn, and return the draw event.
-    Returns `None` when the planner stopped without spending a turn.
+) -> tuple[str, int, DrawEvent | None]:
+    """Draw one opening and spend up to one block of actions on it before the next
+    draw. The block size is capped by the opening's remaining budget, the
+    per-target action cap, and the remaining batch budget. Returns
+    `(opening_id, actions_spent, draw_event)`; `draw_event` is `None` when the planner
+    stalled without spending any actions, so the caller can stop redrawing it this batch.
     """
     opening_id = draw_opening(weights, rng)
     opening = cast(Opening, get_opening(conn, opening_id))
     if progress is not None:
         progress["current_opening_id"] = opening_id
     turn_planner = planner_factory() if planner_factory is not None else planner
-    spent = resume_opening(
+    replay = replay_research_trace(research_trace_path_for(data_root, opening.research_trace_id))
+    remaining_budget = max(opening.research_turns_budget - replay.turns_used, 0)
+    block_size = min(remaining_budget, cfg.research_target_action_cap, batch_size - total_spent)
+    if block_size <= 0:
+        return opening_id, 0, None
+    assertions_before = len(assertions_for_opening(conn, opening_id))
+    result = resume_opening(
         conn,
         data_root,
         opening,
-        1,
+        block_size,
         planner=turn_planner,
         browser=browser,
         extractor=extractor,
         digester=digester,
     )
-    if spent == 0:
-        return None
+    if result.turns_spent == 0:
+        return opening_id, 0, None
     if opening_id not in touched:
         touched.append(opening_id)
     weights_after = eligible_weights(conn, data_root, cfg)
-    return opening_id, spent, _draw_event(weights, opening_id, weights_after)
+    assertions_after = len(assertions_for_opening(conn, opening_id))
+    return (
+        opening_id,
+        result.turns_spent,
+        _draw_event(
+            opening_id,
+            weights,
+            weights_after,
+            assertions_before=assertions_before,
+            assertions_after=assertions_after,
+            result=result,
+        ),
+    )
 
 
 def _begin_progress(progress: MutableMapping[str, object] | None, batch_size: int) -> None:
@@ -388,34 +453,44 @@ def run_batch(
     digester: DigesterProtocol | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
 ) -> tuple[int, list[str]]:
-    """Spend up to `batch_size` turns, one per draw, weighted by each eligible opening's
-    aggregate remaining uncertainty. The draw is seeded from `config.seed`, so a batch run
-    against an unchanged DB snapshot reproduces the same sequence of draws.
+    """Spend up to `batch_size` actions on opportunities drawn by aggregate remaining
+    uncertainty. Each opportunity is a block of up to `research_target_action_cap`
+    actions on one opening, capped by the opening's remaining budget and the remaining
+    batch budget, so the planner can work down a line of inquiry before the next draw.
+    The draw is seeded from `config.seed`, so a batch run against an unchanged DB snapshot
+    reproduces the same sequence of draws.
 
-    Returns (total_turns_spent, touched_opening_ids). `progress` is updated in place so
-    a polling web route can observe `spent`, `current_opening_id`, and `touched` while
-    the batch runs. `on_draw`, if given, is called once per spent turn with the
-    `DrawEvent` — a hook for draw-level tracing (test assertions on draw order today).
+    Returns (total_actions_spent, touched_opening_ids). `progress` is updated in place
+    so a polling web route can observe `spent`, `current_opening_id`, and `touched` while
+    the batch runs. `on_draw`, if given, is called once per opportunity with a
+    `DrawEvent` summarizing what changed about that opening during the block.
 
-    `planner_factory` is called once per turn; the planner is stateful in the test fakes.
-    `planner` (a single instance) is supported for direct callers but will be rebuilt each
-    turn if `planner_factory` is provided.
+    `planner_factory` is called once per opportunity; the planner is stateful across the
+    actions in a block in the test fakes. `planner` (a single instance) is supported for
+    direct callers but will be rebuilt each opportunity if `planner_factory` is provided.
     """
     cfg = config if config is not None else load_scoring_config()
     rng = np.random.default_rng(cfg.seed)
     touched: list[str] = []
+    stalled: set[str] = set()
     total_spent = 0
     _begin_progress(progress, batch_size)
-    for _ in range(batch_size):
-        weights = eligible_weights(conn, data_root, cfg)
+    while total_spent < batch_size:
+        weights = {
+            opening_id: weight
+            for opening_id, weight in eligible_weights(conn, data_root, cfg).items()
+            if opening_id not in stalled
+        }
         if not weights:
             break
-        turn = _run_batch_turn(
+        opening_id, spent, draw_event = _run_batch_turn(
             conn,
             data_root,
             cfg,
             weights,
             rng,
+            batch_size=batch_size,
+            total_spent=total_spent,
             touched=touched,
             progress=progress,
             planner_factory=planner_factory,
@@ -424,9 +499,10 @@ def run_batch(
             extractor=extractor,
             digester=digester,
         )
-        if turn is None:
+        if spent == 0:
+            stalled.add(opening_id)
             continue
-        opening_id, spent, draw_event = turn
+        assert draw_event is not None  # spent > 0 always pairs with a draw_event
         total_spent += spent
         if progress is not None:
             progress["spent"] = total_spent
@@ -476,6 +552,7 @@ class BatchEngine:
                 browser=self.browser_factory(),
                 extractor=self.extractor_factory(),
                 digester=self.digester_factory(),
+                on_draw=print_draw_event,
             )
         finally:
             conn.close()

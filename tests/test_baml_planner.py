@@ -171,6 +171,24 @@ def test_last_context_text_search_context() -> None:
     assert "2" in text
 
 
+def test_last_context_text_search_context_lists_hit_urls_and_snippets() -> None:
+    """A search hit's url/title/snippet must reach the planner — without them
+    fetch is never a legal next move and the planner is stuck searching forever
+    (the live trap: three searches on the same target, no fetch, no assertions)."""
+    hits: list[SearchHit] = [
+        SearchHit(
+            url="https://levels.fyi/companies/acme",
+            title="Levels.fyi",
+            snippet="Staff engineer total comp at Acme ranges $380k–$450k TC.",
+        ),
+    ]
+    ctx = SearchContext(query="Acme staff engineer compensation 2024", hits=hits)
+    state = _state(last_context=ctx)
+    text = last_context_text(state)
+    assert "https://levels.fyi/companies/acme" in text
+    assert "Staff engineer total comp at Acme ranges $380k" in text
+
+
 # ---------------------------------------------------------------------------
 # Composite uncertainty / primary target selection
 # ---------------------------------------------------------------------------

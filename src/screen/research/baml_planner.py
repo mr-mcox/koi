@@ -47,8 +47,15 @@ def last_context_text(state: LoopState) -> str:
             f"Assertions added for targets: {targets}.{snippet_line}"
         )
     if isinstance(ctx, SearchContext):
-        n = len(ctx.hits)
-        return f"Last action: searched {ctx.query!r}. Got {n} hit(s)."
+        if not ctx.hits:
+            return f"Last action: searched {ctx.query!r}. Got 0 hits."
+        lines = [f"Last action: searched {ctx.query!r}. Results:"]
+        for i, hit in enumerate(ctx.hits, start=1):
+            title = hit.get("title") or hit.get("url", "")
+            url = hit.get("url", "")
+            snippet = hit.get("snippet") or hit.get("raw_content", "")[:300]
+            lines.append(f"{i}. {title} — {url}\n   {snippet}")
+        return "\n".join(lines)
     assert_never(ctx)  # pragma: no cover
 
 

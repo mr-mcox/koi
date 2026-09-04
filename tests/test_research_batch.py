@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +14,7 @@ from screen.digest.fakes import FakeDigester
 from screen.digest.protocol import DigesterProtocol
 from screen.extract.fakes import FakeExtractor
 from screen.extract.protocol import ExtractorProtocol
-from screen.research.actions import SearchAction, StopAction
+from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.batch import (
     BatchEngine,
     ResearchTraceMissingError,
@@ -32,7 +33,13 @@ from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research.protocol import PlannerProtocol
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
-from screen.store.repo import append_assertions, get_opening, upsert_company, upsert_opening
+from screen.store.repo import (
+    append_assertions,
+    assertions_for_opening,
+    get_opening,
+    upsert_company,
+    upsert_opening,
+)
 from screen.types import Assertion, Citation, Company, Opening
 from tests.cli.helpers import canned_assertion
 
@@ -345,6 +352,151 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
     engine.run(tmp_path / "screen.db", 2, progress)
     assert progress["running"] is False
     assert progress["spent"] == 2
+
+
+def test_batch_engine_prints_a_draw_trace_line_per_spent_turn(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Mirrors the retired CLI's `research-batch` stdout trace (bandit bearing Done
+    When #3): one line per spent turn naming the opening drawn, its draw probability,
+    and its uncertainty rank before/after. `BatchEngine.run` is the web route's only
+    call site, so this is the only place left that can print it."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=3)
+    engine = _build_engine(tmp_path)
+    progress: dict[str, object] = {}
+    engine.run(tmp_path / "screen.db", 2, progress)
+
+    out = capsys.readouterr().out
+    assert out.count("drew acme--eng") == 2
+
+
+def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
+    tmp_path: Path,
+) -> None:
+    """A turn that fetches (not just searches) writes its assertions durably —
+    readable from a brand-new connection, not just the one the batch used.
+    Regression: every existing batch/engine test only ever exercises a
+    search-then-stop planner, so a fetch action's on_assertions -> append_assertions
+    path was never exercised at the batch level."""
+    url = "https://example.com/acme--eng/second-page"
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=3)
+    engine = BatchEngine(
+        planner_factory=lambda: FakePlanner(
+            sequence=[[FetchAction(url=url)], [StopAction(reason="done")]]
+        ),
+        browser_factory=lambda: FakeBrowser(fetch_fixtures={url: {"raw_content": "content"}}),
+        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
+        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+    )
+    progress: dict[str, object] = {}
+    engine.run(tmp_path / "screen.db", 1, progress)
+
+    fresh_conn = connect(tmp_path / "screen.db")
+    persisted = assertions_for_opening(fresh_conn, "acme--eng")
+    fresh_conn.close()
+    assert len(persisted) == 1
+
+
+def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
+    """A single bandit draw should give the planner up to
+    `research_target_action_cap` actions to work down a line of inquiry on the
+    same opening, instead of resetting after one action. This is the continuity
+    the research-targeting bearing specified (sticky target + per-target cap)."""
+    url = "https://example.com/acme--eng/second-page"
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5)
+    engine = BatchEngine(
+        planner_factory=lambda: FakePlanner(
+            sequence=[
+                [SearchAction(query="find page")],
+                [FetchAction(url=url)],
+                [StopAction(reason="mined out")],
+            ]
+        ),
+        browser_factory=lambda: FakeBrowser(
+            search_fixtures={"find page": [{"url": url, "raw_content": "content", "title": "x"}]},
+            fetch_fixtures={url: {"raw_content": "content"}},
+        ),
+        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
+        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+    )
+    progress: dict[str, object] = {}
+    engine.run(tmp_path / "screen.db", 3, progress)
+
+    assert progress["spent"] == 3
+    assert progress["touched"] == ["acme--eng"]
+    fresh_conn = connect(tmp_path / "screen.db")
+    assert len(assertions_for_opening(fresh_conn, "acme--eng")) == 1
+    fresh_conn.close()
+
+
+def test_batch_engine_prints_opportunity_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The console trace is one line per bandit *draw* (opportunity), summarizing
+    what changed about that opening: rank, assertions filed, actions spent, and
+    stop reason. The stop action itself does not consume a turn, so a block
+    budget of 3 with a search+fetch+stop sequence spends 2 turns and ends with
+    the planner's stop reason."""
+    url = "https://example.com/acme--eng/second-page"
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5)
+    engine = BatchEngine(
+        planner_factory=lambda: FakePlanner(
+            sequence=[
+                [SearchAction(query="find page")],
+                [FetchAction(url=url)],
+                [StopAction(reason="mined out")],
+            ]
+        ),
+        browser_factory=lambda: FakeBrowser(
+            search_fixtures={"find page": [{"url": url, "raw_content": "content", "title": "x"}]},
+            fetch_fixtures={url: {"raw_content": "content"}},
+        ),
+        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
+        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+    )
+    engine.run(tmp_path / "screen.db", 2, {})
+
+    out = capsys.readouterr().out
+    assert out.count("drew acme--eng") == 1
+    assert "assertions 0->1" in out
+    assert "spent 2 turns" in out
+    assert "stopped: turn budget exhausted" in out
+
+
+def test_resume_opening_returns_no_remaining_budget_when_exhausted(tmp_path: Path) -> None:
+    """A direct `resume_opening` call against an already-exhausted opening spends
+    nothing and reports why, without touching the planner/browser."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=1)  # one turn in seed trace
+    conn = connect(tmp_path / "screen.db")
+    opening = get_opening(conn, "acme--eng")
+    assert opening is not None
+    result = resume_opening(conn, tmp_path, opening, 1)
+    conn.close()
+    assert result.turns_spent == 0
+    assert result.stopped_reason == "no remaining budget"
+
+
+def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -> None:
+    """A misconfigured `research_target_action_cap=0` caps every block at zero
+    actions rather than crashing — the opening is marked stalled and the batch moves on."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5)
+    conn = connect(tmp_path / "screen.db")
+    engine = _build_engine(tmp_path)
+    zero_cap_config = dataclasses.replace(load_scoring_config(), research_target_action_cap=0)
+    total, touched = run_batch(
+        conn,
+        tmp_path,
+        3,
+        None,
+        config=zero_cap_config,
+        planner_factory=engine.planner_factory,
+        browser=engine.browser_factory(),
+        extractor=engine.extractor_factory(),
+        digester=engine.digester_factory(),
+    )
+    conn.close()
+    assert total == 0
+    assert touched == []
 
 
 def test_remaining_budget_computes_from_trace(tmp_path: Path) -> None:

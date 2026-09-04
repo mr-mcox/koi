@@ -215,6 +215,32 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
   @@assert({{ this[0].tag != "stop" }})
 }
 
+// Fixture: search results already contain an on-target, fetchable URL — the
+// model must fetch it rather than search again. Reproduces a live trap: three
+// consecutive searches for the same active target, each returning a relevant
+// hit, but the planner never transitioned to fetch and the pass burned its
+// whole turn budget without filing a single assertion. URLs and company details
+// are generic so the fixture can be checked in.
+test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
+  functions [DecidePlan]
+  args {
+    company_name "Acme Logistics Systems"
+    opening_title "Staff Software Engineer - Platform Identity"
+    rubric_text #"
+Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Constraint slugs: location, internal_culture, extractive_business.
+Non-scoring slug: non_scoring:obtainability.
+Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
+    "#
+    primary_target "extractive_business"
+    prior_queries "Acme Logistics Systems business model revenue model logistics software, Acme Logistics Systems business model SaaS freight brokerage revenue how they make money"
+    last_context_text "Last action: search for 'Acme Logistics Systems freight brokerage model criticism predatory extractive practices'. Results:\n1. Industry insurer — https://example.com/industry/freight-broker-risks\n   A new business model in the freight broker industry brings new risks as well as opportunities, discussing broker-carrier conflicts of interest.\n2. Trade publication — https://example.com/news/founders-logistics-tms\n   Acme Logistics Systems promises to reduce waste across the entire freight logistics industry.\n3. Trade publication — https://example.com/news/future-freight-broker\n   Discusses brokers extracting yield from the market via automated rate-setting."
+  }
+  @@assert({{ this|length == 1 }})
+  @@assert({{ this[0].tag == "fetch" }})
+  @@assert({{ this[0].url in ["https://example.com/industry/freight-broker-risks", "https://example.com/news/founders-logistics-tms", "https://example.com/news/future-freight-broker"] }})
+}
+
 // Fixture: last fetch was productive for the primary target and left no
 // further relevant links — model should stop, per the narrow escape valve.
 test DecidePlan_StopsWhenPrimaryTargetLeadIsMinedOut {
