@@ -72,19 +72,10 @@ function DecidePlan(
     it to find evidence for the primary target (e.g. compensation benchmarks,
     engineering culture pages, funding history, team pages).
 
-    Make the query specific: include the company name ({{ company_name }}) and
-    the primary target (e.g. "{{ company_name }} staff engineer compensation
-    2024", "{{ company_name }} engineering blog culture"). Avoid repeating a
-    query already in prior queries below.
-
-    ## State
-    Company: {{ company_name }}
-    Opening: {{ opening_title }}
-    Primary target this turn: {{ primary_target }}
-    Prior queries: {{ prior_queries }}
-    {% if last_context_text %}
-    Last action result: {{ last_context_text }}
-    {% endif %}
+    Make the query specific: include the company name and the primary target
+    (e.g. "<company> staff engineer compensation 2024", "<company>
+    engineering blog culture"). Avoid repeating a query already in prior
+    queries below.
 
     ## Rubric
     {{ rubric_text }}
@@ -95,6 +86,15 @@ function DecidePlan(
     - search: issue a web search query to find new sources
 
     Return exactly one action.
+
+    ## State
+    Company: {{ company_name }}
+    Opening: {{ opening_title }}
+    Primary target this turn: {{ primary_target }}
+    Prior queries: {{ prior_queries }}
+    {% if last_context_text %}
+    Last action result: {{ last_context_text }}
+    {% endif %}
 
     {{ ctx.output_format }}
   "#
