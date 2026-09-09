@@ -87,7 +87,7 @@ def _target_uncertainty(
 
     The two signals are never averaged; the operator pin overrides the
     assertion count when present, matching the wall that models do not
-    manufacture or update rulings (F16).
+    manufacture or update rulings.
     """
     ruling = rulings.get(target)
     if ruling is not None:

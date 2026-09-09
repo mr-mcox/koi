@@ -1928,7 +1928,7 @@ def test_rating_view_shows_stage_controls(client: TestClient, db_path: Path) -> 
 
 def test_archive_view_lists_openings_by_stage(client: TestClient, db_path: Path) -> None:
     """`/archive` lists every non-`screening` opening, filterable by stage, each linking
-    back to its existing rating view for recall (F8/F15)."""
+    back to its existing rating view for recall."""
     _seed_opening(db_path, company_id="acme", opening_id="acme--screening")
     _seed_opening(db_path, company_id="widgets", opening_id="widgets--pursuing", stage="pursuing")
     _seed_opening(db_path, company_id="globex", opening_id="globex--applied", stage="applied")

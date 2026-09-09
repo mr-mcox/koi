@@ -176,7 +176,7 @@ def backfill_research_turns_budget() -> None:
 
     A blanket reset, not a fill-if-zero: existing openings created before this dial
     existed default to 0 (migration 0006); openings with a manually bumped budget are
-    reset too, same as intake seeding a new opening (F23).
+    reset too, same as intake seeding a new opening.
     """
     conn = connect(_db_path_for(data_dir()))
     openings = list_openings(conn)
