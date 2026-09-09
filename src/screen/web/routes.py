@@ -76,16 +76,15 @@ class _DimensionGroup:
     ruling: DimensionRuling | None
     show_dimension_context: bool = True
     """False only in the focused view, for a target whose budgeted task is an assertion
-    ruling but not its own dimension-ruling task (review-ux/rating-voi-triage bearing,
-    operator feedback): the digest and dimension-ruling pad belong to the bigger,
-    unselected task and would be noise for a pure assertion-rating task."""
+    ruling but not its own dimension-ruling task: the digest and dimension-ruling pad
+    belong to the bigger, unselected task and would be noise for a pure assertion-rating
+    task."""
 
     @property
     def is_stale(self) -> bool:
         """A pin is stale once an assertion exists under its target that its snapshot
-        didn't cover (dimension-ruling-drift bearing) — the pin's contribution to scoring
-        no longer accounts for everything filed, though it's still in effect until the
-        operator re-rules."""
+        didn't cover — the pin's contribution to scoring no longer accounts for everything
+        filed, though it's still in effect until the operator re-rules."""
         if self.ruling is None:
             return False
         covered = set(self.ruling.covered_assertion_ids)
@@ -605,8 +604,8 @@ def focus_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse
 def _parse_snapshot_csv(value: str) -> set[str]:
     """Parse the `|`-joined snapshot fields the focused view echoes back on each HTMX
     submit (`focus_snapshot_assertion_ids`/`focus_snapshot_dimension_targets`) — this is
-    what keeps the focused screen's task set stable for its whole session (bearing,
-    operator feedback): the initial GET's budgeted tasks, not a set recomputed after
+    what keeps the focused screen's task set stable for its whole session: the initial
+    GET's budgeted tasks, not a set recomputed after
     every submission, which would both drop just-completed tasks and admit new ones
     mid-session."""
     return {item for item in value.split("|") if item}

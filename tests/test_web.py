@@ -141,8 +141,8 @@ def _boundary_glyph_positions(text: str) -> tuple[float, float, float]:
 
 def _focus_snapshot_fields(body: str) -> dict[str, str]:
     """Extract the two hidden `focus_snapshot_*` fields the focused view echoes into
-    every ruling-form, so a test can simulate what a real HTMX submit carries forward
-    (bearing: the stable-task-set fix relies on the client round-tripping these)."""
+    every ruling-form, so a test can simulate what a real HTMX submit carries forward —
+    the stable task set relies on the client round-tripping these."""
     fields = {}
     for name in ("focus_snapshot_assertion_ids", "focus_snapshot_dimension_targets"):
         match = re.search(rf'name="{name}" value="([^"]*)"', body)
@@ -856,8 +856,7 @@ def test_rate_opening_shows_stale_border_when_pin_has_uncovered_assertions(
     client: TestClient, db_path: Path
 ) -> None:
     """A pin whose snapshot predates an assertion filed under its target renders the
-    stale border class, distinct from a fresh pin (dimension-ruling-drift bearing Done
-    When)."""
+    stale border class, distinct from a fresh pin."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1049,7 +1048,7 @@ def test_submit_dimension_ruling_rejects_out_of_range_settledness(
 
 def test_focus_opening_shows_only_budgeted_tasks(client: TestClient, db_path: Path) -> None:
     """`GET /openings/{id}/focus` renders only the highest-leverage unrated tasks, not
-    every dimension/assertion (review-ux/rating-voi-triage bearing)."""
+    every dimension/assertion."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1156,8 +1155,8 @@ def test_focus_opening_dimension_ruling_keeps_dimension_visible(
     vanishes mid-click, which reads as a bug even though the ranking is doing its job.
     Here `stretch` starts as the sole remaining task (its assertions are all ratified,
     so only the dimension pin is left); pinning it removes it from the candidate set
-    entirely, but the just-completed group must still render (bearing: keep the
-    just-acted-on task visible until the operator navigates away, not just-in-budget).
+    entirely, but the just-completed group must still render — the just-acted-on task
+    stays visible until the operator navigates away, not just while in budget.
     """
     assertions = [
         Assertion(
@@ -1487,8 +1486,8 @@ def test_index_queue_hides_boundary_tick_when_fewer_than_top_k(
     client: TestClient, db_path: Path
 ) -> None:
     """With fewer than `top_k` scored openings there is no K-th opening, so the queue
-    row's glyph has no boundary tick and no crossing-probability tooltip (bearing Done
-    When: "the boundary does not exist yet")."""
+    row's glyph has no boundary tick and no crossing-probability tooltip — the boundary
+    does not exist yet."""
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
 
     response = client.get("/")

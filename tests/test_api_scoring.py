@@ -87,8 +87,7 @@ def test_score_opening_applies_rulings(config: ScoringConfig) -> None:
 
 def test_score_opening_applies_dimension_rulings(config: ScoringConfig) -> None:
     """A `DimensionRuling` pin changes `score_opening`'s standing and reach for the
-    pinned target, threaded through both calls the same way `rulings` already is
-    (bearing Approach)."""
+    pinned target, threaded through both calls the same way `rulings` already is."""
     assertion = _assertion("stretch", "Strong")
     assertions = [assertion, _assertion("location", "Strong")]
     pin = DimensionRuling(

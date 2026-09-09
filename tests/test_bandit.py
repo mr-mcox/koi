@@ -74,8 +74,8 @@ def test_fully_examined_opening_has_lower_uncertainty_than_untouched_one(
 def test_draw_opening_favors_higher_weight_over_many_seeded_draws() -> None:
     """Weighted random draw, not argmax: over many draws from one seeded generator, the
     opening with the larger weight wins more often than the one with the smaller weight,
-    but the smaller-weight one still wins sometimes (bearing Agreed: no single opening's
-    weight can reach certainty)."""
+    but the smaller-weight one still wins sometimes — no single opening's weight can
+    reach certainty."""
     rng = np.random.default_rng(0)
     counts = {"wide": 0, "narrow": 0}
     for _ in range(2000):

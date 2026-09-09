@@ -1,10 +1,10 @@
 """Rating-VOI triage: rank unrated assertion/dimension tasks on one opening by how much
-rating them could move `standing` (review-ux/rating-voi-triage bearing).
+rating them could move `standing`.
 
 Pure `(assertions, config) -> [RatingTaskCandidate]` — no I/O, mirroring `scorer.py`.
 Never writes back to `Assertion`/`DimensionRuling`; the swing number is a route/display
-computation only (bearing Approach — reopening confidence-as-multiplier is the failure
-mode this stays clear of, decisions.md S8).
+computation only — reopening confidence-as-multiplier is the failure mode this stays
+clear of (decisions.md S8).
 """
 
 from __future__ import annotations
@@ -46,8 +46,8 @@ def _swing(
     override_dimension_rulings: dict[Target, DimensionRuling] | None = None,
 ) -> float:
     """|standing(best-case override) - standing(worst-case override)| for one task,
-    holding everything else fixed. Symmetric by design (checkpoint, this session): rating
-    an already-`Poor` assertion `Strong` and rating it `Poor`-confirmed can each move
+    holding everything else fixed. Symmetric by design: rating an already-`Poor`
+    assertion `Strong` and rating it `Poor`-confirmed can each move
     standing, and the proxy doesn't presume which way the operator will rule."""
     best_rulings = dict(rulings)
     worst_rulings = dict(rulings)
@@ -96,8 +96,8 @@ def rating_task_candidates(
     An assertion covered by a pin's snapshot is excluded — the pin already accounts for it
     (scorer.py `stats_for_target`), so rating it can't move anything. An assertion filed
     after the pin's snapshot is uncovered, new evidence the pin hasn't priced in yet, and
-    stays a candidate like any other unrated assertion (dimension-ruling-drift bearing:
-    reopening is binary on any uncovered assertion). A dimension target with zero
+    stays a candidate like any other unrated assertion — reopening is binary on any
+    uncovered assertion. A dimension target with zero
     assertions is excluded too — there is nothing to review, so "rate this dimension" isn't
     an actionable task; that gap is a research question, not a rating one. A pinned target
     is itself a whole-dimension candidate again once it has any uncovered assertion (the

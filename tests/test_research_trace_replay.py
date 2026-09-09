@@ -139,8 +139,8 @@ def test_replay_counts_search_with_no_query_field(tmp_path: Path) -> None:
 
 
 def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded fetch failure (bearing research-fetch-resilience)
-    carries an explicit empty `results` list alongside `error`/`details`,
+    """A dispatcher-recorded fetch failure carries an explicit empty `results` list
+    alongside `error`/`details`,
     distinguishing it from the intake-time fatal failure (no `results` key
     at all). It still counts as a turn — the API call was made — but adds
     no visited URL since there is no result to fold."""

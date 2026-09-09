@@ -21,7 +21,7 @@ _HIGH_QUANTILE = 0.90
 
 def credible_interval(result: ScoreResult) -> tuple[float, float, float]:
     """`(low, median, high)` of the `overall` trace — the trace's own 10th/50th/90th
-    percentile, a display convention rather than a model parameter (bearing Approach);
+    percentile, a display convention rather than a model parameter;
     promote the quantile pair to `scoring.yaml` only if real use shows the need to tune it."""
     low, median, high = np.quantile(result.trace, [_LOW_QUANTILE, 0.5, _HIGH_QUANTILE])
     return float(low), float(median), float(high)

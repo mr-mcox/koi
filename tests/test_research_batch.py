@@ -382,8 +382,8 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
 def test_batch_engine_prints_a_draw_trace_line_per_spent_turn(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Mirrors the retired CLI's `research-batch` stdout trace (bandit bearing Done
-    When #3): one line per spent turn naming the opening drawn, its draw probability,
+    """Mirrors the retired CLI's `research-batch` stdout trace: one line per spent turn
+    naming the opening drawn, its draw probability,
     and its uncertainty rank before/after. `BatchEngine.run` is the web route's only
     call site, so this is the only place left that can print it."""
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=3)
@@ -425,8 +425,8 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
 def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
     """A single bandit draw should give the planner up to
     `research_target_action_cap` actions to work down a line of inquiry on the
-    same opening, instead of resetting after one action. This is the continuity
-    the research-targeting bearing specified (sticky target + per-target cap)."""
+    same opening, instead of resetting after one action — the sticky-target continuity
+    (sticky target + per-target cap)."""
     url = "https://example.com/acme--eng/second-page"
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5)
     engine = BatchEngine(

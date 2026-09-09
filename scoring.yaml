@@ -41,15 +41,15 @@ provenance_weight:
   precedent_matched: 3.0
   ratified: 8.0
 
-# DimensionRuling half-width bounds (review-ux/dimension-ruling bearing). The operator's
+# DimensionRuling half-width bounds. The operator's
 # `settledness` (0 = loose opinion, 1 = strongest stated conviction) maps to half_width via
 #     half_width = hw_max - settledness * (hw_max - hw_min)
 # — rising conviction narrows the distribution but never to a point estimate (hw_min > 0):
 # the operator may be noisy even at maximum stated confidence. Unmeasured placeholders,
 # same status as bar above.
 #
-# These bounds also set the pin's implicit weight for dimension-ruling-drift (bearing
-# Approach): a pin's half_width is interpreted as the equivalent evidence count
+# These bounds also set the pin's implicit weight for drift handling: a pin's
+# half_width is interpreted as the equivalent evidence count
 #     n_pin = 1 / half_width^2
 # so settledness naturally determines how much pseudo-evidence the operator's pin carries.
 # That derivation means a zero-conviction pin (settledness=0, half_width=hw_max=1.0) carries
@@ -59,7 +59,7 @@ dimension_ruling:
   hw_max: 1.0
   hw_min: 0.05
 
-# Rating-VOI triage (review-ux/rating-voi-triage bearing). Per-opening cap on how many
+# Rating-VOI triage. Per-opening cap on how many
 # unrated assertion/dimension tasks the focused view surfaces at once — the "switching
 # cost" that keeps attention on one opening instead of spreading across a dozen half-rated
 # ones. Unmeasured placeholder, same status as bar/bands above.
@@ -70,14 +70,14 @@ rating_task_budget: 4
 # capacity — unmeasured placeholder, same status as bar/rating_task_budget above.
 top_k: 5
 
-# Research resumability (research-resumability bearing). Per-opening lifetime cap on
+# Research resumability. Per-opening lifetime cap on
 # research turns (one `search` or `fetch` action). Seeded onto every opening at intake;
 # existing openings are backfilled to this same value. Manually bumpable per opening —
 # no formula from queue position yet, that's the deferred research-pass bandit's job.
 # Unmeasured placeholder, same status as bar/top_k above.
 research_turns_budget: 5
 
-# Research targeting (research-resumability/research-targeting bearing). Per-target
+# Research targeting. Per-target
 # action cap while a target is sticky: once the planner picks a primary target, it
 # stays on that target for up to this many actions before the ranking is allowed to
 # switch. Prevents mid-chain thrash when a fetch on one target incidentally yields an

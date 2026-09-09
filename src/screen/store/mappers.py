@@ -1,6 +1,6 @@
 """Hand-written mappers between `screen.types` domain models and SQLite rows.
 
-No ORM (score-persistence bearing): `screen.types` is the one domain model;
+No ORM: `screen.types` is the one domain model;
 a row is a plain `dict[str, object]` shaped to match the `companies`/
 `openings`/`assertions` tables in `store/migrations/`. `sqlite3.Row` objects
 convert to this shape via `dict(row)`.
