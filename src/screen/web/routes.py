@@ -628,9 +628,8 @@ def submit_ruling(
     """Upsert the operator's ruling for one assertion, then return the rating-content
     partial (not a full document) for an HTMX swap. Submitting a rating must re-sort the
     queue without a full page reload, but that re-sort is the queue page's concern, not
-    this fragment's. `focus=1` keeps
-    the swap on the focused-view's narrowed context, not the full rating page's (bearing
-    Done When: submitting from the focused view stays focused)."""
+    this fragment's. `focus=1` keeps the swap on the focused-view's narrowed context,
+    not the full rating page's, so submitting from the focused view stays focused."""
     if get_opening(conn, opening_id) is None:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
     upsert_assertion_ruling(

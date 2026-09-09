@@ -149,8 +149,8 @@ def stats_for_target(
     dimension_rulings: dict[str, DimensionRuling] | None,
 ) -> TargetStats:
     """A dimension pin (if present for this target) acts as a prior over the target's
-    stats, blended with any assertions filed after the pin's snapshot (bearing Done When:
-    a pin still supersedes per-assertion rulings on assertions it already covers)."""
+    stats, blended with any assertions filed after the pin's snapshot. A pin still
+    supersedes per-assertion rulings on assertions it already covers."""
     if dimension_rulings is not None and target in dimension_rulings:
         return _dimension_ruling_stats(dimension_rulings[target], assertions, config, target)
     return _target_stats(assertions, config, target, rulings)

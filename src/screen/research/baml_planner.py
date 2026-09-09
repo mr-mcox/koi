@@ -2,7 +2,7 @@
 
 Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
-`test_loop_baml_shape.py` pins this at test time.
+`tests/test_research_baml_shape.py` pins this at test time.
 
 Also owns the deterministic composite-uncertainty ranking that picks the
 planner's `primary_target` for each turn. The ranking is pure: it reads the

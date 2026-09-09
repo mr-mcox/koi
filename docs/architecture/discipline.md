@@ -29,7 +29,7 @@ rather than a growing pragma count.
 
 ## Where the numbers live
 
-**Tier values live in `tests/test_discipline.py`**, inline beside the assertions that read them.
+**Tier values live in `scripts/check.py`**, inline beside the gates that read them.
 That file is the single source of truth. Nothing else — no brief, no bearing, no slice — restates
 a tier value; a document that does immediately drifts.
 
@@ -43,6 +43,6 @@ out, exempt count went down").
 (`PLR0915`, max 50), unused imports (`F401`), raise-from chains (`B904`). `black` owns
 formatting. Config in `[tool.ruff]` / `[tool.black]`.
 
-`tests/test_discipline.py` keeps only what a linter structurally cannot: per-file coverage
+`scripts/check.py` keeps only what a linter structurally cannot: per-file coverage
 tier and exempt-file budget. Those are project-state values that change with the architecture,
 not code-shape rules.

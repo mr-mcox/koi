@@ -1,7 +1,7 @@
 // Three LLM clients configured per `.env`. BAML names are PascalCase
 // keywords; switching happens via `client "Fireworks"|"Openai"|"Anthropic"`
 // in `identify.baml`. To swap at runtime by env var use BAML's
-// `ClientRegistry` (slice 3+ wires dynamic dispatch).
+// `ClientRegistry`.
 
 client<llm> Openai {
   provider openai

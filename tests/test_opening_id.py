@@ -4,9 +4,9 @@ from screen.intake.opening_id import derive_opening_id
 
 
 def test_slug_from_title() -> None:
-    aid = derive_opening_id("Applied AI Lead", "https://x.example/jobs/1")
+    aid = derive_opening_id("Staff Platform Engineer", "https://x.example/jobs/1")
     parts = aid.rsplit("-", 1)
-    assert parts[0] == "applied-ai-lead"
+    assert parts[0] == "staff-platform-engineer"
     assert len(parts[1]) == 6  # SHA-1[:6] suffix always present
 
 

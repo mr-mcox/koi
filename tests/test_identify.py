@@ -13,16 +13,16 @@ def test_identify_calls_protocol_with_page_content() -> None:
     fake = FakeIdentifier(
         [
             IdentificationResult(
-                company_name="Anthropic",
-                opening_title="Applied AI Lead",
+                company_name="Acme Health",
+                opening_title="Staff Platform Engineer",
                 opening_notes="Public job posting",
             )
         ]
     )
     result = identify_opening("raw markup here", identifier=fake)
     assert isinstance(result, IdentificationResult)
-    assert result.company_name == "Anthropic"
-    assert result.opening_title == "Applied AI Lead"
+    assert result.company_name == "Acme Health"
+    assert result.opening_title == "Staff Platform Engineer"
     assert result.opening_notes == "Public job posting"
 
 

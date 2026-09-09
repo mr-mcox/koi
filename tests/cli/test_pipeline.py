@@ -232,7 +232,7 @@ def test_cli_dispatch_continues_past_failed_fetch(
     patch_extractor(monkeypatch)
     patch_digester(monkeypatch)
 
-    blocked_url = "https://www.zocdoc.com/about/careers-list/blocked"
+    blocked_url = "https://www.acmehealth.example/about/careers-list/blocked"
     monkeypatch.setattr(
         cli_module,
         "_build_planner",

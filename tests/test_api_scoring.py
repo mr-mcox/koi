@@ -75,7 +75,7 @@ def test_score_opening_low_high_bracket_median(config: ScoringConfig) -> None:
 
 def test_score_opening_applies_rulings(config: ScoringConfig) -> None:
     """An `AssertionRuling` override changes `score_opening`'s standing for the ruled
-    assertion's target (bearing Done When)."""
+    assertion's target."""
     assertion = _assertion("stretch", "Strong")
     assertions = [assertion, _assertion("location", "Strong")]
 

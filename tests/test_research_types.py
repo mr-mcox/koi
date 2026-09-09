@@ -1,4 +1,4 @@
-"""Tests for loop/ domain types: LoopState, PassSummary, StopAction.
+"""Tests for research/ domain types: LoopState, PassSummary, StopAction.
 
 Pins the contracts the dispatcher and CLI rely on:
 - frozen + extra=forbid on all three types

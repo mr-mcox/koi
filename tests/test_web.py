@@ -151,8 +151,8 @@ def _focus_snapshot_fields(body: str) -> dict[str, str]:
 
 
 def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Path) -> None:
-    """A warm cache means the rating view never calls the digester (Done When #2 of
-    digest-latency-and-style) — cold-cache generation happens post-pass, not on page view."""
+    """A warm cache means the rating view never calls the digester — cold-cache
+    generation happens post-pass, not on page view."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -491,7 +491,7 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
     client: TestClient, db_path: Path
 ) -> None:
     """A digest with leading-dash bullets and line breaks renders as `<ul>/<li>`
-    or `<br>`, not literal text (Done When #4 of digest-latency-and-style)."""
+    or `<br>`, not literal text."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -671,8 +671,8 @@ def test_static_htmx_is_reachable(client: TestClient) -> None:
 
 def test_submit_ruling_writes_and_swaps_partial(client: TestClient, db_path: Path) -> None:
     """POSTing an override writes an `AssertionRuling` and returns the rating content
-    partial (not a full document) reflecting the new ruling (Done When: HTMX partial
-    swap, not a full-document GET)."""
+    partial (not a full document) reflecting the new ruling — an HTMX partial swap,
+    not a full-document GET."""
     assertion = _assertion("stretch", "Mixed")
     _seed_opening(
         db_path,
@@ -798,7 +798,7 @@ def test_rate_opening_shows_dimension_ruling_control_per_group(
     client: TestClient, db_path: Path
 ) -> None:
     """Each dimension group offers a single-click 2D control to submit a `(fit,
-    settledness)` pin (bearing Done When)."""
+    settledness)` pin."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -911,7 +911,7 @@ def test_submit_dimension_ruling_writes_and_swaps_partial(
     client: TestClient, db_path: Path
 ) -> None:
     """POSTing a dimension pin writes a `DimensionRuling` and returns the rating-content
-    partial via HTMX swap (bearing Done When)."""
+    partial via HTMX swap."""
     _seed_opening(
         db_path,
         company_id="acme",
@@ -941,7 +941,7 @@ def test_submit_dimension_ruling_stamps_covered_assertion_ids(
     client: TestClient, db_path: Path
 ) -> None:
     """A pin snapshots the target's current assertion ids so later drift detection can
-    tell exactly which assertions were and weren't seen (bearing Done When)."""
+    tell exactly which assertions were and weren't seen."""
     stretch_assertions = [_assertion("stretch", "Strong"), _assertion("stretch", "Poor")]
     _seed_opening(
         db_path,
@@ -1106,7 +1106,7 @@ def test_focus_opening_404_when_missing(client: TestClient) -> None:
 
 def test_focus_opening_submission_stays_focused(client: TestClient, db_path: Path) -> None:
     """Submitting a ruling from the focused view keeps the swapped-in content focused,
-    not the full unfiltered rating page (bearing Done When: same focused view via HTMX).
+    not the full unfiltered rating page — the same focused view, swapped via HTMX.
     Which targets are budgeted can legitimately shift after a rating changes the swing
     ranking — what must hold is that the swap stays under budget, not full."""
     all_targets = [

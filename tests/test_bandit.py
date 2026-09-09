@@ -87,7 +87,7 @@ def test_draw_opening_favors_higher_weight_over_many_seeded_draws() -> None:
 
 def test_draw_opening_is_deterministic_given_a_seeded_generator() -> None:
     """Two generators seeded identically produce the identical draw sequence — the batch's
-    determinism-from-config.seed contract (bearing Done When)."""
+    determinism-from-`config.seed` contract."""
     weights = {"a": 2.0, "b": 1.0, "c": 0.5}
     rng_a = np.random.default_rng(42)
     rng_b = np.random.default_rng(42)

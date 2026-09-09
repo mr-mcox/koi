@@ -1,6 +1,6 @@
 """Unit tests for post-pass digest warming — `_run_dispatch` must warm the
 digest cache for every target with assertions before the pass is considered
-complete (Done When #1 of digest-latency-and-style)."""
+complete."""
 
 from __future__ import annotations
 

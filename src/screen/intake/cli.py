@@ -196,7 +196,7 @@ def backfill_dimension_ruling_covered_assertion_ids() -> None:
     `created_at`" — the exact historical set isn't reconstructable once new assertions
     have already landed, and this is the correction path for that. Manually re-running
     it (e.g. after this command itself) overwrites again, same pattern as
-    `backfill-research-turns-budget` (dimension-ruling-drift bearing Done When).
+    `backfill-research-turns-budget`.
     """
     conn = connect(_db_path_for(data_dir()))
     openings = list_openings(conn)
