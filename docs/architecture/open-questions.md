@@ -188,3 +188,17 @@ complexity grow past what mapper functions stay cheap to hand-write for. First s
 likely a migration that's hard to write correctly by hand, not a growing table count
 alone — that's the trigger to revisit, not general unease about boilerplate.
 
+## 16 · Does "software is core to company strategy" need its own home?
+
+The operator's stated target profile (tier-3 companies: compete for top regional talent,
+software central to strategy, not necessarily venture-backed) has two halves. The
+talent-density half now lives in `peer` (R5). The "software is core to strategy" half has
+no current dimension — it's adjacent to but distinct from `trajectory` ("healthy company
+AND the operator's work is load-bearing"): a company can be healthy and treat engineering
+as a cost center. Not built yet because it isn't known whether it's already implicit in
+which postings reach intake (tier-1/2 vs. tier-3 companies may self-select before research
+starts) or actually missing signal once research runs.
+
+**Settled by:** a real case where a company clears every existing dimension acceptably but
+the operator would still pass because engineering visibly isn't strategic to the business
+— that divergence is the evidence a dimension is missing, not a guess now.

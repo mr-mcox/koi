@@ -174,6 +174,23 @@ Definitions are sliced verbatim into research prompts and review screens — pro
 review judged against identical words. Every rubric change carries a reason; the change log
 *is* the dimension-stability instrument.
 
+### R5 · Peer caliber demotes generic "we do code reviews" language to non-signal · `demonstrated`
+
+Measured against the live corpus (`data/live/screen.db`): every plain mention of code
+review / mentorship / collaboration existing (10 of 10 in the peer-target assertion set)
+landed `Mixed` regardless of company, and never once co-occurred with a `Strong` rating.
+The `Strong` cases were categorically different — a named senior IC/leadership hire, a
+substantive engineering-blog post, a stated hiring-bar/interview-process detail, or a
+concrete practice tied to a stated outcome. Generic process language is cheap to put in
+any posting; specific, hard-to-fake claims are not. `fit_anchors`/`look_for` rewritten to
+score on specificity rather than topic presence — boilerplate now reads as `Poor`-tier
+(no signal), not `Mixed`.
+
+Considered and set aside: folding "competes for top regional talent" into a new
+dimension. Comp already carries a large share of this signal for the affected weight
+budget; a new dimension would double-count without new information (tracked as an open
+question, not built).
+
 ---
 
 ## Workflow
