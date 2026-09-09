@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Archive{% endblock %}
+{% block content %}
+  <h1>Archive</h1>
+  <nav class="archive-filters">
+    <a class="archive-filter{% if selected_stage is none %} active{% endif %}" href="/archive">all</a>
+    {% for s in stages %}
+    {% if s != "screening" %}
+    <a class="archive-filter{% if selected_stage == s %} active{% endif %}" href="/archive?stage={{ s }}">{{ s }}</a>
+    {% endif %}
+    {% endfor %}
+  </nav>
+  <ul class="archive">
+    {% for item in items %}
+    <li>
+      <span class="archive-stage archive-stage-{{ item.stage }}">{{ item.stage }}</span>
+      <a class="title" href="/openings/{{ item.opening_id }}/rate">
+        <span class="entity-company" style="--accent-hue: {{ item.company_hue }};">{{ item.company_name }}</span>
+        <span class="entity-sep">—</span>
+        <span class="entity-opening" style="--accent-hue: {{ item.opening_hue }};">{{ item.opening_title }}</span>
+      </a>
+    </li>
+    {% else %}
+    <li class="archive-empty">Nothing here yet.</li>
+    {% endfor %}
+  </ul>
+  <p><a class="back-to-queue" href="/">Back to queue</a></p>
+{% endblock %}

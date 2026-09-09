@@ -97,7 +97,7 @@ def get_opening_score(opening_id: str, conn: Conn) -> ScoreResponse:
 def get_queue(conn: Conn) -> list[ScoreResponse]:
     config = load_scoring_config()
     scored: list[tuple[Opening, Company, OpeningScore]] = []
-    for opening in list_openings(conn):
+    for opening in list_openings(conn, stage="screening"):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
         assertion_rulings = latest_ruling_by_assertion(

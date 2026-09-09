@@ -1,1 +1,1 @@
-docs/features/research-batch-web-trigger/bearing.md
+docs/features/opening-lifecycle/bearing.md

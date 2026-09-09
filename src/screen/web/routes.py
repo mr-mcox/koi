@@ -48,8 +48,18 @@ from screen.store.repo import (
     list_openings,
     upsert_assertion_ruling,
     upsert_dimension_ruling,
+    upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Company, DimensionRuling, Fit, Opening, Target
+from screen.types import (
+    Assertion,
+    AssertionRuling,
+    Company,
+    DimensionRuling,
+    Fit,
+    Opening,
+    Stage,
+    Target,
+)
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -221,7 +231,7 @@ def _scored_openings(
     standing descending. Shared by the queue template and the contested review session
     so both see the same boundary."""
     scored: list[tuple[Opening, Company, OpeningScore]] = []
-    for opening in list_openings(conn):
+    for opening in list_openings(conn, stage="screening"):
         company = _company_for(conn, opening)
         assertions = assertions_for_opening(conn, opening.id)
         assertion_rulings = latest_ruling_by_assertion(
@@ -328,7 +338,8 @@ def _focus_queue_items(conn: sqlite3.Connection) -> list[str]:
     remaining rating work are excluded."""
     config = load_scoring_config()
     leverages = [
-        (opening.id, _opening_leverage(conn, opening, config)) for opening in list_openings(conn)
+        (opening.id, _opening_leverage(conn, opening, config))
+        for opening in list_openings(conn, stage="screening")
     ]
     leverages.sort(key=lambda pair: pair[1], reverse=True)
     return [opening_id for opening_id, leverage in leverages if leverage > 0]
@@ -690,6 +701,55 @@ def submit_dimension_ruling(
         else _rating_context_for_request(request, conn, opening_id)
     )
     return templates.TemplateResponse(request, "_rating_content.html", context)
+
+
+STAGES: tuple[Stage, ...] = ("screening", "pursuing", "applied", "closed")
+
+
+@router.post("/openings/{opening_id}/stage")
+def submit_stage(
+    opening_id: str,
+    conn: Conn,
+    stage: Annotated[Stage, Form()],
+) -> RedirectResponse:
+    """Move an opening to a new pipeline stage (opening-lifecycle bearing). A lightweight
+    marker, not a full application tracker: no outcome sub-typing, no history kept of
+    prior stages — the operator's existing Ruling/Assertion history already answers
+    'what did I think of this' once the opening is reachable again via `/archive`.
+    Redirects to the queue rather than swapping a partial: the opening usually just left
+    the page the operator was looking at."""
+    opening = get_opening(conn, opening_id)
+    if opening is None:
+        raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
+    upsert_opening(conn, opening.model_copy(update={"stage": stage}))
+    return RedirectResponse("/", status_code=303)
+
+
+@router.get("/archive", response_class=HTMLResponse)
+def archive(request: Request, conn: Conn, stage: Stage | None = None) -> HTMLResponse:
+    """Every opening that has left the live queue, optionally filtered to one stage —
+    the operator's retrieval path back to an opening's rulings and job description after
+    it stops being ranked (F8/F15, opening-lifecycle bearing). Unranked: display order is
+    stage then company, never standing."""
+    stages_to_show = (stage,) if stage is not None else tuple(s for s in STAGES if s != "screening")
+    items = []
+    for show_stage in stages_to_show:
+        for opening in list_openings(conn, stage=show_stage):
+            company = _company_for(conn, opening)
+            company_hue, opening_hue = _accent_hues(company.id, opening.id)
+            items.append(
+                {
+                    "opening_id": opening.id,
+                    "company_name": company.name,
+                    "opening_title": opening.title,
+                    "stage": opening.stage,
+                    "company_hue": company_hue,
+                    "opening_hue": opening_hue,
+                }
+            )
+    return templates.TemplateResponse(
+        request, "archive.html", {"items": items, "stages": STAGES, "selected_stage": stage}
+    )
 
 
 @router.post("/batch", response_class=HTMLResponse)

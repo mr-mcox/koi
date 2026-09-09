@@ -56,8 +56,10 @@ known company inherits all company-level evidence free.
 - Non-scoring targets: obtainability / rise-above-the-noise (see the wall below).
 - Affordances — collected data, never directives: where to apply, cover letter accepted,
   posting date, requisition level.
-- Pipeline stage: `screening → handed-off → applied → closed(outcome)`. Deliberately thin;
-  other systems do real application tracking. The holding area is a view over this field.
+- Pipeline stage: `screening → pursuing / applied / closed`. Deliberately thin; other
+  systems do real application tracking. No `outcome` sub-typing on `closed` — implemented
+  in `Opening.stage`; `screening` is the only stage that ranks or draws research budget
+  (opening-lifecycle bearing, `docs/features/opening-lifecycle/`).
 
 ### Assertion
 

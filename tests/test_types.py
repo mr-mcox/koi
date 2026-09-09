@@ -48,10 +48,22 @@ def test_opening_round_trip_minimum_valid() -> None:
     raw = _opening()
     opening = Opening.model_validate(raw)
     dumped = opening.model_dump(mode="json")
-    assert json.loads(json.dumps(dumped)) == raw
+    assert json.loads(json.dumps(dumped)) == {**raw, "stage": "screening"}
     assert opening.company_id == "anthropic"
     assert opening.research_trace_id == "tx0123456789abcdef"
     assert opening.research_turns_budget == 5
+    assert opening.stage == "screening"
+
+
+def test_opening_accepts_each_lifecycle_stage() -> None:
+    for stage in ("screening", "pursuing", "applied", "closed"):
+        opening = Opening.model_validate({**_opening(), "stage": stage})
+        assert opening.stage == stage
+
+
+def test_opening_rejects_unknown_stage() -> None:
+    with pytest.raises(ValidationError):
+        Opening.model_validate({**_opening(), "stage": "withdrawn"})
 
 
 def test_company_rejects_unknown_field() -> None:

@@ -47,7 +47,7 @@ _QUERY = "extra search"
 
 
 def _seed_opening_with_trace(
-    tmp_path: Path, opening_id: str, company_id: str, *, budget: int
+    tmp_path: Path, opening_id: str, company_id: str, *, budget: int, stage: str = "screening"
 ) -> Path:
     conn = connect(tmp_path / "screen.db")
     upsert_company(
@@ -80,6 +80,7 @@ def _seed_opening_with_trace(
             research_trace_id=f"{opening_id}-trace",
             research_turns_budget=budget,
             created_at=datetime.now(UTC),
+            stage=stage,  # type: ignore[arg-type]
         ),
     )
     conn.close()
@@ -125,6 +126,30 @@ def test_batch_runs_across_openings_with_remaining_budget(tmp_path: Path) -> Non
 def test_batch_skips_openings_with_no_remaining_budget(tmp_path: Path) -> None:
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=1)  # already exhausted
     _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets", budget=2)
+    conn = connect(tmp_path / "screen.db")
+    engine = _build_engine(tmp_path)
+    total, touched = run_batch(
+        conn,
+        tmp_path,
+        4,
+        None,
+        planner_factory=engine.planner_factory,
+        browser=engine.browser_factory(),
+        extractor=engine.extractor_factory(),
+        digester=engine.digester_factory(),
+    )
+    conn.close()
+    assert total > 0
+    assert "acme--eng" not in touched
+    assert "widgets--eng" in touched
+
+
+def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
+    """A `pursuing`/`applied`/`closed` opening never consumes research budget or gets
+    drawn by the bandit (opening-lifecycle bearing) — leaving the live queue also leaves
+    the research batch's candidate set."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5, stage="applied")
+    _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets", budget=5)
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     total, touched = run_batch(
