@@ -21,11 +21,10 @@ class OpeningScore:
     reach: float
     ceiling: float
     unreachable: bool
-    # Display glyph statistics for the `overall` trace (review-ux/attention-allocation-
-    # display.md Approach): `median` is the glyph's dot, `low`/`high` its q10/q90 bar.
-    # Distinct from `standing` (`P(overall > bar)`, a single scalar with no per-draw
-    # quantile of its own) — the two live on different axes and neither is derived from
-    # the other.
+    # Display glyph statistics for the `overall` trace: `median` is the glyph's dot,
+    # `low`/`high` its q10/q90 bar. Distinct from `standing` (`P(overall > bar)`, a
+    # single scalar with no per-draw quantile of its own) — the two live on different
+    # axes and neither is derived from the other.
     low: float
     median: float
     high: float

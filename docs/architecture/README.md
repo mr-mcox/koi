@@ -30,9 +30,11 @@ strand a summary here.
   rejecting the four-state loop → `tests/test_dispatcher.py`
 - **No agent framework.** BAML covers structured output; adding a framework is a vocabulary
   change, not a dependency change
-- **`intake/` never imports `loop/`** — dependency direction runs one way · *unenforced*
+- **`intake/` never imports `research/`** — dependency direction runs one way · *unenforced*
 - **Private config stays private** — no real company name, salary, résumé content, or
-  collected evidence in a committed file → [domain-model.md](domain-model.md) · `scripts/check.py`
+  collected evidence in a committed file → [AGENTS.md](../../AGENTS.md) §Privacy ·
+  `tests/test_rubric.py` pins the compensation baseline out of `rubric.yaml`; the rest is
+  convention, *not* gate-enforced
 - **Discipline gates** → [discipline.md](discipline.md) · `scripts/check.py`
 
 ## Volatile — expected to move. Don't stabilize, don't abstract, don't build on it.

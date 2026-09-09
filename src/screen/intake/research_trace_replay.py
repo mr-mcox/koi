@@ -1,10 +1,9 @@
 """Replays a research trace file into the resumable working values that a
 fresh `LoopState` needs to continue a pass instead of restarting one.
 
-Per review-ux/scouting F9 (standing operator position): these are per-pass
-working values, computed from the transcript on demand — never a second,
-independently-persisted copy that could drift from what the trace says
-actually happened.
+These are per-pass working values, computed from the transcript on demand —
+never a second, independently-persisted copy that could drift from what the
+trace says actually happened.
 """
 
 from pathlib import Path

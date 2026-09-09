@@ -230,9 +230,9 @@ The prototype's D27 asked a batch-wise generalization question (`rubric-edit` /
 instrumentation for the prototype's own Q5 ("is the rubric durable, or does accuracy
 come from accumulated cases?") — a question about closing the prototype phase, not a
 review interaction the operator found efficient and wants reproduced. **Do not build
-this pattern.** The review UX is undecided and open for the clean build to design from
-what's actually efficient for the operator — see `docs/features/*/scouting.md` for the
-live exploration.
+this pattern.** The review UX was left open for the clean build to design from what's
+actually efficient for the operator; what it settled on is the queue and per-opening
+rating view in `src/screen/web/`.
 ### W5 · Precedent retrieves and shows; it never decides · `demonstrated`-adjacent (O8)
 
 "You rated a similar claim Mixed at Company A" — the operator agrees or not. Auto-closing

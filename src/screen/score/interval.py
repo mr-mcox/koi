@@ -1,9 +1,9 @@
 """Display glyph statistics for one opening's `overall` trace: the median dot and its
-q10/q90 credible interval (review-ux/attention-allocation-display.md Approach). All three
-live on the same `overall`-quality axis (0-1) that the K-th opening's boundary tick is also
-plotted on — none of them is `standing`, which is `P(overall > bar)`, a single scalar with
-no per-draw quantile of its own (this session's correction: the original plan put a
-quantile interval around `standing` itself, which the trace's own quantiles don't bracket).
+q10/q90 credible interval. All three live on the same `overall`-quality axis (0-1) that
+the K-th opening's boundary tick is also plotted on — none of them is `standing`, which
+is `P(overall > bar)`, a single scalar with no per-draw quantile of its own, so the
+trace's quantiles do not bracket it.
+
 Display-layer arithmetic over an already-produced `ScoreResult`, same posture as
 `screen.score.boundary` — never written back to `Assertion`/`DimensionRuling`/`Scorer`
 (domain-model.md's wall: raw positions never reach the scorer).

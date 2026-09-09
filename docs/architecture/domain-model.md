@@ -151,10 +151,12 @@ OQ14).
 ### Ruling
 
 The operator's review event: proposed vs. final labels, the raw click, remediation path.
-Granularity is open (→ `docs/features/review-ux/scouting.md` F6/F18): whether a Ruling is
-always assertion-level, or whether a dimension-level Ruling is also a first-class object,
-is undecided pending that feature's bearing. What's settled: reviews are not required to
-be worked in a fixed batch-then-generalize shape (D27's batch screen was prototype
+Granularity is settled: rulings exist at both levels as siblings, not as one type with a
+scope field. `AssertionRuling` is a categorical confirm/override on one assertion;
+`DimensionRuling` is the operator's continuous `(mean, settledness)` placement over a
+whole dimension — different author-intents with different payload shapes (see
+`screen.types`). Also settled: reviews are not required to be worked in a fixed
+batch-then-generalize shape (D27's batch screen was prototype
 instrumentation for one pivot question, not a UX pattern — see `decisions.md` W4). The
 accumulating corpus is the calibration data for everything: confidence-ladder geometry,
 precedent matching, the encodability answer.

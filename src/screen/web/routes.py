@@ -94,12 +94,11 @@ class _DimensionGroup:
 
 @dataclass(frozen=True)
 class BoundaryGlyph:
-    """Credible-interval bar on a fixed 0-1 `overall`-quality axis (review-ux/
-    attention-allocation-display.md Approach): `median` is the dot, `low`/`high` its
-    q10/q90 bar (rendered as the bar's own edges, not separate end markers), and
-    `boundary` (optional) the K-th opening's `median` — all on this one axis, never
-    `standing`'s `P(> bar)` axis (this session's correction: the trace's own quantiles
-    don't bracket `standing`, a single scalar with no per-draw quantile).
+    """Credible-interval bar on a fixed 0-1 `overall`-quality axis: `median` is the dot,
+    `low`/`high` its q10/q90 bar (rendered as the bar's own edges, not separate end
+    markers), and `boundary` (optional) the K-th opening's `median` — all on this one
+    axis, never `standing`'s `P(> bar)` axis, whose single scalar has no per-draw
+    quantile for the trace to bracket.
     `boundary`/`crossing_probability` are both `None` when the queue has fewer than
     `top_k` scored openings — no K-th opening means no boundary to show.
     """
@@ -257,9 +256,9 @@ def _scored_openings(
 def _kth_result(
     scored: list[tuple[Opening, Company, OpeningScore]], config: ScoringConfig
 ) -> OpeningScore | None:
-    """The K-th-ranked opening's `OpeningScore`, or `None` when fewer than `top_k` openings
-    exist — no K-th opening means no boundary (S5-adjacent display convention, review-ux/
-    attention-allocation-computation.md Approach)."""
+    """The K-th-ranked opening's `OpeningScore`, or `None` when fewer than `top_k`
+    openings exist — no K-th opening means no boundary (S5-adjacent display
+    convention)."""
     return scored[config.top_k - 1][2] if len(scored) >= config.top_k else None
 
 

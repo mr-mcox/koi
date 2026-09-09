@@ -63,9 +63,9 @@ def test_score_opening_handles_empty_assertions(config: ScoringConfig) -> None:
 
 
 def test_score_opening_low_high_bracket_median(config: ScoringConfig) -> None:
-    """`low`/`high` are the standing trace's q10/q90 around `median` — the display glyph's
-    credible interval (review-ux/attention-allocation-display.md Approach). Distinct from
-    `standing` (`P(overall > bar)`), which the trace's own quantiles don't bracket."""
+    """`low`/`high` are the standing trace's q10/q90 around `median` — the display
+    glyph's credible interval. Distinct from `standing` (`P(overall > bar)`), which the
+    trace's own quantiles don't bracket."""
     assertions = [_assertion("stretch", "Strong"), _assertion("location", "Strong")]
 
     result = score_opening(assertions, config)
