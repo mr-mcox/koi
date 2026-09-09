@@ -1830,7 +1830,7 @@ def test_batch_start_form_validates_batch_size(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Opening lifecycle stage (opening-lifecycle bearing)
+# Opening lifecycle stage
 # ---------------------------------------------------------------------------
 
 

@@ -24,7 +24,7 @@ class Company(BaseModel):
 # Pipeline stage (domain-model.md §Opening): deliberately thin, four terminal-ish
 # buckets, no sub-typing. `screening` is the only stage that ranks or gets
 # research budget; the other three exist purely to leave the live queue while
-# staying retrievable (opening-lifecycle bearing).
+# staying retrievable.
 Stage = Literal["screening", "pursuing", "applied", "closed"]
 
 

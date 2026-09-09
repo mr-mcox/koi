@@ -146,8 +146,8 @@ def test_batch_skips_openings_with_no_remaining_budget(tmp_path: Path) -> None:
 
 def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
     """A `pursuing`/`applied`/`closed` opening never consumes research budget or gets
-    drawn by the bandit (opening-lifecycle bearing) — leaving the live queue also leaves
-    the research batch's candidate set."""
+    drawn by the bandit — leaving the live queue also leaves the research batch's
+    candidate set."""
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=5, stage="applied")
     _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets", budget=5)
     conn = connect(tmp_path / "screen.db")

@@ -710,7 +710,7 @@ def submit_stage(
     conn: Conn,
     stage: Annotated[Stage, Form()],
 ) -> RedirectResponse:
-    """Move an opening to a new pipeline stage (opening-lifecycle bearing). A lightweight
+    """Move an opening to a new pipeline stage. A lightweight
     marker, not a full application tracker: no outcome sub-typing, no history kept of
     prior stages — the operator's existing Ruling/Assertion history already answers
     'what did I think of this' once the opening is reachable again via `/archive`.
@@ -727,8 +727,8 @@ def submit_stage(
 def archive(request: Request, conn: Conn, stage: Stage | None = None) -> HTMLResponse:
     """Every opening that has left the live queue, optionally filtered to one stage —
     the operator's retrieval path back to an opening's rulings and job description after
-    it stops being ranked (F8/F15, opening-lifecycle bearing). Unranked: display order is
-    stage then company, never standing."""
+    it stops being ranked. Unranked: display order is stage then company, never
+    standing."""
     stages_to_show = (stage,) if stage is not None else tuple(s for s in STAGES if s != "screening")
     items = []
     for show_stage in stages_to_show:
