@@ -1914,8 +1914,8 @@ def test_submit_stage_change_404s_for_unknown_opening(client: TestClient) -> Non
 
 
 def test_rating_view_shows_stage_controls(client: TestClient, db_path: Path) -> None:
-    """The rating view exposes a way to change an opening's stage (F13: same page the
-    operator already reviews the opening from)."""
+    """The rating view exposes a way to change an opening's stage — the same page the
+    operator already reviews the opening from."""
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
 
     response = client.get("/openings/acme--eng/rate")

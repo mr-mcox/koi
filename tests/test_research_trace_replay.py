@@ -1,7 +1,7 @@
 """Tests for replaying a research trace into resumable state.
 
 Reconstructs what a fresh LoopState needs to continue a pass rather than
-restart it: turns_used, visited_urls, prior_queries. Per F16, the trace's
+restart it: turns_used, visited_urls, prior_queries. The trace's
 `ToolName` vocabulary is closed (tavily_extract, tavily_search, decide_plan),
 so replay is a fold over a fixed set of event shapes, not an open parse.
 """

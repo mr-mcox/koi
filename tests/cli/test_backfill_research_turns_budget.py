@@ -1,6 +1,6 @@
 """Unit tests for the `backfill-research-turns-budget` CLI command — seeds
-`Opening.research_turns_budget` for every opening already in the DB (F23:
-existing openings get the same seeded budget as new ones)."""
+`Opening.research_turns_budget` for every opening already in the DB, so existing
+openings get the same seeded budget as new ones."""
 
 from __future__ import annotations
 
