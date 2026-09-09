@@ -284,7 +284,7 @@ def eligible_weights(
     affect the next draw."""
     return {
         opening.id: opening_weight(conn, opening, config)
-        for opening in list_openings(conn)
+        for opening in list_openings(conn, stage="screening")
         if remaining_budget(data_root, opening) > 0
     }
 

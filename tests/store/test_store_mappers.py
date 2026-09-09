@@ -54,6 +54,22 @@ def test_opening_round_trips_through_row() -> None:
     assert opening_from_row(row) == opening
 
 
+def test_opening_round_trips_non_default_stage_through_row() -> None:
+    opening = Opening(
+        id="acme--staff-engineer-abc123",
+        company_id="acme",
+        title="Staff Engineer",
+        url="https://example.com/jobs/1",
+        research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
+        created_at=_CREATED_AT,
+        stage="applied",
+    )
+    row = opening_to_row(opening)
+    assert row["stage"] == "applied"
+    assert opening_from_row(row) == opening
+
+
 def test_assertion_round_trips_through_row() -> None:
     assertion = Assertion(
         target="stretch",

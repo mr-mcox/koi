@@ -45,18 +45,22 @@ def opening_to_row(opening: Opening) -> dict[str, object]:
         "research_trace_id": opening.research_trace_id,
         "research_turns_budget": opening.research_turns_budget,
         "created_at": opening.created_at.isoformat(),
+        "stage": opening.stage,
     }
 
 
 def opening_from_row(row: dict[str, object]) -> Opening:
-    return Opening(
-        id=str(row["id"]),
-        company_id=str(row["company_id"]),
-        title=str(row["title"]),
-        url=str(row["url"]),
-        research_trace_id=str(row["research_trace_id"]),
-        research_turns_budget=int(str(row["research_turns_budget"])),
-        created_at=datetime.fromisoformat(str(row["created_at"])),
+    return Opening.model_validate(
+        {
+            "id": str(row["id"]),
+            "company_id": str(row["company_id"]),
+            "title": str(row["title"]),
+            "url": str(row["url"]),
+            "research_trace_id": str(row["research_trace_id"]),
+            "research_turns_budget": int(str(row["research_turns_budget"])),
+            "created_at": datetime.fromisoformat(str(row["created_at"])),
+            "stage": row.get("stage", "screening"),
+        }
     )
 
 

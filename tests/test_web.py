@@ -79,7 +79,12 @@ def client(db_path: Path) -> Iterator[TestClient]:
 
 
 def _seed_opening(
-    db_path: Path, *, company_id: str, opening_id: str, assertions: list[Assertion] | None = None
+    db_path: Path,
+    *,
+    company_id: str,
+    opening_id: str,
+    assertions: list[Assertion] | None = None,
+    stage: str = "screening",
 ) -> None:
     conn = connect(db_path)
     upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=_NOW))
@@ -93,6 +98,7 @@ def _seed_opening(
             research_trace_id=f"tx-{opening_id}",
             research_turns_budget=5,
             created_at=_NOW,
+            stage=stage,  # type: ignore[arg-type]
         ),
     )
     if assertions:
@@ -1821,3 +1827,141 @@ def test_batch_start_form_validates_batch_size(client: TestClient) -> None:
     """The batch start form rejects non-positive batch sizes."""
     response = client.post("/batch", data={"batch_size": "0"})
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Opening lifecycle stage (opening-lifecycle bearing)
+# ---------------------------------------------------------------------------
+
+
+def test_queue_excludes_openings_not_in_screening_stage(client: TestClient, db_path: Path) -> None:
+    """The ranked HTML queue and the JSON `/queue` only ever list `screening`-stage
+    openings — `pursuing`/`applied`/`closed` openings leave the live queue."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--screening")
+    _seed_opening(db_path, company_id="widgets", opening_id="widgets--pursuing", stage="pursuing")
+    _seed_opening(db_path, company_id="globex", opening_id="globex--applied", stage="applied")
+    _seed_opening(db_path, company_id="initech", opening_id="initech--closed", stage="closed")
+
+    html = client.get("/")
+    json_response = client.get("/queue")
+
+    assert html.status_code == 200
+    assert "acme--screening" in html.text
+    for excluded in ("widgets--pursuing", "globex--applied", "initech--closed"):
+        assert excluded not in html.text
+
+    json_ids = [item["opening_id"] for item in json_response.json()]
+    assert json_ids == ["acme--screening"]
+
+
+def test_moving_opening_out_of_screening_drops_it_from_boundary_computation(
+    client: TestClient, db_path: Path
+) -> None:
+    """A de-queued opening never anchors the `top_k` boundary — moving the K-th-ranked
+    opening out of `screening` shifts the boundary to the new K-th opening."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights, *config.constraints)
+    for i in range(config.top_k + 1):
+        _seed_opening(
+            db_path,
+            company_id=f"c{i}",
+            opening_id=f"c{i}--eng",
+            assertions=[_assertion(slug, "Strong") for slug in targets],
+        )
+
+    before = client.get("/queue").json()
+    assert len(before) == config.top_k + 1
+
+    conn = connect(db_path)
+    top_opening = get_opening(conn, before[0]["opening_id"])
+    assert top_opening is not None
+    upsert_opening(conn, top_opening.model_copy(update={"stage": "applied"}))
+    conn.close()
+
+    after = client.get("/queue").json()
+    assert len(after) == config.top_k
+    assert before[0]["opening_id"] not in [item["opening_id"] for item in after]
+
+
+def test_submit_stage_change_updates_opening_and_redirects_to_queue(
+    client: TestClient, db_path: Path
+) -> None:
+    """Posting a new stage for an opening persists it and leaves the rating view (the
+    operator's request: a lightweight marker, not a full application tracker)."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.post(
+        "/openings/acme--eng/stage", data={"stage": "pursuing"}, follow_redirects=False
+    )
+
+    assert response.status_code in (302, 303)
+    conn = connect(db_path)
+    opening = get_opening(conn, "acme--eng")
+    assert opening is not None
+    assert opening.stage == "pursuing"
+
+
+def test_submit_stage_change_rejects_unknown_stage(client: TestClient, db_path: Path) -> None:
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.post("/openings/acme--eng/stage", data={"stage": "ghosted"})
+
+    assert response.status_code == 422
+
+
+def test_submit_stage_change_404s_for_unknown_opening(client: TestClient) -> None:
+    response = client.post("/openings/does-not-exist/stage", data={"stage": "applied"})
+    assert response.status_code == 404
+
+
+def test_rating_view_shows_stage_controls(client: TestClient, db_path: Path) -> None:
+    """The rating view exposes a way to change an opening's stage (F13: same page the
+    operator already reviews the opening from)."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+
+    response = client.get("/openings/acme--eng/rate")
+
+    assert response.status_code == 200
+    assert "/openings/acme--eng/stage" in response.text
+    for stage in ("screening", "pursuing", "applied", "closed"):
+        assert stage in response.text
+
+
+def test_archive_view_lists_openings_by_stage(client: TestClient, db_path: Path) -> None:
+    """`/archive` lists every non-`screening` opening, filterable by stage, each linking
+    back to its existing rating view for recall (F8/F15)."""
+    _seed_opening(db_path, company_id="acme", opening_id="acme--screening")
+    _seed_opening(db_path, company_id="widgets", opening_id="widgets--pursuing", stage="pursuing")
+    _seed_opening(db_path, company_id="globex", opening_id="globex--applied", stage="applied")
+    _seed_opening(db_path, company_id="initech", opening_id="initech--closed", stage="closed")
+
+    response = client.get("/archive")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "acme--screening" not in body
+    assert "widgets--pursuing" in body
+    assert "globex--applied" in body
+    assert "initech--closed" in body
+    assert "/openings/widgets--pursuing/rate" in body
+
+
+def test_archive_view_filters_to_one_stage_via_query_param(
+    client: TestClient, db_path: Path
+) -> None:
+    _seed_opening(db_path, company_id="widgets", opening_id="widgets--pursuing", stage="pursuing")
+    _seed_opening(db_path, company_id="globex", opening_id="globex--applied", stage="applied")
+
+    response = client.get("/archive", params={"stage": "applied"})
+
+    assert response.status_code == 200
+    body = response.text
+    assert "globex--applied" in body
+    assert "widgets--pursuing" not in body
+
+
+def test_index_links_to_archive(client: TestClient) -> None:
+    """The queue page links to `/archive` — the operator's way to reach filtered stages."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="/archive"' in response.text

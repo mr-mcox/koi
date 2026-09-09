@@ -71,14 +71,16 @@ def test_opening_insert_and_select_round_trips_through_the_real_schema() -> None
     )
     conn.execute(
         """INSERT INTO openings
-               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
+               (id, company_id, title, url, research_trace_id, research_turns_budget,
+                created_at, stage)
            VALUES
                (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
-                :created_at)""",
+                :created_at, :stage)""",
         opening_to_row(opening),
     )
     row = conn.execute("SELECT * FROM openings WHERE id = 'acme--eng-abc123'").fetchone()
     assert opening_from_row(dict(row)) == opening
+    assert row["stage"] == "screening"
 
 
 def test_assertion_insert_and_select_round_trips_through_the_real_schema() -> None:

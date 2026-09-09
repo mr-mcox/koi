@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Rate {{ company.name }} — {{ opening.title }}{% endblock %}
 {% block content %}
+  <form class="stage-form" method="post" action="/openings/{{ opening.id }}/stage">
+    <label class="stage-select" style="--accent-hue: {{ opening_hue }};">
+      <span class="stage-label">Stage</span>
+      <select name="stage" onchange="this.form.submit()">
+        {% for s in ["screening", "pursuing", "applied", "closed"] %}
+        <option value="{{ s }}"{% if opening.stage == s %} selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button type="submit">Update stage</button></noscript>
+  </form>
   <h1>
     <span class="entity-company" style="--accent-hue: {{ company_hue }};">{{ company.name }}</span>
     <span class="entity-sep">—</span>

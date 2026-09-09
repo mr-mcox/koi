@@ -203,6 +203,56 @@ def test_list_openings_returns_empty_list_when_none_exist(tmp_path: Path) -> Non
     assert list_openings(conn) == []
 
 
+def test_list_openings_filters_by_stage(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
+    screening = Opening(
+        id="acme--eng-abc123",
+        company_id="acme",
+        title="Staff Engineer",
+        url="https://example.com/jobs/1",
+        research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
+        created_at=_NOW,
+    )
+    applied = Opening(
+        id="acme--pm-def456",
+        company_id="acme",
+        title="Product Manager",
+        url="https://example.com/jobs/2",
+        research_trace_id="tx9876543210fedcba",
+        research_turns_budget=5,
+        created_at=_NOW.replace(hour=13),
+        stage="applied",
+    )
+    upsert_opening(conn, screening)
+    upsert_opening(conn, applied)
+
+    assert list_openings(conn, stage="screening") == [screening]
+    assert list_openings(conn, stage="applied") == [applied]
+    assert list_openings(conn) == [screening, applied]
+
+
+def test_upsert_opening_persists_stage_change(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
+    opening = Opening(
+        id="acme--eng-abc123",
+        company_id="acme",
+        title="Staff Engineer",
+        url="https://example.com/jobs/1",
+        research_trace_id="tx0123456789abcdef",
+        research_turns_budget=5,
+        created_at=_NOW,
+    )
+    upsert_opening(conn, opening)
+
+    moved = opening.model_copy(update={"stage": "pursuing"})
+    upsert_opening(conn, moved)
+
+    assert get_opening(conn, "acme--eng-abc123") == moved
+
+
 def _seed_opening_with_assertion(conn) -> Assertion:  # type: ignore[no-untyped-def]
     upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
     upsert_opening(

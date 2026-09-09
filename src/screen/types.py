@@ -21,6 +21,13 @@ class Company(BaseModel):
     created_at: Annotated[datetime, Field()]
 
 
+# Pipeline stage (domain-model.md §Opening): deliberately thin, four terminal-ish
+# buckets, no sub-typing. `screening` is the only stage that ranks or gets
+# research budget; the other three exist purely to leave the live queue while
+# staying retrievable (opening-lifecycle bearing).
+Stage = Literal["screening", "pursuing", "applied", "closed"]
+
+
 class Opening(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -31,6 +38,7 @@ class Opening(BaseModel):
     research_trace_id: Annotated[str, Field(min_length=1)]
     research_turns_budget: Annotated[int, Field(ge=0)]
     created_at: Annotated[datetime, Field()]
+    stage: Stage = "screening"
 
 
 class IdentificationResult(BaseModel):

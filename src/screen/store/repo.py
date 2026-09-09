@@ -43,17 +43,19 @@ def upsert_company(conn: sqlite3.Connection, company: Company) -> None:
 def upsert_opening(conn: sqlite3.Connection, opening: Opening) -> None:
     conn.execute(
         """INSERT INTO openings
-               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
+               (id, company_id, title, url, research_trace_id, research_turns_budget,
+                created_at, stage)
            VALUES
                (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
-                :created_at)
+                :created_at, :stage)
            ON CONFLICT (id) DO UPDATE SET
                company_id = excluded.company_id,
                title = excluded.title,
                url = excluded.url,
                research_trace_id = excluded.research_trace_id,
                research_turns_budget = excluded.research_turns_budget,
-               created_at = excluded.created_at""",
+               created_at = excluded.created_at,
+               stage = excluded.stage""",
         opening_to_row(opening),
     )
     conn.commit()
@@ -121,9 +123,21 @@ def get_opening(conn: sqlite3.Connection, opening_id: str) -> Opening | None:
     return opening_from_row(dict(row)) if row is not None else None
 
 
-def list_openings(conn: sqlite3.Connection) -> list[Opening]:
-    """Every opening in the DB, oldest first — the queue's candidate set before scoring."""
-    rows = conn.execute("SELECT * FROM openings ORDER BY created_at").fetchall()
+def list_openings(conn: sqlite3.Connection, *, stage: str | None = None) -> list[Opening]:
+    """Every opening in the DB, oldest first — the queue's candidate set before scoring.
+
+    `stage=None` (default) returns every opening regardless of stage — used by the
+    filter-by-stage view and backfill commands, which need to see everything. Callers
+    that build the ranked queue, the bandit's eligible-weights set, and the research
+    batch's candidate set pass `stage="screening"` so a de-queued opening can never
+    anchor the top_k boundary or consume research budget (opening-lifecycle bearing).
+    """
+    if stage is None:
+        rows = conn.execute("SELECT * FROM openings ORDER BY created_at").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM openings WHERE stage = ? ORDER BY created_at", (stage,)
+        ).fetchall()
     return [opening_from_row(dict(row)) for row in rows]
 
 
