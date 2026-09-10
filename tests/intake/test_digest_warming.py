@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from screen.digest.fakes import FakeDigester
-from screen.intake.cli import _run_dispatch
+from screen.intake.pipeline import run_dispatch
 from screen.research.actions import StopAction
 from screen.research.fakes import FakePlanner
 from screen.store.db import connect
@@ -20,7 +20,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Company, Opening
-from tests.cli.helpers import canned_assertion
+from tests.helpers import canned_assertion
 
 
 def _seed_opening(conn: sqlite3.Connection) -> None:
@@ -48,7 +48,7 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
     digester = FakeDigester(["stretch digest", "mission digest"])
     planner = FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
 
-    _run_dispatch(
+    run_dispatch(
         conn,
         "opening",
         "https://example.com/jobs/42",

@@ -1,5 +1,7 @@
-"""Shared fixtures/helpers for `tests/cli/*` — the CLI entry point's test suite,
-split by seam (smoke, full-pipeline, `_identify_research_trace`, `_extract_assertions`).
+"""Shared test fixtures and helpers used by both `tests/cli/` and `tests/intake/`.
+
+Formerly lived in `tests/cli/helpers.py`; moved here when the CLI intake
+command was retired and its tests became direct pipeline tests.
 """
 
 from __future__ import annotations
@@ -9,17 +11,14 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
-from screen.intake import cli as cli_module
 from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
 from screen.research.fakes import FakePlanner
 from screen.types import Assertion, Citation, IdentificationResult
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def env_for(tmp_path: Path) -> dict[str, str]:
@@ -73,28 +72,14 @@ def fake_identifier(company: str = "Example Co", title: str = "Staff Engineer") 
     )
 
 
-def patch_extractor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Substitute a FakeExtractor for live BAML calls in tests that run to completion."""
-    monkeypatch.setattr(
-        cli_module,
-        "_build_extractor",
-        lambda: FakeExtractor([[canned_assertion()]]),
-    )
+def fake_extractor() -> FakeExtractor:
+    """Single-call FakeExtractor returning one canned stretch assertion."""
+    return FakeExtractor([[canned_assertion()]])
 
 
-def patch_planner(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Substitute a FakePlanner so dispatch completes without calling BAML."""
-    monkeypatch.setattr(
-        cli_module,
-        "_build_planner",
-        lambda: FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]]),
-    )
+def fake_planner(reason: str = "All rubric dimensions addressed.") -> FakePlanner:
+    return FakePlanner(sequence=[[StopAction(reason=reason)]])
 
 
-def patch_digester(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Substitute a FakeDigester so post-pass digest warming completes without calling BAML."""
-    monkeypatch.setattr(
-        cli_module,
-        "_build_digester",
-        lambda: FakeDigester(["Synthetic digest."]),
-    )
+def fake_digester() -> FakeDigester:
+    return FakeDigester(["Synthetic digest."])

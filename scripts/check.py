@@ -26,7 +26,6 @@ GENERATED_CODE_DIR = "src/screen/baml_client/"
 # the discipline gate can't compute their tier. Symmetric with
 # pyproject.toml [tool.coverage.run] omit.
 OMIT_FROM_COVERAGE: list[str] = [
-    "src/screen/__main__.py",
     # Live BAML adapter: calls external LLM service, no unit test coverage by design.
     # Symmetric with pyproject.toml [tool.coverage.run] omit.
     "src/screen/extract/baml_extractor.py",

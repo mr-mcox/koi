@@ -1,0 +1,11 @@
+{% for item in items %}
+<li class="intake-queue-item intake-queue-status-{{ item.status }}">
+  <span class="intake-queue-status">{{ item.status }}</span>
+  <span class="intake-queue-url">{{ item.url }}</span>
+  {% if item.error %}
+  <p class="intake-queue-error">{{ item.error }}</p>
+  {% endif %}
+</li>
+{% else %}
+<li class="intake-queue-empty">Nothing queued yet.</li>
+{% endfor %}

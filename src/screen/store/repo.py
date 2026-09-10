@@ -4,7 +4,8 @@ built on `db.connect` + `mappers`. This is the layer `intake/cli.py` calls;
 """
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from screen.store.mappers import (
     assertion_from_row,
@@ -17,6 +18,8 @@ from screen.store.mappers import (
     dimension_digest_to_row,
     dimension_ruling_from_row,
     dimension_ruling_to_row,
+    intake_queue_item_from_row,
+    intake_queue_item_to_row,
     opening_from_row,
     opening_to_row,
 )
@@ -26,6 +29,7 @@ from screen.types import (
     Company,
     DimensionDigest,
     DimensionRuling,
+    IntakeQueueItem,
     Opening,
 )
 
@@ -207,3 +211,49 @@ def dimension_rulings_for_opening(
         (opening_id,),
     ).fetchall()
     return [dimension_ruling_from_row(dict(row)) for row in rows]
+
+
+def enqueue_intake_url(conn: sqlite3.Connection, url: str) -> IntakeQueueItem:
+    """Insert one pending row and commit before returning — the web submit
+    handler relies on this being durable (row survives a crash) before it
+    responds. Queuing itself is a blocking write; only the processing that
+    follows is backgrounded (see `intake/worker.py`)."""
+    item = IntakeQueueItem(id=str(uuid4()), url=url, created_at=datetime.now(UTC))
+    conn.execute(
+        """INSERT INTO intake_queue (id, url, status, error, created_at)
+           VALUES (:id, :url, :status, :error, :created_at)""",
+        intake_queue_item_to_row(item),
+    )
+    conn.commit()
+    return item
+
+
+def claim_next_pending_intake_url(conn: sqlite3.Connection) -> IntakeQueueItem | None:
+    """Atomically claim the oldest `pending` row by moving it to `running` and
+    returning it, or `None` if the queue is empty."""
+    row = conn.execute(
+        "SELECT * FROM intake_queue WHERE status = 'pending' ORDER BY created_at LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    item = intake_queue_item_from_row(dict(row))
+    conn.execute("UPDATE intake_queue SET status = 'running' WHERE id = ?", (item.id,))
+    conn.commit()
+    return item.model_copy(update={"status": "running"})
+
+
+def mark_intake_url_done(conn: sqlite3.Connection, item_id: str) -> None:
+    conn.execute("UPDATE intake_queue SET status = 'done' WHERE id = ?", (item_id,))
+    conn.commit()
+
+
+def mark_intake_url_failed(conn: sqlite3.Connection, item_id: str, error: str) -> None:
+    conn.execute(
+        "UPDATE intake_queue SET status = 'failed', error = ? WHERE id = ?", (error, item_id)
+    )
+    conn.commit()
+
+
+def list_intake_queue(conn: sqlite3.Connection) -> list[IntakeQueueItem]:
+    rows = conn.execute("SELECT * FROM intake_queue ORDER BY created_at").fetchall()
+    return [intake_queue_item_from_row(dict(row)) for row in rows]

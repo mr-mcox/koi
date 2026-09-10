@@ -42,7 +42,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Assertion, Citation, Company, Opening
-from tests.cli.helpers import canned_assertion
+from tests.helpers import canned_assertion
 
 _QUERY = "extra search"
 

@@ -1,1 +1,1 @@
-docs/features/queue-page-cleanup/bearing.md
+docs/features/batch-intake/bearing.md

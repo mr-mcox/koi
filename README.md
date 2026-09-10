@@ -101,18 +101,13 @@ are interchangeable via config, and the default is picked for cost rather than c
 cp .env.example .env   # then fill in the keys
 ```
 
-Screen a posting:
-
-```bash
-uv run python -m screen https://example.com/careers/some-job
-```
-
-Then bring up the review surface at http://localhost:8420:
+Screen a posting by pasting the URL into the intake page once the server is running:
 
 ```bash
 uv run uvicorn screen.api.app:app --port 8420
 ```
 
+Then open http://localhost:8420/intake-queue and submit a job posting URL.
 From there you can spend research turns, rule on the claims the system flags as worth your
 attention, and watch the ranking move underneath you. Everything lands in `./data`, a SQLite
 file plus the research traces.

@@ -8,6 +8,7 @@ this keeps the two concerns separate.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import sqlite3
 from collections.abc import AsyncGenerator
@@ -18,6 +19,7 @@ from fastapi import FastAPI
 from screen.api.routes import router as api_router
 from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
+from screen.intake.worker import run_intake_worker
 from screen.paths import data_dir
 from screen.research.batch import BatchEngine
 from screen.store.db import connect as db_connect
@@ -54,10 +56,19 @@ def create_app(db_path: Path | None = None, digester: DigesterProtocol | None = 
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        """Ensure the DB file and migrations exist before serving traffic."""
+        """Ensure the DB file and migrations exist before serving traffic, then
+        start the intake-queue worker on its own connection for the life of
+        the app — it must keep running across many requests, unlike the
+        research batch's per-submission `BackgroundTasks` job."""
         conn = database.connect()
+        worker_conn = database.connect()
+        worker_task = asyncio.create_task(run_intake_worker(worker_conn, database.data_root))
         conn.close()
         yield
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
+        worker_conn.close()
 
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database

@@ -20,7 +20,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Company, Opening
-from tests.cli.helpers import canned_assertion, env_for
+from tests.helpers import canned_assertion, env_for
 
 
 def _seed_opening(db_path: Path, opening_id: str, company_id: str) -> None:

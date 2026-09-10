@@ -43,8 +43,10 @@ from screen.store.repo import (
     assertion_rulings_for_opening,
     assertions_for_opening,
     dimension_rulings_for_opening,
+    enqueue_intake_url,
     get_company,
     get_opening,
+    list_intake_queue,
     list_openings,
     upsert_assertion_ruling,
     upsert_dimension_ruling,
@@ -794,6 +796,27 @@ def batch_status(request: Request) -> HTMLResponse:
     Rendered as a small partial the queue page swaps in via HTMX."""
     status = request.app.state.batch_status
     return templates.TemplateResponse(request, "_batch_status.html", {"status": status})
+
+
+@router.post("/intake-queue", response_class=HTMLResponse)
+def post_intake_queue(
+    request: Request, conn: Conn, url: Annotated[str, Form(min_length=1)]
+) -> HTMLResponse:
+    """Enqueue one URL for the background intake worker. The insert commits
+    before this returns (bearing: queuing is blocking, minimizing lost work) —
+    the worker (started once in the app lifespan) picks it up on its own,
+    including a URL added while it's mid-batch."""
+    enqueue_intake_url(conn, url)
+    items = list_intake_queue(conn)
+    return templates.TemplateResponse(request, "_intake_queue_list.html", {"items": items})
+
+
+@router.get("/intake-queue", response_class=HTMLResponse)
+def intake_queue(request: Request, conn: Conn) -> HTMLResponse:
+    """The intake queue page: submit a URL, see every queued/running/done/failed
+    row and its failure reason — the only intake surface (CLI retired)."""
+    items = list_intake_queue(conn)
+    return templates.TemplateResponse(request, "intake_queue.html", {"items": items})
 
 
 # Static files: CSS, later HTMX assets, etc.

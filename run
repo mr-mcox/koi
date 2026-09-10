@@ -18,14 +18,11 @@ case "$cmd" in
     echo "Queue: http://localhost:${PORT}/" >&2
     exec uv run uvicorn screen.api.app:app --port "$PORT" "$@"
     ;;
-  intake)
-    exec uv run python -m screen "$@"
-    ;;
   backfill-digests)
     exec uv run python -c "from screen.intake.cli import backfill_digests; backfill_digests()" "$@"
     ;;
   *)
-    echo "usage: ./run [serve|intake <url>|backfill-digests]" >&2
+    echo "usage: ./run [serve|backfill-digests]" >&2
     exit 1
     ;;
 esac

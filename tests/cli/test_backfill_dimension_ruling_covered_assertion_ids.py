@@ -20,7 +20,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Citation, Company, DimensionRuling, Opening
-from tests.cli.helpers import env_for
+from tests.helpers import env_for
 
 _NOW = datetime(2026, 8, 31, tzinfo=UTC)
 

@@ -14,7 +14,7 @@ from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import get_opening, upsert_company, upsert_opening
 from screen.types import Company, Opening
-from tests.cli.helpers import env_for
+from tests.helpers import env_for
 
 
 def _seed_opening(db_path: Path, opening_id: str, company_id: str, *, budget: int) -> None:

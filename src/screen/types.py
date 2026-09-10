@@ -41,6 +41,26 @@ class Opening(BaseModel):
     stage: Stage = "screening"
 
 
+QueueStatus = Literal["pending", "running", "done", "failed"]
+
+
+class IntakeQueueItem(BaseModel):
+    """One URL submitted through the web intake queue.
+
+    `status` starts `pending`, moves to `running` when the worker claims it, and
+    ends at `done` or `failed` — terminal, no retry path (skip-and-continue).
+    `error` is populated only for `failed` rows, naming the stage that failed.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
+    url: Annotated[str, Field(min_length=1)]
+    status: QueueStatus = "pending"
+    error: str | None = None
+    created_at: Annotated[datetime, Field()]
+
+
 class IdentificationResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

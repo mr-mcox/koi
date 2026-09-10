@@ -16,6 +16,7 @@ from screen.types import (
     Company,
     DimensionDigest,
     DimensionRuling,
+    IntakeQueueItem,
     Opening,
 )
 
@@ -156,5 +157,27 @@ def dimension_ruling_from_row(row: dict[str, object]) -> DimensionRuling:
             "settledness": float(str(row["settledness"])),
             "created_at": datetime.fromisoformat(str(row["created_at"])),
             "covered_assertion_ids": json.loads(str(row.get("covered_assertion_ids", "[]"))),
+        }
+    )
+
+
+def intake_queue_item_to_row(item: IntakeQueueItem) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "url": item.url,
+        "status": item.status,
+        "error": item.error,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def intake_queue_item_from_row(row: dict[str, object]) -> IntakeQueueItem:
+    return IntakeQueueItem.model_validate(
+        {
+            "id": str(row["id"]),
+            "url": str(row["url"]),
+            "status": row["status"],
+            "error": row["error"],
+            "created_at": datetime.fromisoformat(str(row["created_at"])),
         }
     )
