@@ -122,11 +122,11 @@ accomplishing it — is plain factual evidence, gatherable the same way mission/
 evidence is.
 
 Direction this ought to take: exclude `domain` from research gap-detection now (cheap,
-loop-search-internal, no rubric change). Don't add a dedicated evidence-gathering target
+internal to the research pass, no rubric change). Don't add a dedicated evidence-gathering target
 for it yet — defer that until there's an actual consumer, which is most likely
 `PrecedentLookup` (open-questions #6 lineage, domain-model.md's roadmap after the steel
 thread): comparing a new opening's domain against companies the operator has already
-ruled on ("similar to Company Y that Matthew was interested in") is exactly the shape of
+ruled on ("similar to Company A, which the operator was interested in") is exactly the shape of
 judgment a fit-guess-by-search can't supply, but a factual company summary plus precedent
 retrieval could.
 

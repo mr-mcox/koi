@@ -2,8 +2,7 @@
 lets `uv run python -m screen.intake.cli <command>` reach every command
 not wired into the stable `screen/__main__.py` surface. `research`,
 `research-batch`, `research-status`, `bump-research-turns-budget` are gone —
-superseded by the web queue's batch trigger (research-batch-web-trigger
-bearing).
+superseded by the web queue's batch trigger.
 """
 
 from __future__ import annotations

@@ -1,12 +1,10 @@
-"""Loop state types: LoopState (input) and PassSummary (output).
-result is threaded forward through each dispatch cycle.
+"""Research pass state: LoopState (input, threaded forward through each
+dispatch cycle) and PassSummary (output, reported once per pass).
 
-Budget fields land here so DecidePlan can see them. The dispatcher enforces the
-turn cap (turns_used ≥ turn_budget → stop) alongside the first budget-consuming
-action in the loop-search feature. A turn is one `search` or `fetch` action —
-not `stop`/`decide_plan` — the operator-facing unit (docs/features/research-
-resumability/bearing.md §Approach); token accounting was never wired to a real
-meter and is dropped rather than kept as a second, unused budget.
+Budget fields live on LoopState so DecidePlan can see them. The dispatcher
+enforces the turn cap (`turns_used >= turn_budget` -> stop). A turn is one
+`search` or `fetch` action, never `stop`/`decide_plan` — that is the
+operator-facing unit, and the only budget the pass tracks.
 """
 
 from typing import Annotated
@@ -21,7 +19,7 @@ class LoopState(BaseModel):
     """All inputs the dispatcher needs for one research pass.
 
     File-agnostic: the caller populates this from in-memory values;
-    loop/ never reads from disk.
+    `screen.research` never reads from disk.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

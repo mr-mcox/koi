@@ -3,12 +3,12 @@
 // Shape 1 invariant: BAML generates the plan; the hand-written
 // dispatcher owns every tool call and all state mutation.
 //
-// Returns a list of actions. StopAction and FetchAction are the supported
-// tags in this slice. The output schema is a tagged union; the dispatcher
+// Returns a list of actions. StopAction, FetchAction, and SearchAction are
+// the supported tags. The output schema is a tagged union; the dispatcher
 // matches on `tag`.
 //
 // The prompt body does not restate the output schema in prose —
-// ctx.output_format handles it (same fix as IdentifyOpening in slice 2).
+// ctx.output_format handles it.
 
 class StopAction {
   tag string @description("Always 'stop'.")

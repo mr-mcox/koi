@@ -138,8 +138,7 @@ def test_uncovered_assertion_under_a_pin_still_appears_as_a_candidate(
     config: ScoringConfig,
 ) -> None:
     """An assertion filed after a pin's snapshot is new evidence the pin hasn't accounted
-    for — rating it can still move the blended standing, so it stays a candidate
-    (dimension-ruling-drift bearing Done When)."""
+    for — rating it can still move the blended standing, so it stays a candidate."""
     covered = _assertion("stretch", "Strong")
     new = _assertion("stretch", "Poor", "ratified")
     pin = DimensionRuling(
@@ -158,9 +157,8 @@ def test_stale_pinned_target_reappears_as_a_whole_dimension_candidate(
     config: ScoringConfig,
 ) -> None:
     """A pinned target with an uncovered assertion is reopened for rating at the whole-
-    dimension level too, not just at the assertion level — the pin itself is stale
-    (dimension-ruling-drift bearing Done When: reopening is binary on any uncovered
-    assertion)."""
+    dimension level too, not just at the assertion level — the pin itself is stale.
+    Reopening is binary on any uncovered assertion."""
     covered = _assertion("stretch", "Strong")
     new = _assertion("stretch", "Poor", "ratified")
     pin = DimensionRuling(

@@ -1,6 +1,5 @@
 """Shared fixtures/helpers for `tests/cli/*` — the CLI entry point's test suite,
-split by seam (smoke, full-pipeline, `_identify_research_trace`, `_extract_assertions`)
-now that a single `test_cli.py` had grown past the file-length tripwire.
+split by seam (smoke, full-pipeline, `_identify_research_trace`, `_extract_assertions`).
 """
 
 from __future__ import annotations

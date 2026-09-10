@@ -9,8 +9,8 @@
 
 class IdentificationResult {
   company_name string @description("The legal or commonly-known company name. Should not include department or product name.")
-  opening_title string @description("The title of the role as it would appear to applicants (e.g., 'Staff Engineer' or 'Applied AI Lead').")
-  opening_notes string @description("Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not persisted as a user-visible field at slice 2.")
+  opening_title string @description("The title of the role as it would appear to applicants (e.g., 'Staff Engineer' or 'Platform Lead').")
+  opening_notes string @description("Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not surfaced as a user-visible field.")
 }
 
 function IdentifyOpening(page_content: string) -> IdentificationResult {

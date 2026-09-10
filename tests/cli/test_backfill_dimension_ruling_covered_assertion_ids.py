@@ -1,6 +1,6 @@
 """Unit tests for the `backfill-dimension-ruling-covered-assertion-ids` CLI command —
-populates `covered_assertion_ids` for existing `DimensionRuling` rows predating that field
-(dimension-ruling-drift bearing Done When)."""
+populates `covered_assertion_ids` for existing `DimensionRuling` rows predating that
+field."""
 
 from __future__ import annotations
 

@@ -13,8 +13,8 @@ from screen.types import Assertion, AssertionRuling, Citation, Company, Dimensio
 
 def _company(**overrides) -> dict:
     base = {
-        "id": "anthropic",
-        "name": "Anthropic",
+        "id": "acme-health",
+        "name": "Acme Health",
         "created_at": "2026-08-22T12:00:00Z",
     }
     base.update(overrides)
@@ -23,10 +23,10 @@ def _company(**overrides) -> dict:
 
 def _opening(**overrides) -> dict:
     base = {
-        "id": "anthropic--applied-ai-lead-a54c1e",
-        "company_id": "anthropic",
-        "title": "Applied AI Lead",
-        "url": "https://www.anthropic.com/careers/applied-ai-lead",
+        "id": "acme-health--staff-platform-engineer-a54c1e",
+        "company_id": "acme-health",
+        "title": "Staff Platform Engineer",
+        "url": "https://www.acmehealth.example/careers/staff-platform-engineer",
         "research_trace_id": "tx0123456789abcdef",
         "research_turns_budget": 5,
         "created_at": "2026-08-22T12:00:00Z",
@@ -40,8 +40,8 @@ def test_company_round_trip_minimum_valid() -> None:
     company = Company.model_validate(raw)
     dumped = company.model_dump(mode="json")
     assert json.loads(json.dumps(dumped)) == raw
-    assert company.id == "anthropic"
-    assert company.name == "Anthropic"
+    assert company.id == "acme-health"
+    assert company.name == "Acme Health"
 
 
 def test_opening_round_trip_minimum_valid() -> None:
@@ -49,7 +49,7 @@ def test_opening_round_trip_minimum_valid() -> None:
     opening = Opening.model_validate(raw)
     dumped = opening.model_dump(mode="json")
     assert json.loads(json.dumps(dumped)) == {**raw, "stage": "screening"}
-    assert opening.company_id == "anthropic"
+    assert opening.company_id == "acme-health"
     assert opening.research_trace_id == "tx0123456789abcdef"
     assert opening.research_turns_budget == 5
     assert opening.stage == "screening"
@@ -91,7 +91,7 @@ def test_opening_is_frozen() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Slice 3: Citation
+# Citation
 # ---------------------------------------------------------------------------
 
 

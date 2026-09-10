@@ -48,8 +48,8 @@ class FetchAction(BaseModel):
 
 class IdentificationResult(BaseModel):
     company_name: typing.Optional[str] = Field(default=None, description='The legal or commonly-known company name. Should not include department or product name.')
-    opening_title: typing.Optional[str] = Field(default=None, description='The title of the role as it would appear to applicants (e.g., \'Staff Engineer\' or \'Applied AI Lead\').')
-    opening_notes: typing.Optional[str] = Field(default=None, description='Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not persisted as a user-visible field at slice 2.')
+    opening_title: typing.Optional[str] = Field(default=None, description='The title of the role as it would appear to applicants (e.g., \'Staff Engineer\' or \'Platform Lead\').')
+    opening_notes: typing.Optional[str] = Field(default=None, description='Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not surfaced as a user-visible field.')
 
 class SearchAction(BaseModel):
     tag: typing.Optional[str] = Field(default=None, description='Always \'search\'.')

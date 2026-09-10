@@ -1,6 +1,6 @@
 """Round-trip tests for hand-written row <-> domain-model mappers.
 
-No ORM (score-persistence bearing): `screen.types` stays the one domain
+No ORM: `screen.types` stays the one domain
 model; these functions are the entire seam between it and SQLite rows.
 """
 

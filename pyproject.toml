@@ -51,7 +51,7 @@ extend-exclude = '''/(src/screen/baml_client)/'''
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-extend-exclude = ["src/__about__.py", "src/screen/baml_client/"]
+extend-exclude = ["src/screen/baml_client/"]
 
 [tool.ruff.lint]
 select = [
@@ -98,13 +98,11 @@ build-backend = "hatchling.build"
 
 [tool.pyright]
 # Strict mode turns on the full set of checks. We exclude the generated
-# BAML client (BAML emits `Any`-typed adapters) and the project skeleton
-# (no source lives there). Stub files in `stubs/` cover `tavily`, which
-# ships without PEP 484 annotations.
+# BAML client (BAML emits `Any`-typed adapters). Stub files in `stubs/`
+# cover `tavily`, which ships without PEP 484 annotations.
 include = ["src/screen"]
 exclude = [
     "src/screen/baml_client",
-    "src/__about__.py",
 ]
 stubPath = "stubs"
 reportMissingTypeStubs = "warning"

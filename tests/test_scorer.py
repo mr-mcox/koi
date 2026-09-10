@@ -87,7 +87,7 @@ def test_standing_has_a_nontrivial_stderr(config: ScoringConfig) -> None:
 
 
 def test_scores_fully_unexamined(config: ScoringConfig) -> None:
-    """Headway's shape: a research trace only, zero assertions. Every scoring target enters at its
+    """A research trace only, zero assertions. Every scoring target enters at its
     unexamined prior; this must produce a valid result, not an error."""
     standing = score([], config)
     reach = score(resolve_favourably([], config), config)

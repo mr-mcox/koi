@@ -49,8 +49,8 @@ class TargetStats:
     half_width: float
     always_examined: bool = False
     """True only for a `DimensionRuling` pin's stats — a pin is evidence by itself, so its
-    target is never \"unexamined\" even with zero uncovered assertions (dimension-ruling-drift
-    bearing: reproduces today's `n=inf` override contract at zero new assertions)."""
+    target is never \"unexamined\" even with zero uncovered assertions, reproducing the
+    `n=inf` override contract at zero new assertions."""
 
     @property
     def is_unexamined(self) -> bool:
@@ -70,7 +70,7 @@ def _target_stats(
     """Shrinks a target's assertions toward `prior` (default `(1, 0)`, the ordinary
     unexamined-target prior — weight 1, mean 0). A `DimensionRuling` pin supplies its own
     `(n_pin, ruling.mean)` prior instead (`_dimension_ruling_stats`), generalizing this
-    same formula rather than replacing it (dimension-ruling-drift bearing Approach).
+    same formula rather than replacing it.
     `exclude_assertion_ids` removes assertions the pin already accounts for — only
     evidence outside a pin's stamped snapshot may move it. `n` on the returned stats counts
     only the non-prior (new) weight — `is_unexamined` must reflect uncovered evidence, not
@@ -119,7 +119,7 @@ def _dimension_ruling_stats(
     ruling: DimensionRuling, assertions: list[Assertion], config: ScoringConfig, target: str
 ) -> TargetStats:
     """A `DimensionRuling` pin is a Bayesian prior over its target's stats, not a
-    standalone override (dimension-ruling-drift bearing Approach): `settledness` maps to
+    standalone override: `settledness` maps to
     `half_width` exactly as before, and that half_width is inverted to an equivalent
     evidence count `n_pin = 1 / half_width^2` — the same relationship `_target_stats`'
     default `(1, 0)` prior already has to its own `half_width = 1/sqrt(n+1)`. Assertions
@@ -149,8 +149,8 @@ def stats_for_target(
     dimension_rulings: dict[str, DimensionRuling] | None,
 ) -> TargetStats:
     """A dimension pin (if present for this target) acts as a prior over the target's
-    stats, blended with any assertions filed after the pin's snapshot (bearing Done When:
-    a pin still supersedes per-assertion rulings on assertions it already covers)."""
+    stats, blended with any assertions filed after the pin's snapshot. A pin still
+    supersedes per-assertion rulings on assertions it already covers."""
     if dimension_rulings is not None and target in dimension_rulings:
         return _dimension_ruling_stats(dimension_rulings[target], assertions, config, target)
     return _target_stats(assertions, config, target, rulings)
@@ -166,13 +166,13 @@ def score(
     never changes the result: every target's stats are a
     sum over its own assertions, order-independent by construction.
 
-    `rulings` is an optional assertion-id -> operator-ruled `Fit` mapping (bearing
-    assertion-ruling-submit): where present, the ruled fit substitutes for the assertion's
+    `rulings` is an optional assertion-id -> operator-ruled `Fit` mapping: where
+    present, the ruled fit substitutes for the assertion's
     own `fit` when computing that target's stats. Provenance-weighting is untouched — a
     ruling doesn't change how much an assertion counts, only what it says.
 
-    `dimension_rulings` is an optional target -> `DimensionRuling` mapping (bearing
-    dimension-ruling): where present for a target, it replaces that target's whole
+    `dimension_rulings` is an optional target -> `DimensionRuling` mapping: where
+    present for a target, it replaces that target's whole
     computed `TargetStats`, superseding `rulings` for any assertions filed against it."""
     rng = np.random.default_rng(config.seed)
     size = config.samples

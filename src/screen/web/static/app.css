@@ -315,7 +315,7 @@ h1 .entity-opening {
 /* Stale: the pin's snapshot no longer covers every assertion under the target (an
    uncovered assertion has been filed since ruling) — the pin is still in effect for
    scoring, but the operator's judgment is now incomplete evidence, not current evidence
-   (dimension-ruling-drift bearing). Intermediate between unpinned (--rule) and a fresh
+   Intermediate between unpinned (--rule) and a fresh
    pin (--ink). */
 .dimension-ruling-pad.dimension-ruling-pin-stale {
   border: 2px solid var(--ink-muted);
@@ -429,7 +429,7 @@ a { color: var(--ink); text-underline-offset: 0.16em; text-decoration-thickness:
 a:hover { color: var(--accent); }
 
 /*
- * Lifecycle stage (opening-lifecycle bearing): a lightweight pill, not a full status
+ * Lifecycle stage: a lightweight pill, not a full status
  * bar — same visual language as the fit scale (sink/surface ramp) so "stage" reads as
  * a sibling signal to "fit" rather than a new vocabulary. `screening` recedes toward
  * chrome since it isn't a decision, it's the default; the other three each get a

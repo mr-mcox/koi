@@ -130,7 +130,7 @@ def list_openings(conn: sqlite3.Connection, *, stage: str | None = None) -> list
     filter-by-stage view and backfill commands, which need to see everything. Callers
     that build the ranked queue, the bandit's eligible-weights set, and the research
     batch's candidate set pass `stage="screening"` so a de-queued opening can never
-    anchor the top_k boundary or consume research budget (opening-lifecycle bearing).
+    anchor the top_k boundary or consume research budget.
     """
     if stage is None:
         rows = conn.execute("SELECT * FROM openings ORDER BY created_at").fetchall()

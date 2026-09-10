@@ -24,7 +24,7 @@ class Company(BaseModel):
 # Pipeline stage (domain-model.md §Opening): deliberately thin, four terminal-ish
 # buckets, no sub-typing. `screening` is the only stage that ranks or gets
 # research budget; the other three exist purely to leave the live queue while
-# staying retrievable (opening-lifecycle bearing).
+# staying retrievable.
 Stage = Literal["screening", "pursuing", "applied", "closed"]
 
 
@@ -196,9 +196,8 @@ class DimensionRuling(BaseModel):
     Pins are not revertable: no delete path exists; resubmission upserts by
     `(opening_id, target)`, same pattern as `AssertionRuling`'s re-rating.
 
-    `covered_assertion_ids` snapshots the target's assertion ids at ruling time
-    (review-ux/dimension-ruling-drift bearing) — the exact partition between the
-    evidence the operator ruled on and anything filed after. Defaults to `[]` for
+    `covered_assertion_ids` snapshots the target's assertion ids at ruling time — the
+    exact partition between the evidence the operator ruled on and anything filed after. Defaults to `[]` for
     rulings predating this field; the drift backfill migration populates it for
     existing rows.
     """

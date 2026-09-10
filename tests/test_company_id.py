@@ -6,7 +6,7 @@ from screen.intake.company_id import derive_company_id
 def test_slug_from_normal_name() -> None:
     """A name with alphanumeric characters slugifies to lowercase with
     non-alphanumerics collapsed to single hyphens and stripped at edges."""
-    assert derive_company_id("Anthropic", "https://anthropic.com/careers") == "anthropic"
+    assert derive_company_id("Acme Health", "https://acmehealth.example/careers") == "acme-health"
 
 
 def test_slug_drops_punctuation_and_collapses_runs() -> None:

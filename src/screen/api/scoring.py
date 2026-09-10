@@ -21,11 +21,10 @@ class OpeningScore:
     reach: float
     ceiling: float
     unreachable: bool
-    # Display glyph statistics for the `overall` trace (review-ux/attention-allocation-
-    # display.md Approach): `median` is the glyph's dot, `low`/`high` its q10/q90 bar.
-    # Distinct from `standing` (`P(overall > bar)`, a single scalar with no per-draw
-    # quantile of its own) — the two live on different axes and neither is derived from
-    # the other.
+    # Display glyph statistics for the `overall` trace: `median` is the glyph's dot,
+    # `low`/`high` its q10/q90 bar. Distinct from `standing` (`P(overall > bar)`, a
+    # single scalar with no per-draw quantile of its own) — the two live on different
+    # axes and neither is derived from the other.
     low: float
     median: float
     high: float
@@ -46,7 +45,7 @@ def score_opening(
     `rulings` (assertion id -> operator-ruled `Fit`) passes straight through to both
     calls — an override changes what the ruled assertion says everywhere it's used,
     including inside the reach counterfactual's real (non-hypothetical) assertions.
-    pinned target is superseded in both standing and reach (bearing dimension-ruling)."""
+    pinned target is superseded in both standing and reach."""
     standing = score(assertions, config, rulings, dimension_rulings)
     reach = score(resolve_favourably(assertions, config), config, rulings, dimension_rulings)
     low, median, high = credible_interval(standing)

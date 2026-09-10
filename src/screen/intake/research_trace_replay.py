@@ -1,10 +1,9 @@
 """Replays a research trace file into the resumable working values that a
 fresh `LoopState` needs to continue a pass instead of restarting one.
 
-Per review-ux/scouting F9 (standing operator position): these are per-pass
-working values, computed from the transcript on demand — never a second,
-independently-persisted copy that could drift from what the trace says
-actually happened.
+These are per-pass working values, computed from the transcript on demand —
+never a second, independently-persisted copy that could drift from what the
+trace says actually happened.
 """
 
 from pathlib import Path
@@ -20,7 +19,7 @@ class TraceReplay(BaseModel):
     """Resumable state folded out of a research trace's events.
 
     `turns_used` counts `tavily_search`/`tavily_extract` events only — a
-    turn is one budget-consuming research action (bearing F24); `decide_plan`
+    turn is one budget-consuming research action; `decide_plan`
     is the planner's own audit record, not a turn.
     """
 
@@ -41,7 +40,7 @@ def _fold_search_event(event: ResearchTraceEvent, turns_used: int, prior_queries
 def _fold_extract_event(event: ResearchTraceEvent, turns_used: int, visited_urls: list[str]) -> int:
     """A `results` key present (even empty) means the fetch was attempted as
     part of a research pass and consumed a turn, whether it succeeded or
-    failed (bearing research-fetch-resilience). Its absence marks the
+    failed. Its absence marks the
     fatal intake-time failure recorded before any Opening/budget exists,
     which is not a pass turn.
     """

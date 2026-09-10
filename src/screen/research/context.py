@@ -1,8 +1,8 @@
-"""Loop-state context types: SearchContext and FetchContext.
+"""Pass-state context types: SearchContext and FetchContext.
 
 These record what the last browser action produced so the planner can
-reason about what to source next. They live in loop/ — not in browser.py —
-because they are loop-state types, not browser return types.
+reason about what to source next. They live in research/ — not in browser.py —
+because they are pass-state types, not browser return types.
 
 Dependency rule: this module must never import from screen.intake.
 """

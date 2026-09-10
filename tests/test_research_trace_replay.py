@@ -1,7 +1,7 @@
 """Tests for replaying a research trace into resumable state.
 
 Reconstructs what a fresh LoopState needs to continue a pass rather than
-restart it: turns_used, visited_urls, prior_queries. Per F16, the trace's
+restart it: turns_used, visited_urls, prior_queries. The trace's
 `ToolName` vocabulary is closed (tavily_extract, tavily_search, decide_plan),
 so replay is a fold over a fixed set of event shapes, not an open parse.
 """
@@ -139,8 +139,8 @@ def test_replay_counts_search_with_no_query_field(tmp_path: Path) -> None:
 
 
 def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded fetch failure (bearing research-fetch-resilience)
-    carries an explicit empty `results` list alongside `error`/`details`,
+    """A dispatcher-recorded fetch failure carries an explicit empty `results` list
+    alongside `error`/`details`,
     distinguishing it from the intake-time fatal failure (no `results` key
     at all). It still counts as a turn — the API call was made — but adds
     no visited URL since there is no result to fold."""

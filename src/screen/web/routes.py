@@ -77,16 +77,15 @@ class _DimensionGroup:
     ruling: DimensionRuling | None
     show_dimension_context: bool = True
     """False only in the focused view, for a target whose budgeted task is an assertion
-    ruling but not its own dimension-ruling task (review-ux/rating-voi-triage bearing,
-    operator feedback): the digest and dimension-ruling pad belong to the bigger,
-    unselected task and would be noise for a pure assertion-rating task."""
+    ruling but not its own dimension-ruling task: the digest and dimension-ruling pad
+    belong to the bigger, unselected task and would be noise for a pure assertion-rating
+    task."""
 
     @property
     def is_stale(self) -> bool:
         """A pin is stale once an assertion exists under its target that its snapshot
-        didn't cover (dimension-ruling-drift bearing) — the pin's contribution to scoring
-        no longer accounts for everything filed, though it's still in effect until the
-        operator re-rules."""
+        didn't cover — the pin's contribution to scoring no longer accounts for everything
+        filed, though it's still in effect until the operator re-rules."""
         if self.ruling is None:
             return False
         covered = set(self.ruling.covered_assertion_ids)
@@ -95,12 +94,11 @@ class _DimensionGroup:
 
 @dataclass(frozen=True)
 class BoundaryGlyph:
-    """Credible-interval bar on a fixed 0-1 `overall`-quality axis (review-ux/
-    attention-allocation-display.md Approach): `median` is the dot, `low`/`high` its
-    q10/q90 bar (rendered as the bar's own edges, not separate end markers), and
-    `boundary` (optional) the K-th opening's `median` — all on this one axis, never
-    `standing`'s `P(> bar)` axis (this session's correction: the trace's own quantiles
-    don't bracket `standing`, a single scalar with no per-draw quantile).
+    """Credible-interval bar on a fixed 0-1 `overall`-quality axis: `median` is the dot,
+    `low`/`high` its q10/q90 bar (rendered as the bar's own edges, not separate end
+    markers), and `boundary` (optional) the K-th opening's `median` — all on this one
+    axis, never `standing`'s `P(> bar)` axis, whose single scalar has no per-draw
+    quantile for the trace to bracket.
     `boundary`/`crossing_probability` are both `None` when the queue has fewer than
     `top_k` scored openings — no K-th opening means no boundary to show.
     """
@@ -258,9 +256,9 @@ def _scored_openings(
 def _kth_result(
     scored: list[tuple[Opening, Company, OpeningScore]], config: ScoringConfig
 ) -> OpeningScore | None:
-    """The K-th-ranked opening's `OpeningScore`, or `None` when fewer than `top_k` openings
-    exist — no K-th opening means no boundary (S5-adjacent display convention, review-ux/
-    attention-allocation-computation.md Approach)."""
+    """The K-th-ranked opening's `OpeningScore`, or `None` when fewer than `top_k`
+    openings exist — no K-th opening means no boundary (S5-adjacent display
+    convention)."""
     return scored[config.top_k - 1][2] if len(scored) >= config.top_k else None
 
 
@@ -603,8 +601,8 @@ def focus_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse
 def _parse_snapshot_csv(value: str) -> set[str]:
     """Parse the `|`-joined snapshot fields the focused view echoes back on each HTMX
     submit (`focus_snapshot_assertion_ids`/`focus_snapshot_dimension_targets`) — this is
-    what keeps the focused screen's task set stable for its whole session (bearing,
-    operator feedback): the initial GET's budgeted tasks, not a set recomputed after
+    what keeps the focused screen's task set stable for its whole session: the initial
+    GET's budgeted tasks, not a set recomputed after
     every submission, which would both drop just-completed tasks and admit new ones
     mid-session."""
     return {item for item in value.split("|") if item}
@@ -625,9 +623,8 @@ def submit_ruling(
     """Upsert the operator's ruling for one assertion, then return the rating-content
     partial (not a full document) for an HTMX swap. Submitting a rating must re-sort the
     queue without a full page reload, but that re-sort is the queue page's concern, not
-    this fragment's. `focus=1` keeps
-    the swap on the focused-view's narrowed context, not the full rating page's (bearing
-    Done When: submitting from the focused view stays focused)."""
+    this fragment's. `focus=1` keeps the swap on the focused-view's narrowed context,
+    not the full rating page's, so submitting from the focused view stays focused."""
     if get_opening(conn, opening_id) is None:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
     upsert_assertion_ruling(
@@ -709,7 +706,7 @@ def submit_stage(
     conn: Conn,
     stage: Annotated[Stage, Form()],
 ) -> RedirectResponse:
-    """Move an opening to a new pipeline stage (opening-lifecycle bearing). A lightweight
+    """Move an opening to a new pipeline stage. A lightweight
     marker, not a full application tracker: no outcome sub-typing, no history kept of
     prior stages — the operator's existing Ruling/Assertion history already answers
     'what did I think of this' once the opening is reachable again via `/archive`.
@@ -726,8 +723,8 @@ def submit_stage(
 def archive(request: Request, conn: Conn, stage: Stage | None = None) -> HTMLResponse:
     """Every opening that has left the live queue, optionally filtered to one stage —
     the operator's retrieval path back to an opening's rulings and job description after
-    it stops being ranked (F8/F15, opening-lifecycle bearing). Unranked: display order is
-    stage then company, never standing."""
+    it stops being ranked. Unranked: display order is stage then company, never
+    standing."""
     stages_to_show = (stage,) if stage is not None else tuple(s for s in STAGES if s != "screening")
     items = []
     for show_stage in stages_to_show:

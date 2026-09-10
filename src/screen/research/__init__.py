@@ -1,8 +1,8 @@
-"""Loop bounded-context package.
+"""Research bounded-context package.
 
-`loop/` is file-agnostic — it receives a LoopState, returns a PassSummary.
+`research/` is file-agnostic — it receives a LoopState, returns a PassSummary.
 All file I/O lives in intake/cli.py.
 
-Dependency rule: loop/ may import screen.types and screen.extract.
-               intake/ may import loop/. Nothing in loop/ imports intake/.
+Dependency rule: research/ may import screen.types and screen.extract.
+               intake/ may import research/. Nothing in research/ imports intake/.
 """

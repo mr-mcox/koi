@@ -36,7 +36,7 @@ OMIT_FROM_COVERAGE: list[str] = [
 EXEMPT_FILES: dict[str, str] = {
     "src/screen/browser.py": (
         "TavilyBrowser.fetch/extract live network paths are not exercised "
-        "by unit tests; FakeTavily covers all protocol paths. Lands with slice 5."
+        "by unit tests; FakeTavily covers all protocol paths."
     ),
 }
 

@@ -1,8 +1,8 @@
 """HTTP routes: one opening's score, and the ranked queue across all openings.
 
 Both compute at request time from stored assertions plus whatever `rubric.yaml`/
-`scoring.yaml` say *now* (bearing.md's Approach) — no `ScoreResult` or queue row
-is ever persisted, so a `bar`/weight change can't leave a stale score behind.
+`scoring.yaml` say *now* — no `ScoreResult` or queue row is ever persisted, so a
+`bar`/weight change can't leave a stale score behind.
 """
 
 from __future__ import annotations

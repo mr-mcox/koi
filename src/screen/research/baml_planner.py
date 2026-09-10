@@ -2,7 +2,7 @@
 
 Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
-`test_loop_baml_shape.py` pins this at test time.
+`tests/test_research_baml_shape.py` pins this at test time.
 
 Also owns the deterministic composite-uncertainty ranking that picks the
 planner's `primary_target` for each turn. The ranking is pure: it reads the
@@ -87,7 +87,7 @@ def _target_uncertainty(
 
     The two signals are never averaged; the operator pin overrides the
     assertion count when present, matching the wall that models do not
-    manufacture or update rulings (F16).
+    manufacture or update rulings.
     """
     ruling = rulings.get(target)
     if ruling is not None:

@@ -96,8 +96,8 @@ Never commit, and keep gitignored from day one:
 - API keys and all runtime secrets.
 
 Real names of companies under evaluation never enter committed files. Docs use the
-Company A–D pseudonyms defined in `docs/prototype-decisions.md`; committed examples and
-test fixtures use synthetic or pseudonymized companies only. When in doubt, it goes in
+Company A–D pseudonyms defined in `docs/architecture/prototype-decisions.md`; committed
+examples and test fixtures use synthetic or pseudonymized companies only. When in doubt, it goes in
 untracked config or the data directory, not in git.
 
 ## Data — the operator's live store is off-limits
@@ -114,4 +114,3 @@ each gate prints its iterate-from-fix command.
 
 ## Current phase
 Walking skeleton, riskiest parts first.
-begins.

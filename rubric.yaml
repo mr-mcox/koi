@@ -6,7 +6,7 @@
 # with multiple versions live at once.
 #
 # Cross-references: docs/architecture/decisions.md (R4, S1-S8, D15, D16, D18).
-# Schema: `docs/features/steel-thread-intake-to-assertions/slices/03-baml-extract-assertions.md`.
+# Schema: `src/screen/baml_src/extract.baml` (`Assertion`) and `src/screen/types.py`.
 #
 # Privacy boundary: this file is public. Compensation baseline, résumé, and
 # contact details live in untracked config, not here.

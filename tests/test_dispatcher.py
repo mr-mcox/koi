@@ -466,7 +466,7 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
     """A failed fetch records a tavily_extract event with the error and
     details, adds the URL to visited_urls (so it isn't retried), counts
     as a turn, and lets the planner continue rather than aborting the pass."""
-    url = "https://servicetitan.wd1.myworkdayjobs.com/blocked-posting"
+    url = "https://acme.wd1.myworkdayjobs.example/blocked-posting"
     browser = FakeBrowser(fetch_fixtures={})  # no fixture → BrowserError
     stop = StopAction(reason="Nothing more to try.")
     planner = FakePlanner(
@@ -502,7 +502,7 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
 def test_fetch_action_browser_error_marks_url_visited() -> None:
     """A failed fetch adds the URL to visited_urls so a subsequent plan()
     call sees it and the planner doesn't retry the same dead URL forever."""
-    url = "https://www.zocdoc.com/about/careers-list/blocked"
+    url = "https://www.acmehealth.example/about/careers-list/blocked"
     browser = FakeBrowser(fetch_fixtures={})
     stop = StopAction(reason="Done.")
     planner = FakePlanner(

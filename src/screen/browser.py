@@ -1,6 +1,6 @@
-"""Shared browser seam — the neutral contract between intake and loop.
+"""Shared browser seam — the neutral contract between intake and research.
 
-`loop/` may not import from `intake/`; this module belongs to neither.
+`research/` may not import from `intake/`; this module belongs to neither.
 Every call site that fetches a URL by protocol should depend on
 `BrowserProtocol`, not on the Tavily SDK directly.
 """
