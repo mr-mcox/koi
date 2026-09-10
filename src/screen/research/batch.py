@@ -6,6 +6,7 @@ via `fastapi.BackgroundTasks` without a Click dependency.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sqlite3
 import time
@@ -31,7 +32,7 @@ from screen.extract.prompt import (
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
 from screen.intake.research_trace_io import append_line
-from screen.intake.research_trace_replay import replay_research_trace
+from screen.intake.research_trace_replay import TraceReplay, replay_research_trace
 from screen.research.baml_planner import BAMLPlanner
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
@@ -121,6 +122,22 @@ def read_page_content(research_trace_path: Path) -> tuple[str, str]:
     )
 
 
+@dataclass
+class RunDispatchDeps:
+    """`run_dispatch`'s collaborators, bundled the way `DispatchDeps` bundles
+    the dispatch loop's own effect ports — so a new one touches this type
+    instead of `run_dispatch`'s signature and every call site that relays it.
+    Each field defaults to the production implementation; tests override
+    only the ones they're faking."""
+
+    planner: PlannerProtocol = field(default_factory=build_planner)
+    browser: BrowserProtocol = field(default_factory=build_client)
+    extractor: ExtractorProtocol = field(default_factory=build_extractor)
+    digester: DigesterProtocol = field(default_factory=build_digester)
+    on_event: Callable[..., None] = field(default=_noop_on_event)
+    update_digests: Callable[..., None] = field(default=update_digests_for_opening)
+
+
 def run_dispatch(
     conn: sqlite3.Connection,
     opening_id: str,
@@ -132,26 +149,30 @@ def run_dispatch(
     company_name: str,
     opening_title: str,
     turn_budget: int | None = None,
-    turns_used: int = 0,
-    visited_urls: list[str] | None = None,
-    prior_queries: list[str] | None = None,
-    planner: PlannerProtocol | None = None,
-    browser: BrowserProtocol | None = None,
-    extractor: ExtractorProtocol | None = None,
-    digester: DigesterProtocol | None = None,
-    on_event: Callable[..., None] | None = None,
-    update_digests: Callable[..., None] = update_digests_for_opening,
+    resume: TraceReplay | None = None,
+    deps: RunDispatchDeps | None = None,
 ) -> str:
     """Build LoopState from in-memory values and run one dispatch cycle.
     Returns the stop reason. No disk re-read: assertions list comes from the
     caller. Assertions the dispatch loop's own fetch actions add are persisted
     immediately via `append_assertions`, one fetch at a time, so a pass
     interrupted mid-loop still keeps what it found.
+
+    `resume` carries the turns/urls/queries already spent on a prior pass
+    (from `replay_research_trace`); omitted for a fresh pass, which starts
+    at zero. `deps` carries the collaborators (planner, browser, etc.);
+    omitted fields fall back to the production implementation.
     """
     rubric = rubric_text_for_baml()
     scoring_config = load_scoring_config()
     rulings = {ruling.target: ruling for ruling in dimension_rulings_for_opening(conn, opening_id)}
     targets = all_dimension_slugs() + all_constraint_slugs() + all_non_scoring_slugs()
+    replay = (
+        resume
+        if resume is not None
+        else TraceReplay(turns_used=0, visited_urls=[], prior_queries=[])
+    )
+    d = deps if deps is not None else RunDispatchDeps()
     state = LoopState(
         opening_id=opening_id,
         company_id=company_id,
@@ -166,37 +187,32 @@ def run_dispatch(
             if turn_budget is not None
             else int(os.environ.get("SCREEN_TURN_BUDGET", scoring_config.research_turns_budget))
         ),
-        turns_used=turns_used,
-        visited_urls=visited_urls or [],
-        prior_queries=prior_queries or [],
+        turns_used=replay.turns_used,
+        visited_urls=replay.visited_urls,
+        prior_queries=replay.prior_queries,
         rulings=rulings,
         targets=targets,
         active_target_action_cap=scoring_config.research_target_action_cap,
     )
-    pl = planner if planner is not None else build_planner()
-    br = browser if browser is not None else build_client()
-    xt = extractor if extractor is not None else build_extractor()
-    dg = digester if digester is not None else build_digester()
-    ev_callback: Callable[..., None] = on_event if on_event is not None else _noop_on_event
 
     def _persist_assertions(new_assertions: list[Assertion]) -> None:
         append_assertions(conn, new_assertions, opening_id=opening_id)
 
     summary = dispatch(
         state,
-        planner=pl,
+        planner=d.planner,
         deps=DispatchDeps(
-            browser=br,
-            extractor=xt,
-            on_event=ev_callback,
+            browser=d.browser,
+            extractor=d.extractor,
+            on_event=d.on_event,
             on_assertions=_persist_assertions,
         ),
         scoring_config=scoring_config,
     )
-    update_digests(
+    d.update_digests(
         conn,
         opening_id=opening_id,
-        digester=dg,
+        digester=d.digester,
         rubric_text=rubric,
         now=datetime.now(UTC),
     )
@@ -209,10 +225,7 @@ def resume_opening(
     opening: Opening,
     turns_requested: int,
     *,
-    planner: PlannerProtocol | None = None,
-    browser: BrowserProtocol | None = None,
-    extractor: ExtractorProtocol | None = None,
-    digester: DigesterProtocol | None = None,
+    deps: RunDispatchDeps | None = None,
 ) -> ResumeResult:
     """Resume one opening's research from its trace, spending at most
     `min(turns_requested, remaining lifetime budget)` turns. Returns the
@@ -230,6 +243,10 @@ def resume_opening(
         return ResumeResult(turns_spent=0, stopped_reason="no remaining budget")
 
     assertions = assertions_for_opening(conn, opening.id)
+    d = deps if deps is not None else RunDispatchDeps()
+    dispatch_deps = dataclasses.replace(
+        d, on_event=lambda event: record_event(research_trace_path, event)
+    )
     stopped_reason = run_dispatch(
         conn,
         opening.id,
@@ -240,14 +257,8 @@ def resume_opening(
         company_name=company.name,
         opening_title=opening.title,
         turn_budget=replay.turns_used + to_spend,
-        turns_used=replay.turns_used,
-        visited_urls=replay.visited_urls,
-        prior_queries=replay.prior_queries,
-        planner=planner,
-        browser=browser,
-        extractor=extractor,
-        digester=digester,
-        on_event=lambda event: record_event(research_trace_path, event),
+        resume=replay,
+        deps=dispatch_deps,
     )
     turns_used_after = replay_research_trace(research_trace_path).turns_used
     return ResumeResult(
@@ -400,10 +411,12 @@ def _run_batch_turn(
         data_root,
         opening,
         block_size,
-        planner=turn_planner,
-        browser=browser,
-        extractor=extractor,
-        digester=digester,
+        deps=RunDispatchDeps(
+            planner=turn_planner if turn_planner is not None else build_planner(),
+            browser=browser if browser is not None else build_client(),
+            extractor=extractor if extractor is not None else build_extractor(),
+            digester=digester if digester is not None else build_digester(),
+        ),
     )
     if result.turns_spent == 0:
         return opening_id, 0, None

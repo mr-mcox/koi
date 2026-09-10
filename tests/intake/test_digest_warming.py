@@ -11,6 +11,7 @@ from pathlib import Path
 from screen.digest.fakes import FakeDigester
 from screen.intake.pipeline import run_dispatch
 from screen.research.actions import StopAction
+from screen.research.batch import RunDispatchDeps
 from screen.research.fakes import FakePlanner
 from screen.store.db import connect
 from screen.store.repo import (
@@ -57,8 +58,7 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
         page_content="content",
         company_name="Example Co",
         opening_title="Eng",
-        planner=planner,
-        digester=digester,
+        deps=RunDispatchDeps(planner=planner, digester=digester),
     )
 
     assert digester.calls == 2

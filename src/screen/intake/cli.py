@@ -13,9 +13,9 @@ import click
 
 from screen.digest.service import update_digests_for_opening
 from screen.extract.prompt import rubric_text_for_baml
-from screen.intake.pipeline import build_digester as _build_digester
 from screen.intake.pipeline import db_path_for
 from screen.paths import data_dir
+from screen.research.batch import build_digester as _build_digester
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (

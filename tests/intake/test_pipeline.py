@@ -18,6 +18,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.intake import pipeline as pipeline_module
 from screen.intake.fakes import FakeTavily
 from screen.research.actions import FetchAction, StopAction
+from screen.research.batch import RunDispatchDeps
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.score.loader import load_scoring_config
 from tests.helpers import canned_assertion, fake_identifier
@@ -48,8 +49,9 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        planner_factory=_default_planner,
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
+        ),
     )
 
     conn = sqlite3.connect(tmp_path / "screen.db")
@@ -70,8 +72,9 @@ def test_pipeline_seeds_research_turns_budget_from_scoring_yaml(tmp_path: Path) 
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        planner_factory=_default_planner,
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
+        ),
     )
     conn = sqlite3.connect(tmp_path / "screen.db")
     budget = conn.execute("SELECT research_turns_budget FROM openings").fetchone()
@@ -141,8 +144,9 @@ def test_pipeline_returns_stop_reason(tmp_path: Path) -> None:
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        planner_factory=_default_planner,
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
+        ),
     )
     assert "All rubric dimensions addressed." in reason
 
@@ -175,9 +179,9 @@ def test_pipeline_dispatch_persists_fetch_assertions(tmp_path: Path) -> None:
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        planner_factory=_planner,
-        browser_factory=_browser,
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            planner=_planner(), browser=_browser(), digester=FakeDigester(["Synthetic digest."])
+        ),
     )
 
     conn = sqlite3.connect(tmp_path / "screen.db")
@@ -225,17 +229,15 @@ def test_pipeline_dispatch_continues_past_failed_fetch(tmp_path: Path) -> None:
             ]
         )
 
-    def _browser() -> FakeBrowser:
-        return FakeBrowser(fetch_fixtures={url: {"raw_content": "Synthetic job posting fixture."}})
-
     reason = pipeline_module.intake_url(
         url,
         data_dir=tmp_path,
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        planner_factory=_planner,
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            planner=_planner(), digester=FakeDigester(["Synthetic digest."])
+        ),
     )
 
     assert "Gave up after block." in reason

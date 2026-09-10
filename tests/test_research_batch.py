@@ -18,6 +18,7 @@ from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.batch import (
     BatchEngine,
     ResearchTraceMissingError,
+    RunDispatchDeps,
     build_client,
     build_digester,
     build_extractor,
@@ -723,12 +724,12 @@ def test_run_dispatch_uses_default_digester_when_none_provided(tmp_path: Path) -
         company_name="Acme Inc",
         opening_title="Eng",
         turn_budget=1,
-        turns_used=0,
-        planner=FakePlanner([[StopAction(reason="default digester test")]]),
-        browser=FakeBrowser(),
-        extractor=FakeExtractor([[canned_assertion()]]),
-        digester=None,
-        update_digests=_fake_update_digests,
+        deps=RunDispatchDeps(
+            planner=FakePlanner([[StopAction(reason="default digester test")]]),
+            browser=FakeBrowser(),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            update_digests=_fake_update_digests,
+        ),
     )
 
     assert len(digester_calls) == 1

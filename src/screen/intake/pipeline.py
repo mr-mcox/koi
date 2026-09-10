@@ -10,13 +10,13 @@ module the web batch route calls. Every stage raises `IntakePipelineError`
 
 from __future__ import annotations
 
+import dataclasses
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from screen.browser import BrowserError, BrowserProtocol
-from screen.digest.protocol import DigesterProtocol
 from screen.extract.extract import extract_assertions
 from screen.extract.prompt import rubric_text_for_baml
 from screen.extract.protocol import ExtractorProtocol
@@ -29,16 +29,14 @@ from screen.intake.research_trace_id import derive_research_trace_id
 from screen.paths import data_dir as _data_dir
 from screen.research.batch import (
     ResearchTraceMissingError,
+    RunDispatchDeps,
     build_client,
-    build_digester,
     build_extractor,
-    build_planner,
     read_page_content,
     record_event,
     research_trace_path_for,
     run_dispatch,
 )
-from screen.research.protocol import PlannerProtocol
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
@@ -142,17 +140,17 @@ def identify_research_trace(
     *,
     identifier_factory: Callable[[], IdentifierProtocol] = build_identifier,
     extractor_factory: Callable[[], ExtractorProtocol] = build_extractor,
-    planner_factory: Callable[[], PlannerProtocol] = build_planner,
-    browser_factory: Callable[[], BrowserProtocol] = build_client,
-    digester_factory: Callable[[], DigesterProtocol] = build_digester,
+    deps_factory: Callable[[], RunDispatchDeps] = RunDispatchDeps,
 ) -> str:
     """Run the research trace -> Company + Opening + Assertions step. Returns
     the dispatch stop reason (the CLI echoes it; the queue worker ignores it).
-    Takes factories, not built instances: the extractor/planner/etc. are each
-    built twice in the pipeline (once for the intake extraction, again inside
-    `run_dispatch`'s own fetch actions) and a `FakeExtractor` advances its
-    canned-result cursor per call, so sharing one instance across both call
-    sites would starve the second of results a real BAML client wouldn't.
+
+    `extractor_factory` is called twice: once for the intake extraction pass,
+    again for `run_dispatch`'s own fetch actions. A `FakeExtractor` advances
+    its canned-result cursor per call, so sharing one instance across both
+    call sites would starve the second of results a real BAML client
+    wouldn't. `deps_factory` supplies the dispatch loop's other collaborators
+    (planner, browser, digester); its `extractor` field is overridden below.
     """
     try:
         page_content, url = read_page_content(research_trace_path)
@@ -172,6 +170,11 @@ def identify_research_trace(
     all_assertions = extract_and_persist_assertions(
         conn, opening.id, page_content, extractor=extractor_factory()
     )
+    deps = dataclasses.replace(
+        deps_factory(),
+        extractor=extractor_factory(),
+        on_event=lambda event: record_event(research_trace_path, event),
+    )
     return run_dispatch(
         conn,
         opening.id,
@@ -181,15 +184,10 @@ def identify_research_trace(
         page_content=page_content,
         company_name=identification.company_name,
         opening_title=identification.opening_title,
-        planner=planner_factory(),
-        browser=browser_factory(),
-        extractor=extractor_factory(),
-        digester=digester_factory(),
-        on_event=lambda event: record_event(research_trace_path, event),
+        deps=deps,
     )
 
 
-# π This is a lot of factories. Are they all independent or do some of them share enough responsibility that they ought to be combined? Or is this intake_url trying to do too much?
 def intake_url(
     url: str,
     data_dir: Path | None = None,
@@ -197,25 +195,29 @@ def intake_url(
     client_factory: Callable[[], BrowserProtocol] = build_client,
     identifier_factory: Callable[[], IdentifierProtocol] = build_identifier,
     extractor_factory: Callable[[], ExtractorProtocol] = build_extractor,
-    planner_factory: Callable[[], PlannerProtocol] = build_planner,
-    browser_factory: Callable[[], BrowserProtocol] | None = None,
-    digester_factory: Callable[[], DigesterProtocol] = build_digester,
+    deps_factory: Callable[[], RunDispatchDeps] | None = None,
 ) -> str:
     """Run the full pipeline for one URL: fetch, identify, persist, dispatch.
     Returns the dispatch stop reason. Raises `IntakePipelineError` on failure
-    at any stage — the caller (CLI command or queue worker) decides what to
-    do with a failed URL.
-    queue worker uses the defaults.
+    at any stage — the caller (web route or queue worker) decides what to do
+    with a failed URL.
+
+    `deps_factory` defaults to a browser matching `client_factory` (the
+    dispatch loop's own fetches reuse the same client the intake fetch used,
+    unless a caller overrides it).
     """
     data_root = data_dir if data_dir is not None else _data_dir()
     client = client_factory()
     research_trace_path = fetch_url(url, client, data_root)
+    df = (
+        deps_factory
+        if deps_factory is not None
+        else lambda: RunDispatchDeps(browser=client_factory())
+    )
     return identify_research_trace(
         research_trace_path,
         data_root,
         identifier_factory=identifier_factory,
         extractor_factory=extractor_factory,
-        planner_factory=planner_factory,
-        browser_factory=browser_factory if browser_factory is not None else client_factory,
-        digester_factory=digester_factory,
+        deps_factory=df,
     )
