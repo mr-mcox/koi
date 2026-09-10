@@ -384,10 +384,7 @@ def _run_batch_turn(
     touched: list[str],
     progress: MutableMapping[str, object] | None,
     planner_factory: Callable[[], PlannerProtocol] | None,
-    planner: PlannerProtocol | None,
-    browser: BrowserProtocol | None,
-    extractor: ExtractorProtocol | None,
-    digester: DigesterProtocol | None,
+    deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
     """Draw one opening and spend up to one block of actions on it before the next
     draw. The block size is capped by the opening's remaining budget, the
@@ -399,7 +396,11 @@ def _run_batch_turn(
     opening = cast(Opening, get_opening(conn, opening_id))
     if progress is not None:
         progress["current_opening_id"] = opening_id
-    turn_planner = planner_factory() if planner_factory is not None else planner
+    turn_deps = (
+        dataclasses.replace(deps, planner=planner_factory())
+        if planner_factory is not None
+        else deps
+    )
     replay = replay_research_trace(research_trace_path_for(data_root, opening.research_trace_id))
     remaining_budget = max(opening.research_turns_budget - replay.turns_used, 0)
     block_size = min(remaining_budget, cfg.research_target_action_cap, batch_size - total_spent)
@@ -411,12 +412,7 @@ def _run_batch_turn(
         data_root,
         opening,
         block_size,
-        deps=RunDispatchDeps(
-            planner=turn_planner if turn_planner is not None else build_planner(),
-            browser=browser if browser is not None else build_client(),
-            extractor=extractor if extractor is not None else build_extractor(),
-            digester=digester if digester is not None else build_digester(),
-        ),
+        deps=turn_deps,
     )
     if result.turns_spent == 0:
         return opening_id, 0, None
@@ -498,10 +494,7 @@ def run_batch(
     *,
     config: ScoringConfig | None = None,
     planner_factory: Callable[[], PlannerProtocol] | None = None,
-    planner: PlannerProtocol | None = None,
-    browser: BrowserProtocol | None = None,
-    extractor: ExtractorProtocol | None = None,
-    digester: DigesterProtocol | None = None,
+    deps: RunDispatchDeps | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
     now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
@@ -519,15 +512,18 @@ def run_batch(
     the block. `now_fn` is a monotonic clock, injectable so tests can control elapsed
     time without sleeping.
 
-    `planner_factory` is called once per opportunity; the planner is stateful across the
-    actions in a block in the test fakes. `planner` (a single instance) is supported for
-    direct callers but will be rebuilt each opportunity if `planner_factory` is provided.
+    `deps` carries browser/extractor/digester, held for the whole batch run.
+    `planner_factory`, if given, is called once per opportunity — the planner is
+    stateful across the actions in a block in the test fakes, so it can't be reused
+    across draws the way the other collaborators are; omitted, `deps.planner` is
+    reused for every draw instead.
     """
     cfg = config if config is not None else load_scoring_config()
     rng = np.random.default_rng(cfg.seed)
     touched: list[str] = []
     stalled: set[str] = set()
     total_spent = 0
+    batch_deps = deps if deps is not None else RunDispatchDeps()
     _begin_progress(progress, batch_size, now_fn)
     while total_spent < batch_size:
         weights = {
@@ -549,10 +545,7 @@ def run_batch(
             touched=touched,
             progress=progress,
             planner_factory=planner_factory,
-            planner=planner,
-            browser=browser,
-            extractor=extractor,
-            digester=digester,
+            deps=batch_deps,
         )
         if spent == 0:
             stalled.add(opening_id)
@@ -602,9 +595,7 @@ class BatchEngine:
     """Seam for the web route: holds the factories so tests can inject fakes."""
 
     planner_factory: Callable[[], PlannerProtocol] = field(default=build_planner)
-    browser_factory: Callable[[], BrowserProtocol] = field(default=build_client)
-    extractor_factory: Callable[[], ExtractorProtocol] = field(default=build_extractor)
-    digester_factory: Callable[[], DigesterProtocol] = field(default=build_digester)
+    deps_factory: Callable[[], RunDispatchDeps] = field(default=RunDispatchDeps)
 
     def run(
         self,
@@ -625,9 +616,7 @@ class BatchEngine:
                 batch_size,
                 progress,
                 planner_factory=self.planner_factory,
-                browser=self.browser_factory(),
-                extractor=self.extractor_factory(),
-                digester=self.digester_factory(),
+                deps=self.deps_factory(),
                 on_draw=print_draw_event,
             )
         finally:

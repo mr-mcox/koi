@@ -24,7 +24,7 @@ from screen.api.app import create_app
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.research.actions import SearchAction, StopAction
-from screen.research.batch import BatchEngine, opening_research_status
+from screen.research.batch import BatchEngine, RunDispatchDeps, opening_research_status
 from screen.research.fakes import FakeBrowser
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
@@ -1735,9 +1735,11 @@ def _pausable_engine(gate: threading.Event) -> BatchEngine:
     shared_planner = PausablePlanner(gate)
     return BatchEngine(
         planner_factory=lambda: shared_planner,
-        browser_factory=lambda: FakeBrowser(search_fixtures={"paused query": []}),
-        extractor_factory=lambda: FakeExtractor([[_assertion("stretch", "Strong")]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(search_fixtures={"paused query": []}),
+            extractor=FakeExtractor([[_assertion("stretch", "Strong")]]),
+            digester=FakeDigester(["Synthetic digest."]),
+        ),
     )
 
 

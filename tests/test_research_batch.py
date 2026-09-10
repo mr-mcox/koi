@@ -96,9 +96,11 @@ def _search_then_stop_planner() -> FakePlanner:
 def _build_engine(tmp_path: Path) -> BatchEngine:
     return BatchEngine(
         planner_factory=_search_then_stop_planner,
-        browser_factory=lambda: FakeBrowser(search_fixtures={_QUERY: []}),
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(search_fixtures={_QUERY: []}),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            digester=FakeDigester(["Synthetic digest."]),
+        ),
     )
 
 
@@ -114,9 +116,7 @@ def test_batch_runs_across_openings_with_remaining_budget(tmp_path: Path) -> Non
         4,
         progress,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total > 0
@@ -140,9 +140,7 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
         4,
         progress,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
         now_fn=lambda: next(times),
     )
     conn.close()
@@ -171,9 +169,7 @@ def test_batch_skips_openings_with_no_remaining_budget(tmp_path: Path) -> None:
         4,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total > 0
@@ -195,9 +191,7 @@ def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
         4,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total > 0
@@ -216,9 +210,7 @@ def test_batch_stops_when_all_budgets_exhausted_before_batch_size(tmp_path: Path
         10,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total == 1
@@ -235,9 +227,7 @@ def test_batch_with_no_openings_having_budget_is_a_no_op(tmp_path: Path) -> None
         4,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total == 0
@@ -254,9 +244,7 @@ def test_batch_size_zero_is_a_no_op(tmp_path: Path) -> None:
         0,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total == 0
@@ -273,9 +261,7 @@ def test_batch_revisits_same_opening_across_rounds_within_one_batch(tmp_path: Pa
         3,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total == 3
@@ -327,9 +313,7 @@ def test_batch_draws_the_higher_uncertainty_opening_more_often(tmp_path: Path) -
         30,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
         on_draw=lambda event: draws.append(event.opening_id),
     )
     conn.close()
@@ -348,9 +332,7 @@ def test_batch_never_draws_a_budget_exhausted_opening(tmp_path: Path) -> None:
         5,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total > 0
@@ -373,9 +355,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
         10,
         None,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
         on_draw=lambda event: draws1.append(event.opening_id),
     )
     conn.close()
@@ -391,9 +371,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
         10,
         None,
         planner_factory=engine2.planner_factory,
-        browser=engine2.browser_factory(),
-        extractor=engine2.extractor_factory(),
-        digester=engine2.digester_factory(),
+        deps=engine2.deps_factory(),
         on_draw=lambda event: draws2.append(event.opening_id),
     )
     conn2.close()
@@ -406,9 +384,11 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=3)
     engine = BatchEngine(
         planner_factory=_search_then_stop_planner,
-        browser_factory=lambda: FakeBrowser(search_fixtures={_QUERY: []}),
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(search_fixtures={_QUERY: []}),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            digester=FakeDigester(["Synthetic digest."]),
+        ),
     )
     progress: dict[str, object] = {}
     engine.run(tmp_path / "screen.db", 2, progress)
@@ -446,9 +426,11 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
         planner_factory=lambda: FakePlanner(
             sequence=[[FetchAction(url=url)], [StopAction(reason="done")]]
         ),
-        browser_factory=lambda: FakeBrowser(fetch_fixtures={url: {"raw_content": "content"}}),
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(fetch_fixtures={url: {"raw_content": "content"}}),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            digester=FakeDigester(["Synthetic digest."]),
+        ),
     )
     progress: dict[str, object] = {}
     engine.run(tmp_path / "screen.db", 1, progress)
@@ -474,12 +456,16 @@ def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
                 [StopAction(reason="mined out")],
             ]
         ),
-        browser_factory=lambda: FakeBrowser(
-            search_fixtures={"find page": [{"url": url, "raw_content": "content", "title": "x"}]},
-            fetch_fixtures={url: {"raw_content": "content"}},
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(
+                search_fixtures={
+                    "find page": [{"url": url, "raw_content": "content", "title": "x"}]
+                },
+                fetch_fixtures={url: {"raw_content": "content"}},
+            ),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            digester=FakeDigester(["Synthetic digest."]),
         ),
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
     )
     progress: dict[str, object] = {}
     engine.run(tmp_path / "screen.db", 3, progress)
@@ -509,12 +495,16 @@ def test_batch_engine_prints_opportunity_summary(
                 [StopAction(reason="mined out")],
             ]
         ),
-        browser_factory=lambda: FakeBrowser(
-            search_fixtures={"find page": [{"url": url, "raw_content": "content", "title": "x"}]},
-            fetch_fixtures={url: {"raw_content": "content"}},
+        deps_factory=lambda: RunDispatchDeps(
+            browser=FakeBrowser(
+                search_fixtures={
+                    "find page": [{"url": url, "raw_content": "content", "title": "x"}]
+                },
+                fetch_fixtures={url: {"raw_content": "content"}},
+            ),
+            extractor=FakeExtractor([[canned_assertion()]]),
+            digester=FakeDigester(["Synthetic digest."]),
         ),
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        digester_factory=lambda: FakeDigester(["Synthetic digest."]),
     )
     engine.run(tmp_path / "screen.db", 2, {})
 
@@ -552,9 +542,7 @@ def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -
         None,
         config=zero_cap_config,
         planner_factory=engine.planner_factory,
-        browser=engine.browser_factory(),
-        extractor=engine.extractor_factory(),
-        digester=engine.digester_factory(),
+        deps=engine.deps_factory(),
     )
     conn.close()
     assert total == 0
