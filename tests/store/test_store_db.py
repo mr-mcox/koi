@@ -4,6 +4,7 @@ touches it.
 """
 
 import sqlite3
+import threading
 from pathlib import Path
 
 from screen.store.db import connect
@@ -57,3 +58,24 @@ def test_connect_enforces_foreign_keys(tmp_path: Path) -> None:
     except sqlite3.IntegrityError:
         raised = True
     assert raised, "foreign_keys pragma must be on so a dangling company_id is rejected"
+
+
+def test_connect_allows_use_from_a_different_thread(tmp_path: Path) -> None:
+    """FastAPI's threadpool dispatches a sync-generator dependency's pre-yield
+    and post-yield halves as separate calls, which can land on different OS
+    threads even within one request — sqlite3's default thread-affinity check
+    would reject that (docs bug: batch-intake concurrency fix)."""
+    conn = connect(tmp_path / "screen.db")
+    errors: list[BaseException] = []
+
+    def use_from_other_thread() -> None:
+        try:
+            conn.execute("SELECT 1")
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=use_from_other_thread)
+    thread.start()
+    thread.join()
+
+    assert errors == []

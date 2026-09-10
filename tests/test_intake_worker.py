@@ -9,6 +9,7 @@ with nothing of its own worth unit-testing beyond that it calls this.
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -149,3 +150,47 @@ async def test_run_intake_worker_drains_then_polls_when_idle(
 
     assert sleep_calls == 1
     assert {row.status for row in list_intake_queue(conn)} == {"done"}
+
+
+async def test_run_intake_worker_does_not_block_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A slow, blocking `intake_fn` (real network + DB I/O, not an awaitable) must
+    not freeze the event loop — other coroutines (e.g. FastAPI serving a
+    concurrent request) need to keep making progress while one URL is in
+    flight. Simulates the blocking call with `time.sleep`; if the worker calls
+    it directly (not via a thread), the loop is frozen for its whole duration
+    and the ticker below can't record a tick until it's over."""
+    conn = connect(tmp_path / "screen.db")
+    enqueue_intake_url(conn, "https://example.com/jobs/1")
+    block_seconds = 0.3
+
+    def _slow_intake_fn(url: str) -> str:
+        time.sleep(block_seconds)
+        return "stopped: done"
+
+    monkeypatch.setattr(worker_module, "intake_url", _slow_intake_fn)
+
+    tick_times: list[float] = []
+
+    async def _ticker() -> None:
+        while True:
+            tick_times.append(asyncio.get_running_loop().time())
+            await asyncio.sleep(0.01)
+
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    ticker_task = asyncio.create_task(_ticker())
+    worker_task = asyncio.create_task(run_intake_worker(conn, tmp_path))
+    await asyncio.sleep(block_seconds * 1.5)  # outlasts the blocking call
+    worker_task.cancel()
+    ticker_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await worker_task
+    with pytest.raises(asyncio.CancelledError):
+        await ticker_task
+
+    assert any(
+        t - start < block_seconds / 2 for t in tick_times[1:]
+    ), "the event loop was blocked for the whole duration of the synchronous intake call"
+    assert list_intake_queue(conn)[0].status == "done"

@@ -58,8 +58,13 @@ def process_next_intake_url(
 async def run_intake_worker(conn: sqlite3.Connection, data_dir: Path) -> None:
     """Runs for the life of the process (started once from the FastAPI
     lifespan). Polls at `_IDLE_POLL_SECONDS` when the queue is empty; drains
-    immediately, one row at a time, while work is pending."""
+    immediately, one row at a time, while work is pending.
+
+    `process_next_intake_url` is synchronous, blocking I/O (Tavily fetch, BAML
+    calls, sqlite writes) — run via `asyncio.to_thread` so one slow intake
+    pass doesn't stall the event loop FastAPI needs to serve other requests.
+    """
     while True:
-        item = process_next_intake_url(conn, data_dir)
+        item = await asyncio.to_thread(process_next_intake_url, conn, data_dir)
         if item is None:
             await asyncio.sleep(_IDLE_POLL_SECONDS)
