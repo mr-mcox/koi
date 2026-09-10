@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 from collections.abc import Callable, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -326,6 +327,9 @@ class BatchProgress:
     current_opening_id: str | None = None
     touched: list[str] = field(default_factory=list)
     running: bool = True
+    started_at: float | None = None
+    rate: float | None = None
+    eta_seconds: float | None = None
 
 
 def _draw_event(
@@ -421,10 +425,15 @@ def _run_batch_turn(
     )
 
 
-def _begin_progress(progress: MutableMapping[str, object] | None, batch_size: int) -> None:
+def _begin_progress(
+    progress: MutableMapping[str, object] | None, batch_size: int, now_fn: Callable[[], float]
+) -> None:
     if progress is not None:
         progress["total"] = batch_size
         progress["running"] = True
+        progress["started_at"] = now_fn()
+        progress["rate"] = None
+        progress["eta_seconds"] = None
 
 
 def _end_progress(
@@ -437,6 +446,35 @@ def _end_progress(
         progress["touched"] = touched
         progress["running"] = False
         progress["current_opening_id"] = None
+        progress["eta_seconds"] = None
+
+
+_ETA_SMOOTHING = 0.3  # tqdm's default smoothing factor for its speed EMA
+
+
+def _update_eta(
+    progress: MutableMapping[str, object] | None,
+    *,
+    turns_spent_this_call: int,
+    total_spent: int,
+    batch_size: int,
+    elapsed: float,
+    now_fn: Callable[[], float],
+) -> None:
+    """Update the seconds-per-turn EMA and the remaining-time estimate it implies.
+    Mirrors tqdm's own rate smoothing (search, tqdm docs): a fresh sample only ever
+    nudges the average, so one slow turn doesn't swing the ETA."""
+    if progress is None or turns_spent_this_call <= 0 or elapsed <= 0:
+        return
+    sample_rate = elapsed / turns_spent_this_call
+    prior_rate = cast(float | None, progress.get("rate"))
+    rate = (
+        sample_rate
+        if prior_rate is None
+        else _ETA_SMOOTHING * sample_rate + (1 - _ETA_SMOOTHING) * prior_rate
+    )
+    progress["rate"] = rate
+    progress["eta_seconds"] = max(batch_size - total_spent, 0) * rate
 
 
 def run_batch(
@@ -452,6 +490,7 @@ def run_batch(
     extractor: ExtractorProtocol | None = None,
     digester: DigesterProtocol | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
+    now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
     """Spend up to `batch_size` actions on opportunities drawn by aggregate remaining
     uncertainty. Each opportunity is a block of up to `research_target_action_cap`
@@ -461,9 +500,11 @@ def run_batch(
     reproduces the same sequence of draws.
 
     Returns (total_actions_spent, touched_opening_ids). `progress` is updated in place
-    so a polling web route can observe `spent`, `current_opening_id`, and `touched` while
-    the batch runs. `on_draw`, if given, is called once per opportunity with a
-    `DrawEvent` summarizing what changed about that opening during the block.
+    so a polling web route can observe `spent`, `current_opening_id`, `touched`, and
+    `eta_seconds` while the batch runs. `on_draw`, if given, is called once per
+    opportunity with a `DrawEvent` summarizing what changed about that opening during
+    the block. `now_fn` is a monotonic clock, injectable so tests can control elapsed
+    time without sleeping.
 
     `planner_factory` is called once per opportunity; the planner is stateful across the
     actions in a block in the test fakes. `planner` (a single instance) is supported for
@@ -474,7 +515,7 @@ def run_batch(
     touched: list[str] = []
     stalled: set[str] = set()
     total_spent = 0
-    _begin_progress(progress, batch_size)
+    _begin_progress(progress, batch_size, now_fn)
     while total_spent < batch_size:
         weights = {
             opening_id: weight
@@ -483,6 +524,7 @@ def run_batch(
         }
         if not weights:
             break
+        turn_started = now_fn()
         opening_id, spent, draw_event = _run_batch_turn(
             conn,
             data_root,
@@ -504,6 +546,14 @@ def run_batch(
             continue
         assert draw_event is not None  # spent > 0 always pairs with a draw_event
         total_spent += spent
+        _update_eta(
+            progress,
+            turns_spent_this_call=spent,
+            total_spent=total_spent,
+            batch_size=batch_size,
+            elapsed=now_fn() - turn_started,
+            now_fn=now_fn,
+        )
         if progress is not None:
             progress["spent"] = total_spent
             progress["touched"] = touched
@@ -519,6 +569,19 @@ def opening_research_status(data_root: Path, opening: Opening) -> tuple[int, int
     research_trace_path = research_trace_path_for(data_root, opening.research_trace_id)
     turns_used = replay_research_trace(research_trace_path).turns_used
     return turns_used, opening.research_turns_budget
+
+
+_SECONDS_PER_MINUTE = 60
+
+
+def eta_text(seconds: float) -> str:
+    """Round an ETA down to a coarse human phrase: seconds under a minute, otherwise
+    whole minutes. The estimate is noisy (a per-turn EMA); false precision would claim
+    more than the number knows."""
+    seconds = max(seconds, 0.0)
+    if seconds < _SECONDS_PER_MINUTE:
+        return f"{round(seconds)}s"
+    return f"{round(seconds / _SECONDS_PER_MINUTE)}m"
 
 
 @dataclass

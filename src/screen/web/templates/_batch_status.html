@@ -9,12 +9,10 @@
   {% endif %}
   {% if status.running %}
     <p class="batch-running">
-      Batch running: {{ status.spent }}/{{ status.total }} turns spent
-      {% if status.current_opening_id %}
-        (working on {{ status.current_opening_id }})
+      Researching
+      {% if status.eta_seconds is not none %}
+        — about {{ status.eta_seconds | eta_text }} left
       {% endif %}
     </p>
-  {% else %}
-    <p class="batch-idle">No batch running.</p>
   {% endif %}
 </div>

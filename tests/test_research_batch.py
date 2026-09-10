@@ -22,6 +22,7 @@ from screen.research.batch import (
     build_digester,
     build_extractor,
     build_planner,
+    eta_text,
     opening_research_status,
     read_page_content,
     remaining_budget,
@@ -121,6 +122,41 @@ def test_batch_runs_across_openings_with_remaining_budget(tmp_path: Path) -> Non
     assert "acme--eng" in touched
     assert "widgets--eng" in touched
     assert progress["spent"] == total
+
+
+def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) -> None:
+    """`run_batch` records a seconds-per-turn EMA from an injected clock and derives
+    `eta_seconds` from it — no timing assumed, only measured (queue-page-cleanup
+    bearing, Approach)."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", budget=4)
+    conn = connect(tmp_path / "screen.db")
+    engine = _build_engine(tmp_path)
+    progress: dict[str, object] = {}
+    times = iter([0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
+    total, _touched = run_batch(
+        conn,
+        tmp_path,
+        4,
+        progress,
+        planner_factory=engine.planner_factory,
+        browser=engine.browser_factory(),
+        extractor=engine.extractor_factory(),
+        digester=engine.digester_factory(),
+        now_fn=lambda: next(times),
+    )
+    conn.close()
+    assert total == 3  # the seed trace already counts one turn against the budget
+    # Every clock tick advances by 2s, so however many opportunities the block splits
+    # into, each measures the same 2s/turn rate and the EMA holds at 2.0.
+    assert progress["rate"] == pytest.approx(2.0)
+    assert progress["eta_seconds"] is None
+    assert progress["running"] is False
+
+
+def test_eta_text_formats_seconds_and_minutes() -> None:
+    assert eta_text(45) == "45s"
+    assert eta_text(90) == "2m"
+    assert eta_text(-5) == "0s"
 
 
 def test_batch_skips_openings_with_no_remaining_budget(tmp_path: Path) -> None:

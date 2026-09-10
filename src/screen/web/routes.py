@@ -34,7 +34,7 @@ from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
 from screen.extract.prompt import rubric_text_for_baml
-from screen.research.batch import opening_research_status
+from screen.research.batch import eta_text
 from screen.score.boundary import crossing_probability
 from screen.score.loader import load_scoring_config
 from screen.score.triage import rating_task_candidates
@@ -66,6 +66,7 @@ Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.filters["render_digest_html"] = render_digest_html
+templates.env.filters["eta_text"] = eta_text
 
 
 @dataclass(frozen=True)
@@ -263,7 +264,7 @@ def _kth_result(
     return scored[config.top_k - 1][2] if len(scored) >= config.top_k else None
 
 
-def _queue_items(conn: sqlite3.Connection, data_root: Path) -> list[dict[str, object]]:
+def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
     """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
     config = load_scoring_config()
     scored = _scored_openings(conn, config)
@@ -271,7 +272,6 @@ def _queue_items(conn: sqlite3.Connection, data_root: Path) -> list[dict[str, ob
     items = []
     for opening, company, result in scored:
         company_hue, opening_hue = _accent_hues(company.id, opening.id)
-        turns_used, turns_budget = opening_research_status(data_root, opening)
         items.append(
             {
                 "opening_id": opening.id,
@@ -279,8 +279,6 @@ def _queue_items(conn: sqlite3.Connection, data_root: Path) -> list[dict[str, ob
                 "opening_title": opening.title,
                 "company_hue": company_hue,
                 "opening_hue": opening_hue,
-                "turns_used": turns_used,
-                "turns_budget": turns_budget,
                 "glyph": _boundary_glyph_for_score(
                     result,
                     boundary=kth.median if kth is not None else None,
@@ -348,8 +346,7 @@ def _focus_queue_items(conn: sqlite3.Connection) -> list[str]:
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request, conn: Conn) -> HTMLResponse:
     """The queue view: ranked openings as HTML."""
-    data_root = request.app.state.database.data_root
-    items = _queue_items(conn, data_root)
+    items = _queue_items(conn)
     status = request.app.state.batch_status
     return templates.TemplateResponse(request, "queue.html", {"items": items, "status": status})
 
@@ -757,7 +754,7 @@ def start_batch(
     request: Request,
     conn: Conn,
     background_tasks: BackgroundTasks,
-    batch_size: Annotated[int, Form(gt=0)],
+    batch_size: Annotated[int, Form(gt=0)] = 50,
 ) -> HTMLResponse:
     """Start a research batch and return immediately. The heavy work runs in a
     `BackgroundTasks` callback with its own DB connection, so the HTTP response
@@ -782,6 +779,9 @@ def start_batch(
         "spent": 0,
         "current_opening_id": None,
         "touched": [],
+        "started_at": None,
+        "rate": None,
+        "eta_seconds": None,
     }
     request.app.state.batch_status = new_status
     engine = request.app.state.batch_engine

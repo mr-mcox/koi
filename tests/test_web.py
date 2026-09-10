@@ -1755,35 +1755,30 @@ def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
         response = client.post(f"{base}/batch", data={"batch_size": "3"})
         t1 = time.time()
         assert response.status_code == 200, response.text
-        assert "Batch running" in response.text
+        assert "Researching" in response.text
         # The response must land before the gate is released.
         assert t1 - t0 < 0.5
 
-        # Poll the status endpoint while the batch is still blocked; the current
-        # opening id may take a moment to appear as the background thread starts.
-        current_opening_id: str | None = None
+        # Poll the status endpoint while the batch is still blocked.
         for _ in range(50):
             status = client.get(f"{base}/batch-status")
             assert status.status_code == 200
-            if "Batch running" in status.text:
-                if "working on acme--eng" in status.text:
-                    current_opening_id = "acme--eng"
-                    break
+            if "Researching" in status.text:
+                break
             time.sleep(0.05)
         else:
             raise AssertionError("batch did not show running status")
-        assert current_opening_id == "acme--eng"
 
         # Now let the background task finish its first (and only) turn.
         gate.set()
         for _ in range(50):
             status = client.get(f"{base}/batch-status")
-            if "No batch running" in status.text:
+            if "Researching" not in status.text:
                 break
             time.sleep(0.05)
         else:
             raise AssertionError("batch never finished")
-        assert "Batch running" not in status.text
+        assert "Researching" not in status.text
 
         # One turn was actually spent.
         conn = connect(db_path)
@@ -1805,7 +1800,7 @@ def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> N
     with _live_server(app) as base, httpx.Client() as client:
         first = client.post(f"{base}/batch", data={"batch_size": "3"})
         assert first.status_code == 200
-        assert "Batch running" in first.text
+        assert "Researching" in first.text
 
         second = client.post(f"{base}/batch", data={"batch_size": "3"})
         assert second.status_code == 200
@@ -1814,19 +1809,28 @@ def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> N
         gate.set()
 
 
-def test_queue_shows_research_turns_used_and_budget(client: TestClient, db_path: Path) -> None:
-    """Each queue item renders the same turns-used/budget line the retired
-    `research-status` CLI printed."""
+def test_queue_hides_research_turns_used_and_budget(client: TestClient, db_path: Path) -> None:
+    """Queue rows no longer show the turns-used/budget counter (queue-page-cleanup
+    bearing, Done When)."""
     _seed_live_opening(db_path, "acme--eng", budget=5)
     response = client.get("/")
     assert response.status_code == 200
-    assert "1/5" in response.text  # one tavily_extract turn in the seeded trace
+    assert "research-status" not in response.text
+    assert "1/5" not in response.text
 
 
 def test_batch_start_form_validates_batch_size(client: TestClient) -> None:
     """The batch start form rejects non-positive batch sizes."""
     response = client.post("/batch", data={"batch_size": "0"})
     assert response.status_code == 422
+
+
+def test_batch_start_defaults_to_50_turns_when_omitted(client: TestClient) -> None:
+    """The queue page's single start button posts no visible batch_size; the server
+    defaults to 50 turns (queue-page-cleanup bearing, Done When)."""
+    response = client.post("/batch", data={})
+    assert response.status_code == 200
+    assert "Researching" in response.text
 
 
 # ---------------------------------------------------------------------------

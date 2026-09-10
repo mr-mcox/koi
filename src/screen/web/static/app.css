@@ -465,6 +465,38 @@ a:hover { color: var(--accent); }
   cursor: pointer;
 }
 
+/* One family of page actions — starting research, contested review, archive — styled
+   as the same understated pill link the stage selector and archive filters already use,
+   so three unrelated-looking widgets read as kin (queue-page-cleanup bearing). */
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.queue-action-form {
+  display: contents;
+}
+
+.queue-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper-dim);
+  color: var(--ink-muted);
+  text-decoration: none;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.queue-action:hover {
+  border-color: var(--accent);
+}
+
 .archive-link {
   color: var(--ink-muted);
   font-size: 0.9rem;
