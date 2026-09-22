@@ -9,7 +9,7 @@ branch: rank-pool
 ## Trigger
 
 A live batch run after `research-targeting.md` shipped showed roughly half its draws
-adding zero new assertions. Two traces (Vetcove `a4fbea`, Airbnb `98c489`) were pulled
+adding zero new assertions. Two traces (were pulled
 directly and both show the same pattern: the planner stays sticky on one target
 (`agentic`, `non_scoring:obtainability`) across a whole 3-action block, issues
 near-identical search queries, gets no fetchable hit, and burns the block — then a

@@ -5,7 +5,6 @@ date: 2026-09-21
 commit: (pending)
 branch: rank-pool
 status: proposed
-parent: ./bearing.md
 scouting: ./target-suppression-scouting.md
 ---
 
@@ -30,8 +29,7 @@ already been tried and failed. Terrain: [target-suppression-scouting.md](./targe
 - [ ] Stall counts are derived from the research trace on every resume, not a new
       persisted DB field → unit test on the trace-walking fold function using a
       synthetic trace fixture (scouting F5, F10, F11)
-- [ ] A live batch run against the two known dead-end openings (Vetcove `a4fbea`,
-      Airbnb `98c489`) no longer repeats the same stalled target on a subsequent draw →
+- [ ] A live batch run against the two known dead-end openings no longer repeats the same stalled target on a subsequent draw →
       **needs you**: run a real batch and check the console trace
 
 ## Approach
