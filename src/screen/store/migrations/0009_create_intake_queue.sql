@@ -1,4 +1,4 @@
--- Web intake queue (docs/features/batch-intake): one row per submitted URL.
+-- Web intake queue: one row per submitted URL.
 -- `status` is pending -> running -> done|failed, no retry path — a failed row
 -- stays failed; resubmitting the URL is a new row.
 CREATE TABLE intake_queue (

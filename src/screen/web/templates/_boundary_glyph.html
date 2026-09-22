@@ -2,13 +2,13 @@
 {% set low_pct = (glyph.low_pct * 100) | round(2) %}
 {% set median_pct = (glyph.median_pct * 100) | round(2) %}
 {% set high_pct = (glyph.high_pct * 100) | round(2) %}
-<span class="boundary-glyph" role="img" aria-label="credible interval on the score axis" style="--median-pct: {{ median_pct }};"{% if glyph.crossing_probability is not none %} title="{{ (glyph.crossing_probability * 100) | round(1) }}% chance of crossing the boundary"{% endif %}>
+<span class="boundary-glyph" role="img" aria-label="{{ glyph.settledness_label }}" title="{{ glyph.settledness_label }}">
   <span class="boundary-baseline"></span>
   <span class="boundary-dip" style="left: {{ low_pct }}%; right: {{ 100 - high_pct }}%;"></span>
   <span class="boundary-range" style="left: {{ low_pct }}%; right: {{ 100 - high_pct }}%;"></span>
-  <span class="boundary-marker boundary-median" style="left: {{ median_pct }}%;"></span>
+  <span class="boundary-marker boundary-median" style="left: {{ median_pct }}%; --settledness: {{ glyph.settledness_alpha }};"></span>
   {% if glyph.boundary_pct is not none %}
   <span class="boundary-marker boundary-tick" style="left: {{ (glyph.boundary_pct * 100) | round(2) }}%;"></span>
   {% endif %}
-  </span>
+</span>
 {%- endmacro %}

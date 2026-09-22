@@ -14,10 +14,10 @@ from screen.store.mappers import (
     assertion_to_row,
     company_from_row,
     company_to_row,
+    comparison_from_row,
+    comparison_to_row,
     dimension_digest_from_row,
     dimension_digest_to_row,
-    dimension_ruling_from_row,
-    dimension_ruling_to_row,
     intake_queue_item_from_row,
     intake_queue_item_to_row,
     opening_from_row,
@@ -27,8 +27,8 @@ from screen.types import (
     Assertion,
     AssertionRuling,
     Company,
+    Comparison,
     DimensionDigest,
-    DimensionRuling,
     IntakeQueueItem,
     Opening,
 )
@@ -47,17 +47,16 @@ def upsert_company(conn: sqlite3.Connection, company: Company) -> None:
 def upsert_opening(conn: sqlite3.Connection, opening: Opening) -> None:
     conn.execute(
         """INSERT INTO openings
-               (id, company_id, title, url, research_trace_id, research_turns_budget,
+               (id, company_id, title, url, research_trace_id,
                 created_at, stage)
            VALUES
-               (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
+               (:id, :company_id, :title, :url, :research_trace_id,
                 :created_at, :stage)
            ON CONFLICT (id) DO UPDATE SET
                company_id = excluded.company_id,
                title = excluded.title,
                url = excluded.url,
                research_trace_id = excluded.research_trace_id,
-               research_turns_budget = excluded.research_turns_budget,
                created_at = excluded.created_at,
                stage = excluded.stage""",
         opening_to_row(opening),
@@ -185,32 +184,28 @@ def upsert_dimension_digest(
     conn.commit()
 
 
-def upsert_dimension_ruling(conn: sqlite3.Connection, ruling: DimensionRuling) -> None:
-    """Upsert by `(opening_id, target)` (Approach: pins are not revertable, but
-    resubmission still replaces the value) — relies on the unique constraint from
-    migration 0005."""
+def append_comparison(conn: sqlite3.Connection, comparison: Comparison) -> None:
+    """Comparisons are append-only — never updated or replaced; a re-judged pair adds a
+    new row, it doesn't overwrite the old one."""
     conn.execute(
-        """INSERT INTO dimension_rulings
-               (id, opening_id, target, mean, settledness, created_at, covered_assertion_ids)
-           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at,
-                   :covered_assertion_ids)
-           ON CONFLICT (opening_id, target) DO UPDATE SET
-               id = excluded.id, mean = excluded.mean, settledness = excluded.settledness,
-               created_at = excluded.created_at,
-               covered_assertion_ids = excluded.covered_assertion_ids""",
-        dimension_ruling_to_row(ruling),
+        """INSERT INTO comparisons
+           (id, opening_a_id, opening_b_id, target, outcome, predicted_a_beats_b,
+            opening_a_digest_version, opening_b_digest_version, created_at)
+           VALUES
+           (:id, :opening_a_id, :opening_b_id, :target, :outcome, :predicted_a_beats_b,
+            :opening_a_digest_version, :opening_b_digest_version, :created_at)""",
+        comparison_to_row(comparison),
     )
     conn.commit()
 
 
-def dimension_rulings_for_opening(
-    conn: sqlite3.Connection, opening_id: str
-) -> list[DimensionRuling]:
+def comparisons_for_target(conn: sqlite3.Connection, target: str) -> list[Comparison]:
+    """Every comparison recorded against one dimension, oldest first — the batch fit's
+    input before it reduces to the latest judgment per (unordered pair, dimension)."""
     rows = conn.execute(
-        "SELECT * FROM dimension_rulings WHERE opening_id = ? ORDER BY created_at",
-        (opening_id,),
+        "SELECT * FROM comparisons WHERE target = ? ORDER BY created_at", (target,)
     ).fetchall()
-    return [dimension_ruling_from_row(dict(row)) for row in rows]
+    return [comparison_from_row(dict(row)) for row in rows]
 
 
 def enqueue_intake_url(conn: sqlite3.Connection, url: str) -> IntakeQueueItem:

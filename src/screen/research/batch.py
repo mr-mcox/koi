@@ -18,13 +18,13 @@ from typing import cast
 
 import numpy as np
 
+from screen.api.pool import rank_screening_pool
 from screen.browser import BrowserProtocol, TavilyBrowser
 from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.service import update_digests_for_opening
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import (
-    all_constraint_slugs,
     all_dimension_slugs,
     all_non_scoring_slugs,
     rubric_text_for_baml,
@@ -37,7 +37,7 @@ from screen.research.baml_planner import BAMLPlanner
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
-from screen.score.bandit import aggregate_uncertainty, draw_opening
+from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
 from screen.store.db import connect
@@ -45,12 +45,18 @@ from screen.store.repo import (
     append_assertions,
     assertion_rulings_for_opening,
     assertions_for_opening,
-    dimension_rulings_for_opening,
     get_company,
     get_opening,
     list_openings,
 )
 from screen.types import Assertion, Fit, Opening
+
+# The intake pipeline's one dispatch call before an opening ever reaches the batch
+# loop (`identify_research_trace`) has no prior turn budget to resume from and no
+# batch-size cap to inherit; this bounds that single first pass. Every other caller
+# (`resume_opening`) passes its own `turn_budget` derived from the batch's remaining
+# size, so this constant is reached only once per opening, ever.
+_INTAKE_FIRST_PASS_TURN_BUDGET = 5
 
 
 class NoSuchOpeningError(RuntimeError):
@@ -161,12 +167,14 @@ def run_dispatch(
     `resume` carries the turns/urls/queries already spent on a prior pass
     (from `replay_research_trace`); omitted for a fresh pass, which starts
     at zero. `deps` carries the collaborators (planner, browser, etc.);
-    omitted fields fall back to the production implementation.
+    omitted fields fall back to the production implementation. `turn_budget`
+    omitted falls back to `_INTAKE_FIRST_PASS_TURN_BUDGET` (or `SCREEN_TURN_BUDGET`) —
+    only the very first, unbatched pass at intake time relies on this; every
+    batch-driven call passes its own block size explicitly.
     """
     rubric = rubric_text_for_baml()
     scoring_config = load_scoring_config()
-    rulings = {ruling.target: ruling for ruling in dimension_rulings_for_opening(conn, opening_id)}
-    targets = all_dimension_slugs() + all_constraint_slugs() + all_non_scoring_slugs()
+    targets = all_dimension_slugs() + all_non_scoring_slugs()
     replay = (
         resume
         if resume is not None
@@ -185,12 +193,11 @@ def run_dispatch(
         turn_budget=(
             turn_budget
             if turn_budget is not None
-            else int(os.environ.get("SCREEN_TURN_BUDGET", scoring_config.research_turns_budget))
+            else int(os.environ.get("SCREEN_TURN_BUDGET", _INTAKE_FIRST_PASS_TURN_BUDGET))
         ),
         turns_used=replay.turns_used,
         visited_urls=replay.visited_urls,
         prior_queries=replay.prior_queries,
-        rulings=rulings,
         targets=targets,
         active_target_action_cap=scoring_config.research_target_action_cap,
     )
@@ -227,9 +234,10 @@ def resume_opening(
     *,
     deps: RunDispatchDeps | None = None,
 ) -> ResumeResult:
-    """Resume one opening's research from its trace, spending at most
-    `min(turns_requested, remaining lifetime budget)` turns. Returns the
-    number of turns actually spent and the dispatch stop reason.
+    """Resume one opening's research from its trace, spending `turns_requested` more
+    turns (the caller caps this by the per-target action cap and the remaining batch
+    size — there is no separate per-opening lifetime cap). Returns the number of turns
+    actually spent and the dispatch stop reason.
     """
     company = get_company(conn, opening.company_id)
     if company is None:  # pragma: no cover — FK constraint on openings.company_id
@@ -237,9 +245,7 @@ def resume_opening(
     research_trace_path = research_trace_path_for(data_root, opening.research_trace_id)
     page_content, url = read_page_content(research_trace_path)
     replay = replay_research_trace(research_trace_path)
-    remaining = max(opening.research_turns_budget - replay.turns_used, 0)
-    to_spend = min(turns_requested, remaining)
-    if to_spend <= 0:
+    if turns_requested <= 0:
         return ResumeResult(turns_spent=0, stopped_reason="no remaining budget")
 
     assertions = assertions_for_opening(conn, opening.id)
@@ -256,7 +262,7 @@ def resume_opening(
         page_content=page_content,
         company_name=company.name,
         opening_title=opening.title,
-        turn_budget=replay.turns_used + to_spend,
+        turn_budget=replay.turns_used + turns_requested,
         resume=replay,
         deps=dispatch_deps,
     )
@@ -266,39 +272,45 @@ def resume_opening(
     )
 
 
-def remaining_budget(data_root: Path, opening: Opening) -> int:
-    research_trace_path = research_trace_path_for(data_root, opening.research_trace_id)
-    turns_used = replay_research_trace(research_trace_path).turns_used
-    return max(opening.research_turns_budget - turns_used, 0)
-
-
 def opening_weight(conn: sqlite3.Connection, opening: Opening, config: ScoringConfig) -> float:
     """Aggregate remaining uncertainty for one opening, assembled the same way
     `get_queue` assembles rulings for scoring — the latest ruling per
-    assertion id, one `DimensionRuling` pin per target."""
+    assertion id."""
     assertions = assertions_for_opening(conn, opening.id)
     rulings: dict[str, Fit] = {
         ruling.assertion_id: ruling.fit
         for ruling in assertion_rulings_for_opening(conn, opening.id)
     }
-    dimension_rulings = {
-        ruling.target: ruling for ruling in dimension_rulings_for_opening(conn, opening.id)
-    }
-    return aggregate_uncertainty(assertions, config, rulings, dimension_rulings)
+    return aggregate_uncertainty(assertions, config, rulings)
 
 
-def eligible_weights(
-    conn: sqlite3.Connection, data_root: Path, config: ScoringConfig
-) -> dict[str, float]:
-    """Every opening with remaining `research_turns_budget` headroom, mapped to its
-    current aggregate-uncertainty weight. Recomputed fresh on every call — the caller
+def eligible_weights(conn: sqlite3.Connection, config: ScoringConfig) -> dict[str, float]:
+    """Every opening still in the `screening` stage, mapped to a draw weight biased
+    toward the current top-K boundary: `uncertainty * boundary_weight`, where
+    `boundary_weight` is `p_top_k * (1 - p_top_k)` from a fresh pool-wide rank
+    (scouting research-targeting F16, F21 — breadth-first, biased toward fresh/contested
+    openings over settling already-examined ones). There is no separate per-opening
+    turn budget to filter on — the weight itself throttles: a fully examined opening's
+    uncertainty decays toward 0, and a settled-in/out opening's boundary weight decays
+    toward 0, independently. Falls back to plain uncertainty when the whole pool is
+    decisively in or out of top K (every `boundary_weight` is 0, e.g. a pool no larger
+    than `top_k`) — the boundary signal carries no information then, and a zero-weight
+    pool can't be drawn from at all. Recomputed fresh on every call — the caller
     redraws from this after each turn so a just-spent turn's new assertions immediately
     affect the next draw."""
-    return {
-        opening.id: opening_weight(conn, opening, config)
-        for opening in list_openings(conn, stage="screening")
-        if remaining_budget(data_root, opening) > 0
+    eligible = list_openings(conn, stage="screening")
+    if not eligible:
+        return {}
+    uncertainty = {opening.id: opening_weight(conn, opening, config) for opening in eligible}
+    ranks = rank_screening_pool(conn, config)
+    p_top_k = {r.opening_id: r.p_top_k for r in ranks.opening_ranks}
+    weighted = {
+        opening_id: unc * boundary_weight(p_top_k[opening_id])
+        for opening_id, unc in uncertainty.items()
     }
+    if sum(weighted.values()) > 0:
+        return weighted
+    return uncertainty
 
 
 @dataclass
@@ -387,10 +399,10 @@ def _run_batch_turn(
     deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
     """Draw one opening and spend up to one block of actions on it before the next
-    draw. The block size is capped by the opening's remaining budget, the
-    per-target action cap, and the remaining batch budget. Returns
-    `(opening_id, actions_spent, draw_event)`; `draw_event` is `None` when the planner
-    stalled without spending any actions, so the caller can stop redrawing it this batch.
+    draw. The block size is capped by the per-target action cap and the remaining
+    batch budget. Returns `(opening_id, actions_spent, draw_event)`; `draw_event` is
+    `None` when the planner stalled without spending any actions, so the caller can
+    stop redrawing it this batch.
     """
     opening_id = draw_opening(weights, rng)
     opening = cast(Opening, get_opening(conn, opening_id))
@@ -401,9 +413,7 @@ def _run_batch_turn(
         if planner_factory is not None
         else deps
     )
-    replay = replay_research_trace(research_trace_path_for(data_root, opening.research_trace_id))
-    remaining_budget = max(opening.research_turns_budget - replay.turns_used, 0)
-    block_size = min(remaining_budget, cfg.research_target_action_cap, batch_size - total_spent)
+    block_size = min(cfg.research_target_action_cap, batch_size - total_spent)
     if block_size <= 0:
         return opening_id, 0, None
     assertions_before = len(assertions_for_opening(conn, opening_id))
@@ -418,7 +428,7 @@ def _run_batch_turn(
         return opening_id, 0, None
     if opening_id not in touched:
         touched.append(opening_id)
-    weights_after = eligible_weights(conn, data_root, cfg)
+    weights_after = eligible_weights(conn, cfg)
     assertions_after = len(assertions_for_opening(conn, opening_id))
     return (
         opening_id,
@@ -528,7 +538,7 @@ def run_batch(
     while total_spent < batch_size:
         weights = {
             opening_id: weight
-            for opening_id, weight in eligible_weights(conn, data_root, cfg).items()
+            for opening_id, weight in eligible_weights(conn, cfg).items()
             if opening_id not in stalled
         }
         if not weights:
@@ -567,14 +577,6 @@ def run_batch(
             on_draw(draw_event)
     _end_progress(progress, total_spent, touched)
     return total_spent, touched
-
-
-def opening_research_status(data_root: Path, opening: Opening) -> tuple[int, int]:
-    """Return (turns_used, budget) for one opening, mirroring the retired
-    `research-status` CLI output."""
-    research_trace_path = research_trace_path_for(data_root, opening.research_trace_id)
-    turns_used = replay_research_trace(research_trace_path).turns_used
-    return turns_used, opening.research_turns_budget
 
 
 _SECONDS_PER_MINUTE = 60

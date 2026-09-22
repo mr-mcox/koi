@@ -1,20 +1,20 @@
-"""Acceptance tests for the Scorer (docs/architecture/domain-model.md, Scorer section).
-Runs the pure `score`/`resolve_favourably` functions against synthetic assertions covering
-every scoring target and constraint — chosen over reading real seed data so this suite
-doesn't depend on an uncommitted, gitignored `data/` directory sticking around in its
-current shape.
+"""Acceptance tests for the pool-scoped Scorer (docs/architecture/domain-model.md, Scorer
+section). Runs `rank_pool` against synthetic assertions covering every scoring dimension —
+chosen over reading real seed data so this suite doesn't depend on an
+uncommitted, gitignored `data/` directory sticking around in its current shape.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import numpy as np
 import pytest
 
 from screen.score.loader import load_scoring_config
-from screen.score.scorer import resolve_favourably, score, stats_for_target, unexamined_targets
-from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, DimensionRuling, Fit, Provenance, Target
+from screen.score.scorer import rank_pool
+from screen.score.types import DimensionPosterior, PoolInput, ScoringConfig
+from screen.types import Assertion, Citation, Fit, Provenance, Target
 
 _CITATION = Citation(
     url="https://example.com/note",
@@ -24,8 +24,6 @@ _CITATION = Citation(
     independent=True,
     source_date=None,
 )
-
-_NOW = datetime(2026, 8, 27, tzinfo=UTC)
 
 
 def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_proposed") -> Assertion:
@@ -39,10 +37,9 @@ def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_propose
     )
 
 
-# One assertion per scoring dimension and constraint, high-confidence (`ratified`) on the
-# seven dimensions, thinner (`model_proposed`) on the three constraints — enough for every
-# target to have counted (non-unexamined) evidence, straddling the bar so standing lands
-# strictly between 0 and 1 rather than saturating at an extreme.
+# One assertion per scoring dimension, mixing `ratified` and `model_proposed` provenance
+# so every target has counted (non-unexamined) evidence with realistic variance —
+# a uniform-provenance fixture would understate the shrinkage the Scorer actually applies.
 PARTIALLY_RESEARCHED = [
     _assertion("stretch", "Strong", "ratified"),
     _assertion("schematic", "Strong", "ratified"),
@@ -63,238 +60,147 @@ def config() -> ScoringConfig:
     return load_scoring_config()
 
 
-def test_scores_partially_researched_opening(config: ScoringConfig) -> None:
-    standing = score(PARTIALLY_RESEARCHED, config)
-    reach = score(resolve_favourably(PARTIALLY_RESEARCHED, config), config)
-
-    assert 0.0 <= standing.standing <= 1.0
-    assert 0.0 <= reach.standing <= 1.0
-    # Reach never sorts below standing — resolving unexamined targets favourably can only
-    # help or leave the pair unchanged (S5, docs/architecture/decisions.md).
-    assert reach.standing >= standing.standing - 1e-9
-    assert standing.ceiling <= 1.0
-    # Every target here has counted evidence, so reach has nothing left to resolve.
-    assert unexamined_targets(PARTIALLY_RESEARCHED, config) == []
-    assert reach.standing == pytest.approx(standing.standing)
+POORLY_RESEARCHED = [_assertion(a.target, "Poor", a.provenance) for a in PARTIALLY_RESEARCHED]
 
 
-def test_standing_has_a_nontrivial_stderr(config: ScoringConfig) -> None:
-    """A partially-researched opening's standing is neither 0 nor 1 — exercises
-    `ScoreResult.p_stderr` at a value that isn't degenerate (unlike the fully-unexamined and
-    fully-saturated fixtures elsewhere in this file)."""
-    standing = score(PARTIALLY_RESEARCHED, config)
-    assert 0.0 < standing.p_stderr
+def test_rank_pool_orders_strong_opening_above_poor(config: ScoringConfig) -> None:
+    """A pool-scoped rank: the well-regarded opening should rank ahead of the poorly
+    regarded one on both the expected rank and `P(top K)` readouts."""
+    strong = PoolInput(opening_id="strong", assertions=PARTIALLY_RESEARCHED)
+    poor = PoolInput(opening_id="poor", assertions=POORLY_RESEARCHED)
+
+    result = rank_pool([strong, poor], config, top_k=1)
+    by_id = {r.opening_id: r for r in result.opening_ranks}
+
+    assert by_id["strong"].expected_rank < by_id["poor"].expected_rank
+    assert by_id["strong"].p_top_k > by_id["poor"].p_top_k
 
 
-def test_scores_fully_unexamined(config: ScoringConfig) -> None:
-    """A research trace only, zero assertions. Every scoring target enters at its
-    unexamined prior; this must produce a valid result, not an error."""
-    standing = score([], config)
-    reach = score(resolve_favourably([], config), config)
+def test_rank_pool_independent_of_opening_order(config: ScoringConfig) -> None:
+    strong = PoolInput(opening_id="strong", assertions=PARTIALLY_RESEARCHED)
+    poor = PoolInput(opening_id="poor", assertions=POORLY_RESEARCHED)
 
-    assert 0.0 <= standing.standing <= 1.0
-    assert unexamined_targets([], config) == [
-        *config.dimension_weights,
-        *config.constraints,
+    forward = rank_pool([strong, poor], config, top_k=1)
+    backward = rank_pool([poor, strong], config, top_k=1)
+
+    forward_by_id = {r.opening_id: r for r in forward.opening_ranks}
+    backward_by_id = {r.opening_id: r for r in backward.opening_ranks}
+    for opening_id in ("strong", "poor"):
+        assert forward_by_id[opening_id].expected_rank == pytest.approx(
+            backward_by_id[opening_id].expected_rank
+        )
+        assert forward_by_id[opening_id].p_top_k == pytest.approx(
+            backward_by_id[opening_id].p_top_k
+        )
+
+
+def test_rank_pool_settledness_high_when_pool_is_separated(config: ScoringConfig) -> None:
+    """A pool where one opening dominates the other on every target settles near K/K —
+    the sampled top-K almost always matches the current top-K."""
+    strong = PoolInput(opening_id="strong", assertions=PARTIALLY_RESEARCHED)
+    poor = PoolInput(opening_id="poor", assertions=POORLY_RESEARCHED)
+
+    result = rank_pool([strong, poor], config, top_k=1)
+
+    assert result.settledness > 0.9
+
+
+def test_rank_pool_kill_dimension_sinks_an_otherwise_best_opening(
+    config: ScoringConfig,
+) -> None:
+    """A confident Poor on one high-weight dimension (location, relocation required with no
+    flexibility language) drags `P(top K)` to ~0 even though every other dimension is
+    Strong — the additive-weight replacement for the retired multiplicative constraint
+    kill (constraints-and-rubric.md)."""
+    killed_assertions = [a for a in PARTIALLY_RESEARCHED if a.target != "location"] + [
+        _assertion("location", "Poor", "ratified")
     ]
-    # An empty record's reach saturates toward the top of what one favourable pass on every
-    # target can produce — the "reach never sorts" corollary (S5): it can out-reach even a
-    # partially-researched opening, which is the counter-intuitive-but-correct behavior the
-    # prototype measured directly (docs/architecture/prototype-decisions.md D21).
-    assert reach.standing >= standing.standing
+    killed = PoolInput(opening_id="killed", assertions=killed_assertions)
+    clean = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
+    result = rank_pool([killed, clean], config, top_k=1)
+    by_id = {r.opening_id: r for r in result.opening_ranks}
+
+    assert by_id["killed"].p_top_k < 0.1
 
 
-def test_non_scoring_target_excluded(config: ScoringConfig) -> None:
-    """`non_scoring:obtainability` assertions never influence standing/reach (wall 3/4),
-    even when present in the input."""
-    obtainability_assertion = _assertion(
-        "non_scoring:obtainability", "Strong", provenance="ratified"
-    )
-    without = score([], config)
-    with_obtainability = score([obtainability_assertion], config)
-
-    assert with_obtainability.standing == without.standing
-    assert with_obtainability.ceiling == without.ceiling
-    assert unexamined_targets([obtainability_assertion], config) == unexamined_targets([], config)
-
-
-def test_order_independent(config: ScoringConfig) -> None:
-    """Reordering assertions never changes the result — deterministic given a seed, so this
-    is exact equality, not "within sampling noise"."""
-    forward = score(PARTIALLY_RESEARCHED, config)
-    reversed_result = score(list(reversed(PARTIALLY_RESEARCHED)), config)
-
-    assert forward.standing == reversed_result.standing
-    assert forward.ceiling == reversed_result.ceiling
-    assert (forward.trace == reversed_result.trace).all()
-
-
-def test_ruling_override_changes_target_stats(config: ScoringConfig) -> None:
-    """`score()` accepts an optional mapping of assertion id -> overridden fit; the ruled
-    fit replaces the assertion's own `fit` when computing that target's stats, and only
-    that target's stats move."""
-    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    assert target_assertion.target == "stretch"
-
-    unruled = score(PARTIALLY_RESEARCHED, config)
-    ruled = score(PARTIALLY_RESEARCHED, config, rulings={target_assertion.id: "Poor"})
-
-    assert ruled.standing != unruled.standing
-
-
-def test_dimension_ruling_override_changes_target_stats_independent_of_assertions(
+def test_rank_pool_posterior_seam_reproduces_supplied_correlation(
     config: ScoringConfig,
 ) -> None:
-    """A `DimensionRuling` pin for a target supersedes the whole computed `_TargetStats`
-    for that target, regardless of what the underlying assertions say."""
-    unruled = score(PARTIALLY_RESEARCHED, config)
-    # PARTIALLY_RESEARCHED's stretch assertion is Strong/ratified — pin it to the worst
-    # possible fit with maximum stated conviction (should pull standing down sharply).
-    pin = DimensionRuling(
-        opening_id="opening-1", target="stretch", mean=-1.0, settledness=1.0, created_at=_NOW
-    )
+    """With no comparisons a dimension draw is independent (diagonal covariance); this
+    exercises the `DimensionPosterior` seam by supplying a fitted posterior directly."""
 
-    ruled = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
+    a = PoolInput(opening_id="a", assertions=[])
+    b = PoolInput(opening_id="b", assertions=[])
+    correlation = 0.6
+    posteriors = {
+        "stretch": DimensionPosterior(
+            opening_ids=["a", "b"],
+            means=np.array([0.0, 0.0]),
+            covariance=np.array([[1.0, correlation], [correlation, 1.0]]),
+        )
+    }
 
-    assert ruled.standing < unruled.standing
+    result = rank_pool([a, b], config, top_k=1, posteriors=posteriors)
+
+    stretch_trace = result.dimension_trace["stretch"]
+    sampled_correlation = np.corrcoef(stretch_trace[0], stretch_trace[1])[0, 1]
+    assert sampled_correlation == pytest.approx(correlation, abs=0.05)
 
 
-def test_dimension_ruling_override_ignores_assertion_level_rulings_for_same_target(
+def test_rank_pool_posterior_ignores_openings_outside_the_current_pool(
     config: ScoringConfig,
 ) -> None:
-    """A dimension pin is the aggregate judgment and supersedes assertion-level rulings
-    underneath it entirely."""
-    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    pin = DimensionRuling(
-        opening_id="opening-1", target="stretch", mean=1.0, settledness=1.0, created_at=_NOW
-    )
+    """A fitted posterior can cover an opening that has since left the pool (stage change,
+    deletion) — its row must be skipped, not indexed into a pool array that no longer has
+    a slot for it."""
+    a = PoolInput(opening_id="a", assertions=[])
+    posteriors = {
+        "stretch": DimensionPosterior(
+            opening_ids=["a", "departed"],
+            means=np.array([0.0, 0.0]),
+            covariance=np.array([[1.0, 0.0], [0.0, 1.0]]),
+        )
+    }
 
-    with_assertion_ruling_only = score(
-        PARTIALLY_RESEARCHED, config, rulings={target_assertion.id: "Poor"}
-    )
-    with_pin_and_assertion_ruling = score(
-        PARTIALLY_RESEARCHED,
-        config,
-        rulings={target_assertion.id: "Poor"},
-        dimension_rulings={"stretch": pin},
-    )
+    result = rank_pool([a], config, top_k=1, posteriors=posteriors)
 
-    assert with_pin_and_assertion_ruling.standing != with_assertion_ruling_only.standing
+    assert result.opening_ids == ["a"]
 
 
-def test_dimension_ruling_settledness_maps_to_half_width_via_config_bounds(
-    config: ScoringConfig,
-) -> None:
-    """Higher settledness narrows half_width but never reaches zero, per
-    `hw_max`/`hw_min` in `scoring.yaml`."""
-    loose = DimensionRuling(
-        opening_id="opening-1", target="stretch", mean=0.5, settledness=0.0, created_at=_NOW
-    )
-    confident = DimensionRuling(
-        opening_id="opening-1", target="stretch", mean=0.5, settledness=1.0, created_at=_NOW
-    )
+def test_rank_pool_default_posterior_is_diagonal(config: ScoringConfig) -> None:
+    """With no posterior supplied (no comparisons yet), two openings' dimension draws are
+    independent — near-zero sampled correlation."""
+    a = PoolInput(opening_id="a", assertions=[])
+    b = PoolInput(opening_id="b", assertions=[])
 
-    loose_result = score([], config, dimension_rulings={"stretch": loose})
-    confident_result = score([], config, dimension_rulings={"stretch": confident})
+    result = rank_pool([a, b], config, top_k=1)
 
-    # Same mean, tighter half_width -> the confident pin's ceiling contribution for
-    # `stretch` should be closer to its mean than the loose pin's (narrower spread).
-    assert confident_result.ceiling <= loose_result.ceiling + 1e-9
+    stretch_trace = result.dimension_trace["stretch"]
+    sampled_correlation = np.corrcoef(stretch_trace[0], stretch_trace[1])[0, 1]
+    assert abs(sampled_correlation) < 0.05
 
 
-def test_dimension_ruling_with_zero_new_assertions_matches_exact_override(
-    config: ScoringConfig,
-) -> None:
-    """A pin whose `covered_assertion_ids` already accounts for every assertion under its
-    target reproduces today's shipped exact-override contract precisely — no regression
-    from folding drift into the blend."""
-    target_assertion = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    pin = DimensionRuling(
-        opening_id="opening-1",
-        target="stretch",
-        mean=0.5,
-        settledness=0.7,
-        created_at=_NOW,
-        covered_assertion_ids=[target_assertion.id],
-    )
-    hw_max, hw_min = config.dimension_ruling_hw_max, config.dimension_ruling_hw_min
-    expected_half_width = hw_max - pin.settledness * (hw_max - hw_min)
+def test_rank_pool_posterior_mean_shift_moves_rank_order(config: ScoringConfig) -> None:
+    """The fitted mean is what a comparison is *for*: two openings with identical
+    assertions (equal priors, so assertion evidence alone can't separate them) must swap
+    rank order once a `DimensionPosterior` gives one a higher fitted mean on a
+    heavily-weighted dimension."""
+    tied = [_assertion("stretch", "Strong", "ratified")]
+    a = PoolInput(opening_id="a", assertions=tied)
+    b = PoolInput(opening_id="b", assertions=tied)
 
-    stats = stats_for_target(PARTIALLY_RESEARCHED, config, "stretch", None, {"stretch": pin})
+    baseline = rank_pool([a, b], config, top_k=1)
+    by_id = {r.opening_id: r for r in baseline.opening_ranks}
+    assert by_id["a"].expected_rank == pytest.approx(by_id["b"].expected_rank, abs=0.01)
 
-    assert stats.mean == pytest.approx(pin.mean)
-    assert stats.half_width == pytest.approx(expected_half_width)
-    assert not stats.is_unexamined
+    posteriors = {
+        "stretch": DimensionPosterior(
+            opening_ids=["a", "b"],
+            means=np.array([-0.9, 0.9]),
+            covariance=np.diag([0.05, 0.05]),
+        )
+    }
+    result = rank_pool([a, b], config, top_k=1, posteriors=posteriors)
+    by_id = {r.opening_id: r for r in result.opening_ranks}
 
-
-def test_dimension_ruling_drifts_toward_new_uncovered_assertions(
-    config: ScoringConfig,
-) -> None:
-    """A new assertion filed under a pinned target, not covered by the pin's snapshot,
-    measurably moves standing toward what that new evidence says."""
-    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    pin = DimensionRuling(
-        opening_id="opening-1",
-        target="stretch",
-        mean=1.0,
-        settledness=1.0,
-        created_at=_NOW,
-        covered_assertion_ids=[covered.id],
-    )
-    new_poor_assertion = _assertion("stretch", "Poor", "ratified")
-
-    before = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
-    after = score(
-        [*PARTIALLY_RESEARCHED, new_poor_assertion], config, dimension_rulings={"stretch": pin}
-    )
-
-    assert after.standing < before.standing
-
-
-def test_dimension_ruling_pre_existing_assertions_never_move_the_blend(
-    config: ScoringConfig,
-) -> None:
-    """Rating (confirming or overriding) an assertion already covered by the pin's
-    snapshot changes nothing — only uncovered assertions count as new evidence in the
-    blend."""
-    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    pin = DimensionRuling(
-        opening_id="opening-1",
-        target="stretch",
-        mean=1.0,
-        settledness=1.0,
-        created_at=_NOW,
-        covered_assertion_ids=[covered.id],
-    )
-
-    unrated = score(PARTIALLY_RESEARCHED, config, dimension_rulings={"stretch": pin})
-    rated_override = score(
-        PARTIALLY_RESEARCHED,
-        config,
-        rulings={covered.id: "Poor"},
-        dimension_rulings={"stretch": pin},
-    )
-
-    assert unrated.standing == rated_override.standing
-
-
-def test_dimension_ruling_large_new_weight_moves_close_to_unpinned_aggregate(
-    config: ScoringConfig,
-) -> None:
-    """Enough new weight can move a pin arbitrarily close to the plain assertion
-    aggregate — asymptotic drift, no floor."""
-    covered = PARTIALLY_RESEARCHED[0]  # stretch, Strong, ratified
-    pin = DimensionRuling(
-        opening_id="opening-1",
-        target="stretch",
-        mean=1.0,
-        settledness=1.0,
-        created_at=_NOW,
-        covered_assertion_ids=[covered.id],
-    )
-    flood = [_assertion("stretch", "Poor", "ratified") for _ in range(200)]
-
-    unpinned_aggregate = score([covered, *flood], config)
-    heavily_diluted_pin = score([covered, *flood], config, dimension_rulings={"stretch": pin})
-
-    assert abs(heavily_diluted_pin.standing - unpinned_aggregate.standing) < 0.02
+    assert by_id["b"].expected_rank < by_id["a"].expected_rank

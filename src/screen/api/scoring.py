@@ -1,64 +1,17 @@
 """Glue between the FastAPI routes and the pure Scorer (`screen.score`).
-Routes call `score_opening`, not `score()`/`resolve_favourably()` directly — the
-standing/reach recipe (S5, docs/architecture/decisions.md) lives in exactly one place,
-and this module has no I/O of its own, so it's testable against synthetic assertions
-without a database.
+
+Routes call `pool_for_screening`, not `rank_pool()` directly — the assembly of
+per-opening `PoolInput`s from stored assertions and rulings lives in exactly one
+place, and this module has no I/O of its own, so it's testable against synthetic
+assertions without a database.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from screen.score.interval import credible_interval
-from screen.score.scorer import resolve_favourably, score
-from screen.score.types import ScoreResult, ScoringConfig
-from screen.types import Assertion, AssertionRuling, DimensionRuling, Fit
-
-
-@dataclass(frozen=True)
-class OpeningScore:
-    standing: float
-    reach: float
-    ceiling: float
-    unreachable: bool
-    # Display glyph statistics for the `overall` trace: `median` is the glyph's dot,
-    # `low`/`high` its q10/q90 bar. Distinct from `standing` (`P(overall > bar)`, a
-    # single scalar with no per-draw quantile of its own) — the two live on different
-    # axes and neither is derived from the other.
-    low: float
-    median: float
-    high: float
-    # The full standing ScoreResult, not just its scalar: callers computing
-    # crossing-probability need the raw trace to compare against another opening's.
-    standing_result: ScoreResult = field(compare=False, repr=False)
-
-
-def score_opening(
-    assertions: list[Assertion],
-    config: ScoringConfig,
-    rulings: dict[str, Fit] | None = None,
-    dimension_rulings: dict[str, DimensionRuling] | None = None,
-) -> OpeningScore:
-    """Standing scores `assertions` as they exist; reach scores the counterfactual
-    where every unexamined target has one hypothetical good research pass. The pair is
-    returned together so a caller can't accidentally sort by reach (S5).
-    `rulings` (assertion id -> operator-ruled `Fit`) passes straight through to both
-    calls — an override changes what the ruled assertion says everywhere it's used,
-    including inside the reach counterfactual's real (non-hypothetical) assertions.
-    pinned target is superseded in both standing and reach."""
-    standing = score(assertions, config, rulings, dimension_rulings)
-    reach = score(resolve_favourably(assertions, config), config, rulings, dimension_rulings)
-    low, median, high = credible_interval(standing)
-    return OpeningScore(
-        standing=standing.standing,
-        reach=reach.standing,
-        ceiling=standing.ceiling,
-        unreachable=standing.unreachable,
-        low=low,
-        median=median,
-        high=high,
-        standing_result=standing,
-    )
+from screen.score.compare import Comparison, dimension_posteriors
+from screen.score.scorer import rank_pool, stats_for_target
+from screen.score.types import PoolInput, PoolScoreResult, ScoringConfig
+from screen.types import Assertion, AssertionRuling, Fit, Opening
 
 
 def latest_ruling_by_assertion(
@@ -71,9 +24,51 @@ def latest_ruling_by_assertion(
     return {ruling.assertion_id: ruling for ruling in rulings}
 
 
-def dimension_rulings_by_target(
-    rulings: list[DimensionRuling],
-) -> dict[str, DimensionRuling]:
-    """One row per `(opening_id, target)` by construction (upsert, migration 0005's
-    unique constraint) — no dedupe needed, just a lookup keyed by target."""
-    return {ruling.target: ruling for ruling in rulings}
+def _comparison_priors(
+    pool: list[PoolInput], config: ScoringConfig
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    """Every scoring dimension's assertion-derived mean/variance per opening — the prior
+    `fit_pairwise` starts from. Half-width is the Uniform(-hw, hw) support; its
+    variance-matched Gaussian counterpart is `(hw / sqrt(3))**2` (scorer.py's own
+    correlated-sampling conversion, reused here for consistency)."""
+    means: dict[str, dict[str, float]] = {}
+    variances: dict[str, dict[str, float]] = {}
+    for slug in config.dimension_weights:
+        stats = {
+            p.opening_id: stats_for_target(p.assertions, config, slug, p.rulings) for p in pool
+        }
+        means[slug] = {oid: s.mean for oid, s in stats.items()}
+        variances[slug] = {oid: (s.half_width / 3**0.5) ** 2 for oid, s in stats.items()}
+    return means, variances
+
+
+def pool_for_screening(
+    openings: list[Opening],
+    assertions_by_opening: dict[str, list[Assertion]],
+    rulings_by_opening: dict[str, dict[str, Fit]],
+    config: ScoringConfig,
+    *,
+    top_k: int | None = None,
+    comparisons_by_target: dict[str, list[Comparison]] | None = None,
+    companies_by_opening: dict[str, str] | None = None,
+) -> PoolScoreResult:
+    """Score the live screening pool jointly, pulling each opening's assertions and any
+    assertion-level rulings from the caller. `comparisons_by_target`/`companies_by_opening`
+    fit a `DimensionPosterior` per dimension
+    with a comparison or a same-company pair; every other dimension keeps its ordinary
+    assertion-derived prior, unchanged."""
+    pool = [
+        PoolInput(
+            opening_id=o.id,
+            assertions=assertions_by_opening.get(o.id, []),
+            rulings=rulings_by_opening.get(o.id) or None,
+        )
+        for o in openings
+    ]
+    posteriors = None
+    if comparisons_by_target is not None and companies_by_opening is not None:
+        means, variances = _comparison_priors(pool, config)
+        posteriors = dimension_posteriors(
+            means, variances, companies_by_opening, comparisons_by_target, config.comparison_beta
+        )
+    return rank_pool(pool, config, top_k=top_k, posteriors=posteriors)

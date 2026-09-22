@@ -1,86 +1,58 @@
-"""Pure Scorer: `(assertions, config) -> ScoreResult`. No I/O — `screen.score.loader` reads
-files; this module only takes already-loaded data structures (see domain-model.md's Scorer
-section: "the Scorer" is defined as this pure function, distinct from config loading).
+"""Pure Scorer: pool-scoped ranking over a screening pool's assertions (see
+domain-model.md's Scorer section: "the Scorer" is defined as this pure function, distinct
+from config loading; `screen.score.loader` does the I/O).
 
 Implements S1/S2/S3/S8 (docs/architecture/decisions.md): an unexamined target is a wide
 Uniform(-1, +1); a target with counted evidence shrinks toward its sample mean; provenance
 sets the effective weight of each piece of evidence, in place of the prototype's binary
-Medium/High confidence gate. Constraints use the same shrinkage math, affine-mapped from
-[-1, 1] onto their configured tolerability range instead of feeding the weighted quality sum.
+Medium/High confidence gate. Every scored target, including `location`, `internal_culture`,
+and `extractive_business`, is a dimension in the same weighted rollup — there is no
+separate constraint or multiplicative scoring path.
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
-from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import cast
 
 import numpy as np
 
-from screen.score.types import FIT_VALUES, ScoreResult, ScoringConfig
-from screen.types import Assertion, Citation, DimensionRuling, Fit, Target
-
-# Fixed, not `datetime.now()`: `resolve_favourably`'s hypothetical assertions must not read
-# the wall clock — the Scorer is stateless and deterministic given a seed (domain-model.md
-# Scorer section); a wall-clock read would break that for this one derived input.
-_HYPOTHETICAL_TIME = datetime(2026, 1, 1, tzinfo=UTC)
-
-_HYPOTHETICAL_CITATION = Citation(
-    url="hypothetical://reach-counterfactual",
-    quote="(hypothetical: the reach counterfactual assumes one favourable research pass)",
-    host="hypothetical",
-    source_provenance="hypothetical",
-    independent=False,
-    source_date=None,
+from screen.score.types import (
+    FIT_VALUES,
+    DimensionPosterior,
+    OpeningRank,
+    PoolInput,
+    PoolScoreResult,
+    ScoringConfig,
 )
+from screen.types import Assertion, Fit
 
 
 @dataclass(frozen=True)
 class TargetStats:
-    """Shrunk mean/half-width for one target (dimension or constraint), computed from its
-    assertions' provenance-weighted fit values. `n = 0` (no counted weight) is the unexamined
+    """Shrunk mean/half-width for one dimension, computed from its assertions'
+    provenance-weighted fit values. `n = 0` (no counted weight) is the unexamined
     case — `mean = 0`, `half_width = 1`, i.e. Uniform(-1, +1), from the formula itself rather
     than a special-cased branch."""
 
     n: float
     mean: float
     half_width: float
-    always_examined: bool = False
-    """True only for a `DimensionRuling` pin's stats — a pin is evidence by itself, so its
-    target is never \"unexamined\" even with zero uncovered assertions, reproducing the
-    `n=inf` override contract at zero new assertions."""
-
-    @property
-    def is_unexamined(self) -> bool:
-        return self.n == 0.0 and not self.always_examined
 
 
-def _target_stats(
+def stats_for_target(
     assertions: list[Assertion],
     config: ScoringConfig,
     target: str,
     rulings: dict[str, Fit] | None = None,
-    *,
-    prior: tuple[float, float] | None = None,
-    exclude_assertion_ids: frozenset[str] = frozenset(),
-    always_examined: bool = False,
 ) -> TargetStats:
-    """Shrinks a target's assertions toward `prior` (default `(1, 0)`, the ordinary
-    unexamined-target prior — weight 1, mean 0). A `DimensionRuling` pin supplies its own
-    `(n_pin, ruling.mean)` prior instead (`_dimension_ruling_stats`), generalizing this
-    same formula rather than replacing it.
-    `exclude_assertion_ids` removes assertions the pin already accounts for — only
-    evidence outside a pin's stamped snapshot may move it. `n` on the returned stats counts
-    only the non-prior (new) weight — `is_unexamined` must reflect uncovered evidence, not
-    the pin's own prior weight."""
-    prior_n, prior_mean = prior if prior is not None else (1.0, 0.0)
-    weighted_sum = prior_n * prior_mean
-    total_n = prior_n
+    """Shrinks a target's assertions toward the unexamined prior (weight 1, mean 0)."""
+    weighted_sum = 0.0
+    total_n = 1.0
     new_n = 0.0
     for a in assertions:
-        if a.target != target or a.id in exclude_assertion_ids:
+        if a.target != target:
             continue
         weight = config.provenance_weight[a.provenance]
         fit = rulings[a.id] if rulings is not None and a.id in rulings else a.fit
@@ -88,157 +60,151 @@ def _target_stats(
         total_n += weight
         new_n += weight
     mean = weighted_sum / total_n
-    return TargetStats(
-        n=new_n,
-        mean=mean,
-        half_width=1.0 / math.sqrt(total_n),
-        always_examined=always_examined,
-    )
+    return TargetStats(n=new_n, mean=mean, half_width=1.0 / math.sqrt(total_n))
 
 
-def _map_to_range(x: float, worst: float, best: float) -> float:
-    """Affine-map x in [-1, 1] onto [worst, best]. x=-1 -> worst, x=+1 -> best."""
-    return worst + (x + 1.0) / 2.0 * (best - worst)
-
-
-def _sample_dimension(rng: np.random.Generator, stats: TargetStats, size: int) -> np.ndarray:
-    return rng.uniform(stats.mean - stats.half_width, stats.mean + stats.half_width, size)
-
-
-def _sample_constraint(
-    rng: np.random.Generator, stats: TargetStats, worst: float, best: float, size: int
+def _sample_dimension_gaussian(
+    rng: np.random.Generator, means: np.ndarray, half_widths: np.ndarray, samples: int
 ) -> np.ndarray:
-    if stats.is_unexamined:
-        return rng.uniform(worst, best, size)
-    lo = _map_to_range(stats.mean - stats.half_width, worst, best)
-    hi = _map_to_range(stats.mean + stats.half_width, worst, best)
-    return rng.uniform(min(lo, hi), max(lo, hi), size)
+    """Independent per-opening Gaussian draws, variance-matched to the Uniform(-hw, +hw) the
+    per-opening Scorer used: `Var[Uniform(-hw, hw)] = hw^2 / 3`, so `std = hw / sqrt(3)`.
+    Shape (n_openings, samples)."""
+    stds = half_widths / math.sqrt(3.0)
+    return rng.normal(means[:, None], stds[:, None], size=(len(means), samples))
 
 
-def _dimension_ruling_stats(
-    ruling: DimensionRuling, assertions: list[Assertion], config: ScoringConfig, target: str
-) -> TargetStats:
-    """A `DimensionRuling` pin is a Bayesian prior over its target's stats, not a
-    standalone override: `settledness` maps to
-    `half_width` exactly as before, and that half_width is inverted to an equivalent
-    evidence count `n_pin = 1 / half_width^2` — the same relationship `_target_stats`'
-    default `(1, 0)` prior already has to its own `half_width = 1/sqrt(n+1)`. Assertions
-    the pin's snapshot already covers are excluded from the sum entirely (only
-    uncovered/new assertions may erode the pin); with zero new assertions this reproduces
-    today's exact override (`mean = ruling.mean`, `half_width` from settledness alone) with
-    no approximation, since `_target_stats` returns exactly `(prior_mean, 1/sqrt(prior_n))`
-    when nothing new is summed."""
-    hw_max, hw_min = config.dimension_ruling_hw_max, config.dimension_ruling_hw_min
-    hw_pin = hw_max - ruling.settledness * (hw_max - hw_min)
-    n_pin = 1.0 / hw_pin**2
-    return _target_stats(
-        assertions,
-        config,
-        target,
-        prior=(n_pin, ruling.mean),
-        exclude_assertion_ids=frozenset(ruling.covered_assertion_ids),
-        always_examined=True,
-    )
+def _sample_dimension_posterior(
+    rng: np.random.Generator, posterior_means: np.ndarray, covariance: np.ndarray, samples: int
+) -> np.ndarray:
+    """Jointly-correlated per-opening Gaussian draws from a fitted `DimensionPosterior`.
+    Shape (n_openings, samples)."""
+    return rng.multivariate_normal(posterior_means, covariance, size=samples).T
 
 
-def stats_for_target(
-    assertions: list[Assertion],
+def _sample_dimension(
+    rng: np.random.Generator,
+    opening_ids: list[str],
+    stats: dict[str, TargetStats],
+    posterior: DimensionPosterior | None,
+    samples: int,
+) -> np.ndarray:
+    """One dimension's joint draw across the whole pool. Openings named in `posterior`
+    draw jointly from its fitted mean/covariance; every other opening draws independently
+    from its own assertion-derived stats. An opening no comparison has touched keeps
+    exactly its prior."""
+    draw = np.empty((len(opening_ids), samples))
+    covered = set(posterior.opening_ids) if posterior is not None else set()
+    uncovered = [oid for oid in opening_ids if oid not in covered]
+    if uncovered:
+        means = np.array([stats[oid].mean for oid in uncovered])
+        half_widths = np.array([stats[oid].half_width for oid in uncovered])
+        uncovered_draw = _sample_dimension_gaussian(rng, means, half_widths, samples)
+        for row, oid in zip(uncovered_draw, uncovered, strict=True):
+            draw[opening_ids.index(oid)] = row
+    if posterior is not None:
+        posterior_draw = _sample_dimension_posterior(
+            rng, posterior.means, posterior.covariance, samples
+        )
+        for row, oid in zip(posterior_draw, posterior.opening_ids, strict=True):
+            if oid in opening_ids:
+                draw[opening_ids.index(oid)] = row
+    return draw
+
+
+def _opening_id_rank_key(opening_id: str) -> int:
+    """A stable, order-independent tiebreak: two openings whose sampled `overall` and
+    deterministic quality both tie (e.g. two unexamined openings) still rank consistently
+    regardless of the order they were passed in."""
+    return int.from_bytes(hashlib.sha256(opening_id.encode()).digest()[:8], "big")
+
+
+def _deterministic_quality(
+    dim_stats: dict[str, dict[str, TargetStats]],
     config: ScoringConfig,
-    target: str,
-    rulings: dict[str, Fit] | None,
-    dimension_rulings: dict[str, DimensionRuling] | None,
-) -> TargetStats:
-    """A dimension pin (if present for this target) acts as a prior over the target's
-    stats, blended with any assertions filed after the pin's snapshot. A pin still
-    supersedes per-assertion rulings on assertions it already covers."""
-    if dimension_rulings is not None and target in dimension_rulings:
-        return _dimension_ruling_stats(dimension_rulings[target], assertions, config, target)
-    return _target_stats(assertions, config, target, rulings)
-
-
-def score(
-    assertions: list[Assertion],
-    config: ScoringConfig,
-    rulings: dict[str, Fit] | None = None,
-    dimension_rulings: dict[str, DimensionRuling] | None = None,
-) -> ScoreResult:
-    """Score one assertion set. Deterministic given `config.seed` — reordering `assertions`
-    never changes the result: every target's stats are a
-    sum over its own assertions, order-independent by construction.
-
-    `rulings` is an optional assertion-id -> operator-ruled `Fit` mapping: where
-    present, the ruled fit substitutes for the assertion's
-    own `fit` when computing that target's stats. Provenance-weighting is untouched — a
-    ruling doesn't change how much an assertion counts, only what it says.
-
-    `dimension_rulings` is an optional target -> `DimensionRuling` mapping: where
-    present for a target, it replaces that target's whole
-    computed `TargetStats`, superseding `rulings` for any assertions filed against it."""
-    rng = np.random.default_rng(config.seed)
-    size = config.samples
-
-    dim_stats = {
-        slug: stats_for_target(assertions, config, slug, rulings, dimension_rulings)
-        for slug in config.dimension_weights
-    }
-    weighted = np.zeros(size)
-    for slug, weight in config.dimension_weights.items():
-        weighted += weight * _sample_dimension(rng, dim_stats[slug], size)
-    quality = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
-
-    con_stats = {
-        slug: stats_for_target(assertions, config, slug, rulings, dimension_rulings)
-        for slug in config.constraints
-    }
-    overall = quality.copy()
-    for slug, con in config.constraints.items():
-        overall *= _sample_constraint(rng, con_stats[slug], con.worst, con.best, size)
-
-    best_weighted = sum(
-        weight * (dim_stats[slug].mean + dim_stats[slug].half_width)
+    opening_id: str,
+) -> float:
+    """A tiebreak key only — the mean-weighted quality a sample-free estimate would give this
+    opening. Deterministic given the inputs, so it never reintroduces order-dependence."""
+    weighted = sum(
+        weight * dim_stats[slug][opening_id].mean
         for slug, weight in config.dimension_weights.items()
     )
-    ceiling = min((best_weighted / config.total_weight + 1.0) / 2.0, 1.0)
-    for slug, con in config.constraints.items():
-        stats = con_stats[slug]
-        factor = (
-            con.unexamined_hi
-            if stats.is_unexamined
-            else _map_to_range(min(stats.mean + stats.half_width, 1.0), con.worst, con.best)
+    return min(max((weighted / config.total_weight + 1.0) / 2.0, 0.0), 1.0)
+
+
+def rank_pool(
+    pool: list[PoolInput],
+    config: ScoringConfig,
+    *,
+    top_k: int | None = None,
+    posteriors: dict[str, DimensionPosterior] | None = None,
+) -> PoolScoreResult:
+    """Score the whole screening pool jointly: one `overall` trace per opening, sampled
+    together so a dimension's fitted cross-opening posterior is possible. Rank is a
+    property of the joint draw — computed here from the trace, on read, never a
+    per-opening scalar. `top_k` defaults to `config.top_k`; overridable for tests against
+    small synthetic pools."""
+    top_k = config.top_k if top_k is None else top_k
+    rng = np.random.default_rng(config.seed)
+    samples = config.samples
+    opening_ids = [p.opening_id for p in pool]
+    n = len(opening_ids)
+    dim_stats = {
+        slug: {p.opening_id: stats_for_target(p.assertions, config, slug, p.rulings) for p in pool}
+        for slug in config.dimension_weights
+    }
+    weighted = np.zeros((n, samples))
+    dimension_trace: dict[str, np.ndarray] = {}
+    for slug, weight in config.dimension_weights.items():
+        posterior = posteriors.get(slug) if posteriors is not None else None
+        draw = _sample_dimension(rng, opening_ids, dim_stats[slug], posterior, samples)
+        dimension_trace[slug] = draw
+        weighted += weight * draw
+    overall = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
+
+    deterministic_quality = np.array(
+        [_deterministic_quality(dim_stats, config, oid) for oid in opening_ids]
+    )
+    tiebreak_keys = np.array([_opening_id_rank_key(oid) for oid in opening_ids], dtype=np.float64)
+    tiebreak_keys /= 2.0**64  # normalize into [0, 1)
+
+    # Rank each sample (column) independently, vectorized: `overall` decides it whenever
+    # samples differ; `deterministic_quality` then `opening_id`'s hash break exact ties (e.g.
+    # two unexamined openings, or two killed by the same dimension) the same way regardless
+    # of the order openings were passed in — neither ever comes from the trace itself.
+    key = overall + deterministic_quality[:, None] * 1e-9 + tiebreak_keys[:, None] * 1e-18
+    order = np.argsort(-key, axis=0)
+    ranks = np.empty_like(order)
+    np.put_along_axis(ranks, order, np.arange(1, n + 1)[:, None], axis=0)
+    opening_ranks = [
+        OpeningRank(
+            opening_id=oid,
+            expected_rank=float(np.mean(ranks[i])),
+            p_top_k=float(np.mean(ranks[i] <= top_k)),
+            rank_q10=float(np.quantile(ranks[i], 0.10)),
+            rank_q50=float(np.quantile(ranks[i], 0.50)),
+            rank_q90=float(np.quantile(ranks[i], 0.90)),
         )
-        ceiling *= max(0.0, min(factor, 1.0))
-
-    return ScoreResult(trace=overall, bar=config.bar, ceiling=ceiling)
-
-
-def unexamined_targets(assertions: list[Assertion], config: ScoringConfig) -> list[str]:
-    """Every scoring dimension or constraint with zero effective evidence weight — the
-    targets a counterfactual reach pass would resolve."""
-    counted: dict[str, float] = defaultdict(float)
-    for a in assertions:
-        counted[a.target] += config.provenance_weight[a.provenance]
-    all_targets = list(config.dimension_weights) + list(config.constraints)
-    return [slug for slug in all_targets if counted.get(slug, 0.0) == 0.0]
-
-
-def resolve_favourably(assertions: list[Assertion], config: ScoringConfig) -> list[Assertion]:
-    """The counterfactual reach scores against: every unexamined target gets one hypothetical
-    good research pass — a `Strong`, `model_proposed` assertion (the "reach" side of the
-    standing/reach pair, domain-model.md Scorer section). Not the
-    theoretical maximum: `ScoreResult.ceiling` is already that, and it can't distinguish an
-    empty record from a well-researched one (S5 · The queue reads a standing/reach pair;
-    reach never sorts, docs/architecture/decisions.md)."""
-    targets = unexamined_targets(assertions, config)
-    hypothetical = [
-        Assertion(
-            id=f"hypothetical-{slug}",
-            target=cast(Target, slug),
-            fit="Strong",
-            provenance="model_proposed",
-            chunk="(hypothetical: one favourable research pass, reach counterfactual)",
-            citations=[_HYPOTHETICAL_CITATION],
-            created_at=_HYPOTHETICAL_TIME,
-        )
-        for slug in targets
+        for i, oid in enumerate(opening_ids)
     ]
-    return [*assertions, *hypothetical]
+
+    current_top_k_indices = [
+        opening_ids.index(r.opening_id)
+        for r in sorted(opening_ranks, key=lambda r: (-r.p_top_k, r.expected_rank, r.opening_id))[
+            :top_k
+        ]
+    ]
+    if current_top_k_indices:
+        sampled_top_k = ranks <= top_k
+        overlap = sampled_top_k[current_top_k_indices, :].sum(axis=0)
+        settledness = float(np.mean(overlap)) / len(current_top_k_indices)
+    else:
+        settledness = 1.0
+    return PoolScoreResult(
+        opening_ids=opening_ids,
+        trace=overall,
+        dimension_trace=dimension_trace,
+        top_k=top_k,
+        opening_ranks=opening_ranks,
+        settledness=settledness,
+    )

@@ -278,6 +278,32 @@ h1 .entity-opening {
   margin: 0 0 0.35rem;
 }
 
+.compare-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 1rem 0;
+}
+
+.compare-column {
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  min-width: 0;
+}
+
+.compare-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 32rem) {
+  .compare-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
 .dimension-body {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -384,10 +410,12 @@ h1 .entity-opening {
 }
 
 .boundary-median {
+  --settledness: 1;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--accent);
+  border: 0.25px solid var(--accent);
+  background: color-mix(in oklch, var(--accent) calc(var(--settledness) * 100%), transparent);
   box-shadow: 0 0 0 2px var(--paper);
 }
 
@@ -408,7 +436,7 @@ h1 .entity-opening {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1px solid var(--accent);
+  border: 0.25px solid var(--accent);
   animation: koi-ripple 900ms ease-out 1;
 }
 

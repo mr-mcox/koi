@@ -37,7 +37,6 @@ from screen.research.batch import (
     research_trace_path_for,
     run_dispatch,
 )
-from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
@@ -71,8 +70,6 @@ def persist_company_and_opening(
     url: str,
     research_trace_id: str,
     now: datetime,
-    *,
-    research_turns_budget: int,
 ) -> tuple[Company, Opening]:
     company_id = derive_company_id(identification.company_name, url)
     opening_id = derive_opening_id(identification.opening_title, url)
@@ -83,7 +80,6 @@ def persist_company_and_opening(
         title=identification.opening_title,
         url=url,
         research_trace_id=research_trace_id,
-        research_turns_budget=research_turns_budget,
         created_at=now,
     )
     upsert_company(conn, company)
@@ -165,7 +161,6 @@ def identify_research_trace(
         url,
         research_trace_id,
         datetime.now(UTC),
-        research_turns_budget=load_scoring_config().research_turns_budget,
     )
     all_assertions = extract_and_persist_assertions(
         conn, opening.id, page_content, extractor=extractor_factory()

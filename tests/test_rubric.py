@@ -1,9 +1,9 @@
 """rubric.yaml structural tests.
 Verifies that the committed rubric has a well-formed shape, does not
 contain private data, and stays in sync with the closed Target vocabulary
-in screen.types. Dimension/constraint/non-scoring membership is not pinned
-here — test_rubric_slugs_match_target_literal is the sync check; adding a
-rubric slug only requires updating screen.types alongside rubric.yaml.
+in screen.types. Dimension/non-scoring membership is not pinned here —
+test_rubric_slugs_match_target_literal is the sync check; adding a rubric
+slug only requires updating screen.types alongside rubric.yaml.
 """
 
 import typing
@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 import screen.extract.prompt as prompt_module
-from screen.extract.prompt import all_constraint_slugs, all_dimension_slugs, all_non_scoring_slugs
+from screen.extract.prompt import all_dimension_slugs, all_non_scoring_slugs
 from screen.types import Target
 
 RUBRIC_PATH = Path(__file__).resolve().parents[1] / "rubric.yaml"
@@ -47,9 +47,10 @@ def test_rubric_dimension_slugs_are_unique(rubric: dict) -> None:  # type: ignor
     assert len(slugs) == len(set(slugs)), f"duplicate dimension slugs: {slugs}"
 
 
-def test_rubric_constraint_slugs_are_unique(rubric: dict) -> None:  # type: ignore[type-arg]
-    slugs = [c["slug"] for c in rubric.get("constraints", [])]
-    assert len(slugs) == len(set(slugs)), f"duplicate constraint slugs: {slugs}"
+def test_rubric_has_no_constraints_section(rubric: dict) -> None:  # type: ignore[type-arg]
+    """Constraints retired as a target family (constraints-and-rubric.md): every scored
+    target is an ordinary weighted dimension now."""
+    assert "constraints" not in rubric
 
 
 def test_rubric_non_scoring_slugs_carry_namespace_prefix(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -81,7 +82,6 @@ def test_no_private_data_in_any_text_field(rubric: dict) -> None:  # type: ignor
 def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore[type-arg]
     """prompt.py helper functions must return the same slugs the YAML file declares."""
     assert set(all_dimension_slugs()) == {d["slug"] for d in rubric["dimensions"]}
-    assert set(all_constraint_slugs()) == {c["slug"] for c in rubric["constraints"]}
     assert set(all_non_scoring_slugs()) == {n["slug"] for n in rubric["non_scoring"]}
 
 
@@ -89,14 +89,12 @@ def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignor
     """Every slug in the rubric must appear in the closed Target Literal,
     and vice versa — the two must stay in sync. This is the drift detector for
     Wall 3 (Target is hand-listed in screen.types, not generated from the
-    rubric): it is the sole guard, so a new dimension/constraint/non-scoring
-    slug must land in both places or this fails."""
+    rubric): it is the sole guard, so a new dimension/non-scoring slug must
+    land in both places or this fails."""
     literal_values: set[str] = set(typing.get_args(Target))
-    rubric_slugs: set[str] = (
-        {d["slug"] for d in rubric["dimensions"]}
-        | {c["slug"] for c in rubric["constraints"]}
-        | {n["slug"] for n in rubric["non_scoring"]}
-    )
+    rubric_slugs: set[str] = {d["slug"] for d in rubric["dimensions"]} | {
+        n["slug"] for n in rubric["non_scoring"]
+    }
     assert literal_values == rubric_slugs, (
         f"Target Literal and rubric slugs diverged.\n"
         f"In Literal but not rubric: {literal_values - rubric_slugs}\n"
@@ -114,7 +112,6 @@ def test_rubric_text_for_baml_empty_sections_do_not_crash(
         "_load",
         lambda: {
             "dimensions": [],
-            "constraints": [],
             "non_scoring": [],
         },
     )
@@ -140,7 +137,6 @@ def test_rubric_text_for_baml_dimension_without_look_for(
                     # no look_for key
                 }
             ],
-            "constraints": [],
             "non_scoring": [],
         },
     )

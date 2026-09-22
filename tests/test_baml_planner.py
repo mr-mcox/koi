@@ -8,8 +8,6 @@ the criterion "produces correct strings for known inputs" is mechanically
 verified.
 """
 
-from datetime import UTC, datetime
-
 import pytest
 
 from screen.browser import SearchHit
@@ -18,7 +16,6 @@ from screen.research.baml_planner import (
     BAMLPlanner,
     _coerce,
     _prior_queries_text,
-    _target_uncertainty,
     last_context_text,
     rank_targets,
     select_primary_target,
@@ -27,7 +24,7 @@ from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, DimensionRuling
+from screen.types import Assertion, Citation
 
 
 class _FakeStop:
@@ -213,32 +210,6 @@ def test_prior_queries_text_joins_in_order() -> None:
     assert _prior_queries_text(state) == "Acme salary; Acme culture"
 
 
-def _ruling(target: str, settledness: float) -> DimensionRuling:
-    return DimensionRuling(
-        opening_id="op-abc",
-        target=target,
-        mean=0.0,
-        settledness=settledness,
-        created_at=datetime.now(UTC),
-    )
-
-
-def test_target_uncertainty_uses_ruling_settledness() -> None:
-    """When a DimensionRuling exists, its settledness overrides the assertion
-    half_width calculation."""
-    config = _config()
-    ruling = _ruling("stretch", settledness=0.2)
-    uncertainty = _target_uncertainty(
-        "stretch",
-        n_by_target={"stretch": 10.0},  # would be ~0.302 without ruling
-        rulings={"stretch": ruling},
-        hw_max=config.dimension_ruling_hw_max,
-        hw_min=config.dimension_ruling_hw_min,
-    )
-    expected = 1.0 - 0.2 * (1.0 - 0.05)
-    assert uncertainty == pytest.approx(expected)
-
-
 def test_rank_targets_prefers_unexamined_target() -> None:
     """An unexamined target outranks a target with one assertion."""
     config = _config()
@@ -250,33 +221,16 @@ def test_rank_targets_prefers_unexamined_target() -> None:
     assert ranked[0][0] == "compensation"
 
 
-def test_rank_targets_ruling_overrides_assertion_count() -> None:
-    """A low-settledness ruling keeps a target urgent even when many assertions
-    would otherwise shrink its half_width."""
-    config = _config()
-    assertions = [_assertion("stretch") for _ in range(10)]
-    ruling = _ruling("stretch", settledness=0.1)
-    state = _state(
-        assertions=assertions,
-        targets=["stretch"],
-        rulings={"stretch": ruling},
-    )
-    ranked = rank_targets(state, config)
-    assert ranked[0][1] == pytest.approx(1.0 - 0.1 * (1.0 - 0.05))
-
-
-def test_rank_targets_falls_back_to_assertions_and_rulings() -> None:
+def test_rank_targets_falls_back_to_assertions() -> None:
     """When `state.targets` is empty, the ranking derives targets from whatever
-    assertions and rulings exist."""
+    assertions exist."""
     config = _config()
     state = _state(
         assertions=[_assertion("stretch")],
-        rulings={"compensation": _ruling("compensation", settledness=0.5)},
         targets=[],
     )
     ranked = dict(rank_targets(state, config))
     assert "stretch" in ranked
-    assert "compensation" in ranked
 
 
 def test_select_primary_target_stays_active_until_cap() -> None:

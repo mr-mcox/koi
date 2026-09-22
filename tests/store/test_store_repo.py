@@ -8,16 +8,14 @@ from screen.store.repo import (
     append_assertions,
     assertion_rulings_for_opening,
     assertions_for_opening,
-    dimension_rulings_for_opening,
     get_company,
     get_opening,
     list_openings,
     upsert_assertion_ruling,
     upsert_company,
-    upsert_dimension_ruling,
     upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -69,7 +67,6 @@ def test_upsert_opening_then_select(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
@@ -88,7 +85,6 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
-            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -112,7 +108,6 @@ def test_assertions_for_opening_returns_empty_list_when_none_exist(tmp_path: Pat
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
-            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -145,31 +140,10 @@ def test_get_opening_returns_the_row(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
     assert get_opening(conn, "acme--eng-abc123") == opening
-
-
-def test_upsert_opening_again_bumps_research_turns_budget(tmp_path: Path) -> None:
-    """Re-upserting an existing opening with a new `research_turns_budget` replaces
-    the stored value — the mechanism a manual budget bump relies on."""
-    conn = connect(tmp_path / "screen.db")
-    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
-    opening = Opening(
-        id="acme--eng-abc123",
-        company_id="acme",
-        title="Staff Engineer",
-        url="https://example.com/jobs/1",
-        research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
-        created_at=_NOW,
-    )
-    upsert_opening(conn, opening)
-    bumped = opening.model_copy(update={"research_turns_budget": 12})
-    upsert_opening(conn, bumped)
-    assert get_opening(conn, "acme--eng-abc123") == bumped
 
 
 def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
@@ -181,7 +155,6 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=_NOW,
     )
     second = Opening(
@@ -190,7 +163,6 @@ def test_list_openings_returns_all_in_created_at_order(tmp_path: Path) -> None:
         title="Product Manager",
         url="https://example.com/jobs/2",
         research_trace_id="tx9876543210fedcba",
-        research_turns_budget=5,
         created_at=_NOW.replace(hour=13),
     )
     upsert_opening(conn, second)
@@ -212,7 +184,6 @@ def test_list_openings_filters_by_stage(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=_NOW,
     )
     applied = Opening(
@@ -221,7 +192,6 @@ def test_list_openings_filters_by_stage(tmp_path: Path) -> None:
         title="Product Manager",
         url="https://example.com/jobs/2",
         research_trace_id="tx9876543210fedcba",
-        research_turns_budget=5,
         created_at=_NOW.replace(hour=13),
         stage="applied",
     )
@@ -242,7 +212,6 @@ def test_upsert_opening_persists_stage_change(tmp_path: Path) -> None:
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=_NOW,
     )
     upsert_opening(conn, opening)
@@ -263,7 +232,6 @@ def _seed_opening_with_assertion(conn) -> Assertion:  # type: ignore[no-untyped-
             title="Staff Engineer",
             url="https://example.com/jobs/1",
             research_trace_id="tx0123456789abcdef",
-            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -314,7 +282,6 @@ def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
             title="Product Manager",
             url="https://example.com/jobs/2",
             research_trace_id="tx9876543210fedcba",
-            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -363,81 +330,4 @@ def test_upsert_assertion_ruling_replaces_prior_ruling_for_same_assertion(
     upsert_assertion_ruling(conn, second)
 
     result = assertion_rulings_for_opening(conn, "acme--eng-abc123")
-    assert result == [second]
-
-
-def test_dimension_rulings_for_opening_returns_empty_list_when_none_exist(
-    tmp_path: Path,
-) -> None:
-    conn = connect(tmp_path / "screen.db")
-    _seed_opening_with_assertion(conn)
-    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == []
-
-
-def test_upsert_dimension_ruling_then_read_back(tmp_path: Path) -> None:
-    conn = connect(tmp_path / "screen.db")
-    _seed_opening_with_assertion(conn)
-    ruling = DimensionRuling(
-        opening_id="acme--eng-abc123", target="stretch", mean=0.5, settledness=0.8, created_at=_NOW
-    )
-
-    upsert_dimension_ruling(conn, ruling)
-
-    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == [ruling]
-
-
-def test_dimension_rulings_for_opening_excludes_other_openings(tmp_path: Path) -> None:
-    conn = connect(tmp_path / "screen.db")
-    _seed_opening_with_assertion(conn)
-    upsert_opening(
-        conn,
-        Opening(
-            id="acme--pm-def456",
-            company_id="acme",
-            title="Product Manager",
-            url="https://example.com/jobs/2",
-            research_trace_id="tx9876543210fedcba",
-            research_turns_budget=5,
-            created_at=_NOW,
-        ),
-    )
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--pm-def456", target="peer", mean=-0.5, settledness=0.2, created_at=_NOW
-        ),
-    )
-
-    assert dimension_rulings_for_opening(conn, "acme--eng-abc123") == []
-
-
-def test_upsert_dimension_ruling_replaces_prior_ruling_for_same_target(
-    tmp_path: Path,
-) -> None:
-    """Re-rating the same dimension replaces the stored ruling, not appends. "Not
-    revertable" means there is no path back to unpinned — it does not mean the value is
-    frozen once set."""
-    conn = connect(tmp_path / "screen.db")
-    _seed_opening_with_assertion(conn)
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--eng-abc123",
-            target="stretch",
-            mean=-0.5,
-            settledness=0.2,
-            created_at=_NOW,
-        ),
-    )
-    second = DimensionRuling(
-        opening_id="acme--eng-abc123",
-        target="stretch",
-        mean=0.9,
-        settledness=0.7,
-        created_at=_NOW.replace(hour=13),
-    )
-
-    upsert_dimension_ruling(conn, second)
-
-    result = dimension_rulings_for_opening(conn, "acme--eng-abc123")
     assert result == [second]

@@ -83,14 +83,15 @@ half already moved *into* Stretch, so the boundary may move again.
 **Settled by:** later-stage need. If the holding area / application stages never miss it,
 it stays collect-only.
 
-## 9 · Dials: `bar` and tolerability ranges
+## 9 · Dials: `top_k` and tolerability ranges
 
-All placeholders set off eleven observations, seven synthetic. The current bar makes
-"heavy, not fatal" constraints fatal — accepted knowingly (lots of fish), and it resolves
-the moment `bar` moves.
+All placeholders set off eleven observations, seven synthetic. `bar` itself retired
+(decisions.md S9 supersedes S1/S4/S5) — rank is the only sort key now — but `top_k` (the
+competitive cutoff the rank glyph and settledness readout are computed against) and the
+constraint tolerability ranges are exactly as unmeasured as `bar` was.
 
-**Settled by:** batch ranking over a real queue. If the live section is empty or nothing
-stands above the bar, the dials move — the model's shape doesn't.
+**Settled by:** batch ranking over a real queue. If the top of the queue looks wrong to the
+operator, the dials move — the model's shape doesn't.
 
 ## 10 · Lightweight vs. heavy screening at intake
 
@@ -148,30 +149,12 @@ nothing downstream can produce or validate yet, with nothing forcing the sync.
 second rubric revision hits the same gap, that's evidence the sync should be generated
 rather than maintained by hand.
 
-## 14 · Should constraints collect a situation label instead of `Fit`?
+## 14 · SETTLED — constraints retired as a target family; no situation-label question remains
 
-The Scorer (docs/architecture/domain-model.md, Scorer section) scores constraints
-(location, internal_culture, extractive_business) by affine-mapping an assertion's `Fit`
-(Poor/Mixed/Strong) onto the constraint's `rubric.yaml`-declared tolerability range, shrunk
-toward the sample mean the same way a scoring dimension is. This works, is order-independent,
-and passes every acceptance test — but it's a translation the operator hasn't confirmed
-reads correctly. The prototype's constraint model read a discrete *situation label* per
-constraint directly (`config.toml`'s `[constraints.location.situations]`, e.g.
-"different_metro" → tolerability range `[0.15, 0.95]`); `screen.types.Assertion` has no
-situation-label field, only `target`/`fit`, so today's Scorer treats a constraint's `Fit`
-as if it meant the same thing a dimension's `Fit` means — "how far the model got with a
-rented apartment 40 minutes away" doesn't obviously reduce to Poor/Mixed/Strong the way a
-dimension's evidence does.
-
-Operator's read: worth asking whether `rubric.yaml`'s constraint situations should become
-the collected vocabulary directly — a research pass proposes a situation label, not a
-`Fit`, for constraint targets — so this translation step isn't needed at all. Current
-behavior is an acceptable interim bridge, not the destination.
-
-**Settled by:** looking at real constraint assertions once a few more openings are
-researched, and judging whether `Fit`-as-situation-proxy is producing tolerability numbers
-that match the operator's own read of the constraint. If it visibly misreads a real case,
-that's the evidence to switch constraints to collecting a situation label instead of `Fit`.
+Moot: constraints-and-rubric.md retired the separate constraint scoring family (S12).
+`location`, `internal_culture`, and `extractive_business` are now ordinary `rubric.yaml`
+dimensions scored the same way every other dimension is — `Fit` is the single vocabulary
+for every scored target, so there is no tolerability-range translation left to question.
 
 ## 15 · When does migration tooling (e.g. Alembic against SQLAlchemy Core) earn its keep over hand-written SQL migrations?
 
@@ -202,3 +185,25 @@ starts) or actually missing signal once research runs.
 **Settled by:** a real case where a company clears every existing dimension acceptably but
 the operator would still pass because engineering visibly isn't strategic to the business
 — that divergence is the evidence a dimension is missing, not a guess now.
+
+## 17 · Digest-similarity / cross-opening kernel prior for comparisons — rising priority
+
+F52/F53 (pairwise-ranking scouting) named and deferred a similarity prior: replace a
+dimension's diagonal covariance with a kernel over digest embeddings, so a comparison
+outcome on one opening lifts a similar opening's posterior too, instead of every opening
+needing its own direct comparisons. Deferred as "may never need it" when first raised.
+The operator has now raised the same idea unprompted three times within a few weeks
+(most recently while reviewing why the compare picker kept re-asking about `location`
+across many structurally similar remote postings) — recurrence, not new information, is
+what's escalating this; nothing has yet demonstrated the diagonal-covariance model is
+insufficient.
+
+Decisions W5 ("precedent retrieves and shows; it never decides") applies once this is
+built: a similarity prior moves scores automatically, so it needs a decisions.md entry
+placing it on S8's `precedent_matched` rung rather than auto-closing a judgment.
+
+**Settled by:** either (a) the operator's recurring mention becomes a concrete complaint
+— a specific pair the picker asked about that a similarity prior would have skipped — which
+is the trigger to build it, or (b) three mentions without a concrete case is itself
+enough signal to schedule it as the next bearing regardless. Whichever comes first should
+be the one written down when this is picked up, not re-litigated from scratch.

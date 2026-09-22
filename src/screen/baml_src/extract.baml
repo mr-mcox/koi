@@ -18,7 +18,7 @@ class Citation {
 }
 
 class Assertion {
-  target string @description("The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, constraint slugs, or 'non_scoring:obtainability'. See the rubric text for the complete closed vocabulary.")
+  target string @description("The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or 'non_scoring:obtainability'. See the rubric text for the complete closed vocabulary.")
   fit string @description("Poor, Mixed, or Strong — the claim's polarity in rubric vocabulary. Do not emit numeric scores.")
   provenance string @description("Always 'model_proposed' for assertions produced by this function.")
   chunk string @description("The verbatim span from the page content that grounded this claim. Must be non-empty.")
@@ -41,7 +41,7 @@ function ExtractAssertions(
 
     ## Rules
     - Each assertion must have a `target` from the rubric's closed slug vocabulary
-      (dimension slugs, constraint slugs, or `non_scoring:obtainability`).
+      (dimension slugs, or `non_scoring:obtainability`).
     - `fit` must be exactly one of: Poor, Mixed, Strong.
     - `provenance` must be `model_proposed`.
     - `chunk` must be a verbatim span copied from the page content below.
@@ -95,7 +95,7 @@ About You
     "#
     rubric_text #"
 Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Additional dimensions: location (weight 6), internal_culture (weight 4), extractive_business (weight 4).
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#

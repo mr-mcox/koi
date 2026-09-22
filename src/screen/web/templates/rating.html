@@ -18,15 +18,5 @@
     <span class="entity-opening" style="--accent-hue: {{ opening_hue }};">{{ opening.title }}</span>
   </h1>
   {% include "_rating_content.html" %}
-  {% if contested and next_contested_id %}
-  <p><a class="next-contested" href="/openings/{{ next_contested_id }}/contested">Next contested opening</a></p>
-  {% elif contested %}
-  <p><a class="back-to-queue" href="/">Back to queue</a></p>
-  {% elif focus and next_opening_id %}
-  <p><a class="next-opening" href="/openings/{{ next_opening_id }}/focus">Next opening</a></p>
-  {% elif focus %}
-  <p><a class="back-to-queue" href="/">Back to queue</a></p>
-  {% else %}
   <p><a href="/">Back to queue</a></p>
-  {% endif %}
 {% endblock %}

@@ -8,14 +8,15 @@ convert to this shape via `dict(row)`.
 
 import json
 from datetime import datetime
+from typing import Any, cast
 
 from screen.types import (
     Assertion,
     AssertionRuling,
     Citation,
     Company,
+    Comparison,
     DimensionDigest,
-    DimensionRuling,
     IntakeQueueItem,
     Opening,
 )
@@ -44,7 +45,6 @@ def opening_to_row(opening: Opening) -> dict[str, object]:
         "title": opening.title,
         "url": opening.url,
         "research_trace_id": opening.research_trace_id,
-        "research_turns_budget": opening.research_turns_budget,
         "created_at": opening.created_at.isoformat(),
         "stage": opening.stage,
     }
@@ -58,7 +58,6 @@ def opening_from_row(row: dict[str, object]) -> Opening:
             "title": str(row["title"]),
             "url": str(row["url"]),
             "research_trace_id": str(row["research_trace_id"]),
-            "research_turns_budget": int(str(row["research_turns_budget"])),
             "created_at": datetime.fromisoformat(str(row["created_at"])),
             "stage": row.get("stage", "screening"),
         }
@@ -135,28 +134,32 @@ def dimension_digest_from_row(row: dict[str, object]) -> DimensionDigest:
     )
 
 
-def dimension_ruling_to_row(ruling: DimensionRuling) -> dict[str, object]:
+def comparison_to_row(comparison: Comparison) -> dict[str, object]:
     return {
-        "id": ruling.id,
-        "opening_id": ruling.opening_id,
-        "target": ruling.target,
-        "mean": ruling.mean,
-        "settledness": ruling.settledness,
-        "created_at": ruling.created_at.isoformat(),
-        "covered_assertion_ids": json.dumps(ruling.covered_assertion_ids),
+        "id": comparison.id,
+        "opening_a_id": comparison.opening_a_id,
+        "opening_b_id": comparison.opening_b_id,
+        "target": comparison.target,
+        "outcome": comparison.outcome,
+        "predicted_a_beats_b": comparison.predicted_a_beats_b,
+        "opening_a_digest_version": comparison.opening_a_digest_version,
+        "opening_b_digest_version": comparison.opening_b_digest_version,
+        "created_at": comparison.created_at.isoformat(),
     }
 
 
-def dimension_ruling_from_row(row: dict[str, object]) -> DimensionRuling:
-    return DimensionRuling.model_validate(
+def comparison_from_row(row: dict[str, object]) -> Comparison:
+    return Comparison.model_validate(
         {
             "id": str(row["id"]),
-            "opening_id": str(row["opening_id"]),
+            "opening_a_id": str(row["opening_a_id"]),
+            "opening_b_id": str(row["opening_b_id"]),
             "target": row["target"],
-            "mean": float(str(row["mean"])),
-            "settledness": float(str(row["settledness"])),
+            "outcome": row["outcome"],
+            "predicted_a_beats_b": float(cast(Any, row["predicted_a_beats_b"])),
+            "opening_a_digest_version": row["opening_a_digest_version"],
+            "opening_b_digest_version": row["opening_b_digest_version"],
             "created_at": datetime.fromisoformat(str(row["created_at"])),
-            "covered_assertion_ids": json.loads(str(row.get("covered_assertion_ids", "[]"))),
         }
     )
 

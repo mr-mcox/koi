@@ -27,7 +27,7 @@ class StreamState(BaseModel, typing.Generic[StreamStateValueT]):
 # #########################################################################
 
 class Assertion(BaseModel):
-    target: typing.Optional[str] = Field(default=None, description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, constraint slugs, or \'non_scoring:obtainability\'. See the rubric text for the complete closed vocabulary.')
+    target: typing.Optional[str] = Field(default=None, description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or \'non_scoring:obtainability\'. See the rubric text for the complete closed vocabulary.')
     fit: typing.Optional[str] = Field(default=None, description='Poor, Mixed, or Strong — the claim\'s polarity in rubric vocabulary. Do not emit numeric scores.')
     provenance: typing.Optional[str] = Field(default=None, description='Always \'model_proposed\' for assertions produced by this function.')
     chunk: typing.Optional[str] = Field(default=None, description='The verbatim span from the page content that grounded this claim. Must be non-empty.')

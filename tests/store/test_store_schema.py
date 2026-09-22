@@ -16,13 +16,11 @@ from screen.store.mappers import (
     assertion_to_row,
     company_from_row,
     company_to_row,
-    dimension_ruling_from_row,
-    dimension_ruling_to_row,
     opening_from_row,
     opening_to_row,
 )
 from screen.store.migrate import apply_migrations
-from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "src" / "screen" / "store" / "migrations"
 
@@ -66,15 +64,14 @@ def test_opening_insert_and_select_round_trips_through_the_real_schema() -> None
         title="Staff Engineer",
         url="https://example.com/jobs/1",
         research_trace_id="tx0123456789abcdef",
-        research_turns_budget=5,
         created_at=datetime.now(UTC),
     )
     conn.execute(
         """INSERT INTO openings
-               (id, company_id, title, url, research_trace_id, research_turns_budget,
+               (id, company_id, title, url, research_trace_id,
                 created_at, stage)
            VALUES
-               (:id, :company_id, :title, :url, :research_trace_id, :research_turns_budget,
+               (:id, :company_id, :title, :url, :research_trace_id,
                 :created_at, :stage)""",
         opening_to_row(opening),
     )
@@ -131,38 +128,3 @@ def test_assertion_ruling_insert_and_select_round_trips_through_the_real_schema(
         "SELECT * FROM assertion_rulings WHERE id = :id", {"id": ruling.id}
     ).fetchone()
     assert assertion_ruling_from_row(dict(fetched)) == ruling
-
-
-def test_dimension_ruling_insert_and_select_round_trips_through_the_real_schema() -> None:
-    conn = _connect()
-    conn.execute(
-        "INSERT INTO companies (id, name, created_at) VALUES ('acme', 'Acme Corp', :now)",
-        {"now": datetime.now(UTC).isoformat()},
-    )
-    conn.execute(
-        """INSERT INTO openings
-               (id, company_id, title, url, research_trace_id, research_turns_budget, created_at)
-           VALUES ('acme--eng-abc123', 'acme', 'Staff Engineer', 'https://example.com/jobs/1',
-                   'tx0123456789abcdef', 5, :now)""",
-        {"now": datetime.now(UTC).isoformat()},
-    )
-    ruling = DimensionRuling(
-        opening_id="acme--eng-abc123",
-        target="stretch",
-        mean=0.5,
-        settledness=0.8,
-        created_at=datetime.now(UTC),
-        covered_assertion_ids=["assertion-1", "assertion-2"],
-    )
-    row = dimension_ruling_to_row(ruling)
-    conn.execute(
-        """INSERT INTO dimension_rulings
-               (id, opening_id, target, mean, settledness, created_at, covered_assertion_ids)
-           VALUES (:id, :opening_id, :target, :mean, :settledness, :created_at,
-                   :covered_assertion_ids)""",
-        row,
-    )
-    fetched = conn.execute(
-        "SELECT * FROM dimension_rulings WHERE id = :id", {"id": ruling.id}
-    ).fetchone()
-    assert dimension_ruling_from_row(dict(fetched)) == ruling

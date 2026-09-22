@@ -22,9 +22,8 @@ class Company(BaseModel):
 
 
 # Pipeline stage (domain-model.md §Opening): deliberately thin, four terminal-ish
-# buckets, no sub-typing. `screening` is the only stage that ranks or gets
-# research budget; the other three exist purely to leave the live queue while
-# staying retrievable.
+# buckets, no sub-typing. `screening` is the only stage that ranks; the other three
+# exist purely to leave the live queue while staying retrievable.
 Stage = Literal["screening", "pursuing", "applied", "closed"]
 
 
@@ -36,7 +35,6 @@ class Opening(BaseModel):
     title: Annotated[str, Field(min_length=1)]
     url: Annotated[str, Field(min_length=1)]
     research_trace_id: Annotated[str, Field(min_length=1)]
-    research_turns_budget: Annotated[int, Field(ge=0)]
     created_at: Annotated[datetime, Field()]
     stage: Stage = "screening"
 
@@ -73,7 +71,9 @@ class IdentificationResult(BaseModel):
 # Assertion and supporting types
 # ---------------------------------------------------------------------------
 
-# Scoring dimension slugs (domain-model.md §Scored dimensions)
+# Scoring dimension slugs (domain-model.md §Scored dimensions). Every slug here is
+# an ordinary weighted dimension — there is no separate constraint or multiplicative
+# scoring path.
 _SCORING_TARGETS = [
     "stretch",
     "schematic",
@@ -83,10 +83,6 @@ _SCORING_TARGETS = [
     "agentic",
     "compensation",
     "domain",
-]
-
-# Constraint slugs (domain-model.md §Constraints)
-_CONSTRAINT_TARGETS = [
     "location",
     "internal_culture",
     "extractive_business",
@@ -155,7 +151,7 @@ class Citation(BaseModel):
 class Assertion(BaseModel):
     """One typed, source-cited claim about a company or opening.
 
-    `target` is the rubric dimension, constraint slug, or non-scoring
+    `target` is the rubric dimension, or non-scoring
     target the claim pertains to. `fit` is the claim's polarity in
     rubric vocabulary. `chunk` is the verbatim page span the extractor
     drew the claim from. `citations` is always non-empty — every
@@ -179,7 +175,7 @@ class Assertion(BaseModel):
 class AssertionRuling(BaseModel):
     """An operator's confirm/override verdict on one `Assertion`.
 
-    Sibling to `Assertion`, not a scoped union with a future `DimensionRuling` —
+    Sibling to `Assertion`, not a scoped union with a dimension-level placement —
     assertion-level override ("was this claim right?") and dimension-level
     placement ("where does this dimension land?") are different author-intents
     with different payload shapes (domain-model.md §Ruling). `fit` reuses the
@@ -194,43 +190,6 @@ class AssertionRuling(BaseModel):
     assertion_id: Annotated[str, Field(min_length=1)]
     fit: Fit
     created_at: Annotated[datetime, Field()]
-
-
-class DimensionRuling(BaseModel):
-    """The operator's own continuous placement for one dimension/opening: "given
-    everything, where am I on this?" (domain-model.md §Ruling) — a non-arithmetic
-    squish over the assertions and rulings underneath, not a formula computed off
-    them. Sibling to `AssertionRuling`, not a shared type with a scope field:
-    assertion-level rating is a categorical confirm/override, this is a continuous
-    placement, and the two are different author-intents with different payload
-    shapes.
-
-    `mean` is the operator's stated fit, `[-1, 1]`, same scale `Assertion.fit`
-    maps onto (`FIT_VALUES`). `settledness` is stated *conviction*, `[0, 1]` —
-    0 is a loose opinion, 1 is the operator's strongest stated confidence, which
-    still carries some spread (the operator may be noisy; the system may not
-    manufacture a point estimate). The Scorer derives `half_width` from
-    `settledness` via configured bounds (`hw_max`/`hw_min` in `scoring.yaml`),
-    not stored here — this type carries only what the operator actually stated.
-
-    Pins are not revertable: no delete path exists; resubmission upserts by
-    `(opening_id, target)`, same pattern as `AssertionRuling`'s re-rating.
-
-    `covered_assertion_ids` snapshots the target's assertion ids at ruling time — the
-    exact partition between the evidence the operator ruled on and anything filed after. Defaults to `[]` for
-    rulings predating this field; the drift backfill migration populates it for
-    existing rows.
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
-    opening_id: Annotated[str, Field(min_length=1)]
-    target: Target
-    mean: Annotated[float, Field(ge=-1.0, le=1.0)]
-    settledness: Annotated[float, Field(ge=0.0, le=1.0)]
-    created_at: Annotated[datetime, Field()]
-    covered_assertion_ids: Annotated[list[str], Field(default_factory=list)]
 
 
 class DimensionDigest(BaseModel):
@@ -250,3 +209,26 @@ class DimensionDigest(BaseModel):
     digest: Annotated[str, Field(min_length=1)]
     assertion_count: Annotated[int, Field(ge=0)]
     computed_at: Annotated[datetime, Field()]
+
+
+ComparisonOutcome = Literal["a", "b", "tie"]
+
+
+class Comparison(BaseModel):
+    """One operator judgment between two openings on a single dimension. Append-only: every
+    judgment is kept, not just the latest — the batch fit reads the latest per (unordered
+    pair, dimension), the calibration log keeps them all regardless.
+    `opening_a_digest_version`/`opening_b_digest_version` identify the digest versions shown
+    at judgment time once `dimension_digests` becomes append-only; until then both are `None`."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
+    opening_a_id: Annotated[str, Field(min_length=1)]
+    opening_b_id: Annotated[str, Field(min_length=1)]
+    target: Target
+    outcome: ComparisonOutcome
+    predicted_a_beats_b: Annotated[float, Field(ge=0.0, le=1.0)]
+    opening_a_digest_version: str | None = None
+    opening_b_digest_version: str | None = None
+    created_at: Annotated[datetime, Field()]

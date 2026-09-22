@@ -27,18 +27,6 @@ def _render_dimensions(data: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _render_constraints(data: dict[str, Any]) -> list[str]:
-    lines: list[str] = ["\n## Constraints (tolerability discounts)"]
-    for con in data.get("constraints", []):
-        lines.append(f"\n### {con['label']} (slug: {con['slug']})")
-        lines.append(con["definition"].strip())
-        lines.append("Situations:")
-        for sit in con.get("situations", []):
-            note = f" - {sit['notes'].strip()}" if sit.get("notes") else ""
-            lines.append(f"  [{sit['tolerability']}] {sit['label']}{note}")
-    return lines
-
-
 def _render_non_scoring(data: dict[str, Any]) -> list[str]:
     lines: list[str] = ["\n## Non-scoring targets"]
     for ns in data.get("non_scoring", []):
@@ -49,14 +37,12 @@ def _render_non_scoring(data: dict[str, Any]) -> list[str]:
 def rubric_text_for_baml() -> str:
     """Render all rubric sections into a flat text block for BAML prompt injection.
 
-    Dimensions, constraints, and non-scoring targets are all included so the
-    model has the closed vocabulary and fit anchors without needing to see
-    the YAML structure.
+    Dimensions and non-scoring targets are all included so the model has the
+    closed vocabulary and fit anchors without needing to see the YAML structure.
     """
     data = _load()
     parts: list[list[str]] = [
         _render_dimensions(data),
-        _render_constraints(data),
         _render_non_scoring(data),
     ]
     return "\n".join(line for section in parts for line in section)
@@ -64,10 +50,6 @@ def rubric_text_for_baml() -> str:
 
 def all_dimension_slugs() -> list[str]:
     return [d["slug"] for d in _load().get("dimensions", [])]
-
-
-def all_constraint_slugs() -> list[str]:
-    return [c["slug"] for c in _load().get("constraints", [])]
 
 
 def all_non_scoring_slugs() -> list[str]:

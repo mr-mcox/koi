@@ -17,7 +17,7 @@ from screen.research.actions import Action, FetchAction, SearchAction, StopActio
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, DimensionRuling, Provenance
+from screen.types import Assertion, Provenance
 
 
 def _prior_queries_text(state: LoopState) -> str:
@@ -73,26 +73,9 @@ def _target_uncertainty(
     target: str,
     *,
     n_by_target: dict[str, float],
-    rulings: dict[str, DimensionRuling],
-    hw_max: float,
-    hw_min: float,
 ) -> float:
-    """Composite uncertainty for one target.
-
-    If the operator has pinned a `DimensionRuling` for this target, the
-    operator's stated settledness drives the signal: low settledness means
-    high uncertainty (dig here), high settledness means low uncertainty
-    (leave it). For targets without a ruling, fall back to assertion-derived
-    half-width from the provenance-weighted count.
-
-    The two signals are never averaged; the operator pin overrides the
-    assertion count when present, matching the wall that models do not
-    manufacture or update rulings.
-    """
-    ruling = rulings.get(target)
-    if ruling is not None:
-        settledness = getattr(ruling, "settledness", 0.0)
-        return hw_max - settledness * (hw_max - hw_min)
+    """Composite uncertainty for one target: assertion-derived half-width from the
+    provenance-weighted count. An unexamined target (n=0) is maximally uncertain."""
     n = n_by_target.get(target, 0.0)
     return 1.0 / math.sqrt(n + 1.0)
 
@@ -103,16 +86,9 @@ def rank_targets(state: LoopState, config: ScoringConfig) -> list[tuple[str, flo
     Ties are broken by target slug for deterministic ordering.
     """
     n_by_target = _assertion_weight_by_target(state.assertions, config.provenance_weight)
-    targets = state.targets or list(dict.fromkeys(list(n_by_target) + list(state.rulings)))
+    targets = state.targets or list(n_by_target)
     uncertainties = {
-        target: _target_uncertainty(
-            target,
-            n_by_target=n_by_target,
-            rulings=state.rulings,
-            hw_max=config.dimension_ruling_hw_max,
-            hw_min=config.dimension_ruling_hw_min,
-        )
-        for target in targets
+        target: _target_uncertainty(target, n_by_target=n_by_target) for target in targets
     }
     return sorted(uncertainties.items(), key=lambda item: (-item[1], item[0]))
 

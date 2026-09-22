@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_assertion_item.html" import assertion_item %}
+{% block title %}Compare{% endblock %}
+{% block content %}
+  <h1>Compare</h1>
+  {% if group_left and group_right %}
+  <div class="compare-preview">
+    <section class="dimension-group compare-column">
+      <h3 class="dimension-title">{{ target }}</h3>
+      <p class="digest">{{ group_left.digest|render_digest_html }}</p>
+      {% if group_left.assertions %}
+      <ul class="assertions">
+        {% for assertion in group_left.assertions %}
+        {{ assertion_item(assertion, rulings_left, fit_values, opening_left, collapsed=True, redirect_url=redirect_url) }}
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+    <section class="dimension-group compare-column">
+      <h3 class="dimension-title">{{ target }}</h3>
+      <p class="digest">{{ group_right.digest|render_digest_html }}</p>
+      {% if group_right.assertions %}
+      <ul class="assertions">
+        {% for assertion in group_right.assertions %}
+        {{ assertion_item(assertion, rulings_right, fit_values, opening_right, collapsed=True, redirect_url=redirect_url) }}
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </div>
+  <form class="compare-actions" method="post" action="/compare">
+    <input type="hidden" name="opening_a_id" value="{{ opening_a_id }}">
+    <input type="hidden" name="opening_b_id" value="{{ opening_b_id }}">
+    <input type="hidden" name="target" value="{{ target }}">
+    <button type="submit" name="outcome" value="{{ outcome_left }}">Left wins</button>
+    <button type="submit" name="outcome" value="tie">Tie</button>
+    <button type="submit" name="outcome" value="{{ outcome_right }}">Right wins</button>
+  </form>
+  {% else %}
+  <p class="compare-note">Nothing to compare right now.</p>
+  {% endif %}
+  <p><a href="/">Back to queue</a></p>
+{% endblock %}

@@ -11,8 +11,6 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
-from uuid import uuid4
 
 import httpx
 import pytest
@@ -23,22 +21,21 @@ from fastapi.testclient import TestClient
 from screen.api.app import create_app
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
+from screen.intake.research_trace_replay import replay_research_trace
 from screen.research.actions import SearchAction, StopAction
-from screen.research.batch import BatchEngine, RunDispatchDeps, opening_research_status
+from screen.research.batch import BatchEngine, RunDispatchDeps, research_trace_path_for
 from screen.research.fakes import FakeBrowser
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.mappers import assertion_ruling_to_row
 from screen.store.repo import (
     append_assertions,
+    append_comparison,
     assertion_rulings_for_opening,
     assertions_for_opening,
-    dimension_rulings_for_opening,
     get_opening,
-    upsert_assertion_ruling,
     upsert_company,
     upsert_dimension_digest,
-    upsert_dimension_ruling,
     upsert_opening,
 )
 from screen.types import (
@@ -46,10 +43,9 @@ from screen.types import (
     AssertionRuling,
     Citation,
     Company,
-    DimensionRuling,
+    Comparison,
     Fit,
     Opening,
-    Provenance,
     Target,
 )
 
@@ -96,7 +92,6 @@ def _seed_opening(
             title=f"{opening_id} title",
             url=f"https://example.com/{opening_id}",
             research_trace_id=f"tx-{opening_id}",
-            research_turns_budget=5,
             created_at=_NOW,
             stage=stage,  # type: ignore[arg-type]
         ),
@@ -137,17 +132,6 @@ def _boundary_glyph_positions(text: str) -> tuple[float, float, float]:
         float(range_m.group(1)) / 100,
         1 - float(range_m.group(2)) / 100,
     )
-
-
-def _focus_snapshot_fields(body: str) -> dict[str, str]:
-    """Extract the two hidden `focus_snapshot_*` fields the focused view echoes into
-    every ruling-form, so a test can simulate what a real HTMX submit carries forward —
-    the stable task set relies on the client round-tripping these."""
-    fields = {}
-    for name in ("focus_snapshot_assertion_ids", "focus_snapshot_dimension_targets"):
-        match = re.search(rf'name="{name}" value="([^"]*)"', body)
-        fields[name] = match.group(1) if match else ""
-    return fields
 
 
 def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Path) -> None:
@@ -201,9 +185,7 @@ def test_index_renders_queue_html(client: TestClient, db_path: Path) -> None:
 def test_index_order_matches_json_queue(client: TestClient, db_path: Path) -> None:
     """The HTML queue renders in the same standing order as `GET /queue`."""
     config = load_scoring_config()
-    strong = [
-        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
-    ]
+    strong = [_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
     _seed_opening(db_path, company_id="acme", opening_id="acme--strong", assertions=strong)
     _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
 
@@ -236,7 +218,7 @@ def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path
             citations=[_CITATION],
             created_at=_NOW,
         )
-        for slug in (*config.dimension_weights, *config.constraints)
+        for slug in (*config.dimension_weights,)
     ]
     _seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=poor_assertions)
     _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
@@ -264,6 +246,399 @@ def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path
     assert json_ids == ["acme--ruled", "widgets--unexamined"]
 
 
+def test_index_queue_reorders_after_comparison(client: TestClient, db_path: Path) -> None:
+    """A stored comparison must reach the same `_ranked_pool` the HTML queue and JSON
+    `/queue` both render from — the wiring `pool_for_screening`'s comparison args
+    depend on (`comparisons_by_target`/`companies_by_opening`), not just the pure fit."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    before = client.get("/")
+    assert before.status_code == 200
+
+    conn = connect(db_path)
+    for _ in range(3):
+        append_comparison(
+            conn,
+            Comparison(
+                opening_a_id="widgets--b",
+                opening_b_id="acme--a",
+                target="stretch",
+                outcome="a",
+                predicted_a_beats_b=0.5,
+                created_at=_NOW,
+            ),
+        )
+    conn.close()
+
+    after = client.get("/")
+    assert after.status_code == 200
+    assert after.text.find("widgets--b") < after.text.find("acme--a")
+
+    json_response = client.get("/queue")
+    assert json_response.status_code == 200
+    json_ids = [item["opening_id"] for item in json_response.json()]
+    assert json_ids == ["widgets--b", "acme--a"]
+
+
+def test_compare_page_reachable_from_queue_and_submits_winner(
+    client: TestClient, db_path: Path
+) -> None:
+    """The operator can pick any two openings and a scoring dimension, submit that A
+    beats B, and the queue immediately reorders through the same comparison-fitted
+    pool. The stored comparison row carries the pre-comparison probability computed
+    from assertion priors."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    queue = client.get("/")
+    assert queue.status_code == 200
+    assert 'href="/compare"' in queue.text
+
+    get_response = client.get("/compare")
+    assert get_response.status_code == 200
+    assert "stretch" in get_response.text
+    assert 'class="compare-column-title"' not in get_response.text
+
+    post_response = client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "stretch",
+            "outcome": "a",
+        },
+        follow_redirects=False,
+    )
+    assert post_response.status_code == 303
+    assert post_response.headers["location"] == "/compare"
+
+    conn = connect(db_path)
+    rows = conn.execute(
+        "SELECT opening_a_id, opening_b_id, target, outcome, predicted_a_beats_b FROM comparisons"
+    ).fetchall()
+    conn.close()
+    assert len(rows) == 1
+    assert dict(rows[0]) == {
+        "opening_a_id": "acme--a",
+        "opening_b_id": "widgets--b",
+        "target": "stretch",
+        "outcome": "a",
+        "predicted_a_beats_b": pytest.approx(0.5),
+    }
+
+    after = client.get("/")
+    assert after.status_code == 200
+    assert after.text.find("acme--a") < after.text.find("widgets--b")
+
+    json_response = client.get("/queue")
+    assert json_response.status_code == 200
+    assert [item["opening_id"] for item in json_response.json()] == ["acme--a", "widgets--b"]
+
+
+def test_compare_page_previews_target_digests(client: TestClient, db_path: Path) -> None:
+    """Pre-populating the compare form with query parameters renders the side-by-side
+    dimension digests, with each side's assertions collapsed by default (as in the prior
+    contested-review view) and editable in place — the compare page is one of the primary
+    places rulings get set, not just declared."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "stretch",
+        },
+    )
+    assert response.status_code == 200
+    assert "Synthetic digest" in response.text
+    # The preview is blind to which openings are being compared: no company or opening
+    # title is rendered (only the hidden form fields carry the ids for submission).
+    assert 'class="compare-column-title"' not in response.text
+    assert "acme--a title" not in response.text
+    assert "widgets--b title" not in response.text
+    # Assertions are collapsed by default, one <details> per side.
+    assert response.text.count('<details class="assertion-context">') == 2
+    assert response.text.count("assertion-snippet") == 2
+    assert response.text.count("fit-indicator") == 2
+    assert response.text.count("<blockquote>verbatim source text</blockquote>") == 2
+    assert response.text.count('href="https://example.com/note"') == 2
+    # Rulings are editable in place: a plain (non-htmx) form redirecting back to this
+    # same comparison, not the rating page's HTMX partial swap.
+    assert response.text.count('class="ruling-form"') == 2
+    assert "hx-post" not in response.text
+    redirect_url = "/compare?opening_a_id=acme--a&amp;opening_b_id=widgets--b&amp;target=stretch"
+    assert response.text.count(f'name="redirect_to" value="{redirect_url}"') == 2
+
+
+def test_compare_page_rejects_invalid_pair(client: TestClient, db_path: Path) -> None:
+    """The compare GET rejects a pair that is missing, identical, or unknown."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    missing = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "no-such-opening",
+            "target": "stretch",
+        },
+    )
+    assert missing.status_code == 400
+
+    same = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "acme--a",
+            "target": "stretch",
+        },
+    )
+    assert same.status_code == 400
+
+
+def test_compare_form_uses_get_show_and_post_outcome_buttons(
+    client: TestClient, db_path: Path
+) -> None:
+    """There is no selection UI: visiting `/compare` with no parameters auto-suggests a
+    pair/dimension and renders the preview immediately, ready to judge."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    auto = client.get("/compare")
+    assert auto.status_code == 200
+    assert '<form class="compare-form"' not in auto.text
+    assert "Suggested comparison" not in auto.text
+    assert 'class="compare-column-title"' not in auto.text
+    assert "stretch" in auto.text
+    assert auto.text.count('<form class="compare-actions" method="post" action="/compare">') == 1
+    assert "Left wins" in auto.text
+    assert "Right wins" in auto.text
+    preview = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "stretch",
+        },
+    )
+    assert preview.status_code == 200
+    assert preview.text.count('<form class="compare-actions" method="post" action="/compare">') == 1
+    assert "Left wins" in preview.text
+    assert "Right wins" in preview.text
+
+
+def test_compare_blank_form_when_no_suggestion(client: TestClient, db_path: Path) -> None:
+    """When the picker cannot find a pair to compare, `/compare` renders an empty state
+    instead of a preview."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    response = client.get("/compare")
+    assert response.status_code == 200
+    assert '<form class="compare-form"' not in response.text
+    assert "Nothing to compare right now." in response.text
+    assert "Left wins" not in response.text
+    assert "Right wins" not in response.text
+
+
+def test_compare_page_display_order_is_not_always_a_on_the_left(
+    client: TestClient, db_path: Path
+) -> None:
+    """Which opening renders on the left is a deterministic function of the pair and
+    dimension, not always the opening passed as `opening_a_id` — so position alone
+    doesn't tell the operator which one is "A". Submitting a side's outcome still
+    records the correct underlying opening."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("schematic", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("schematic", "Strong")],
+    )
+
+    preview = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "schematic",
+        },
+    )
+    assert preview.status_code == 200
+    # For this pair/dimension the deterministic swap puts B on the left — the operator
+    # never sees which underlying opening that is; the outcome button's value carries it.
+    assert '<button type="submit" name="outcome" value="b">Left wins</button>' in preview.text
+    assert '<button type="submit" name="outcome" value="a">Right wins</button>' in preview.text
+
+    post_response = client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "schematic",
+            "outcome": "b",  # "Left wins" button's value for this swapped pair
+        },
+        follow_redirects=False,
+    )
+    assert post_response.status_code == 303
+
+    conn = connect(db_path)
+    rows = conn.execute("SELECT outcome FROM comparisons").fetchall()
+    conn.close()
+    assert dict(rows[0])["outcome"] == "b"
+
+
+def test_compare_page_ruling_edit_redirects_back_to_same_comparison(
+    client: TestClient, db_path: Path
+) -> None:
+    """Setting an assertion's fit from the compare page redirects back to the same
+    comparison (not the rating page's HTMX partial), and the updated fit is reflected
+    on reload — the compare page is a primary place rulings get set."""
+    assertion = _assertion("stretch", "Mixed")
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[assertion],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+
+    response = client.post(
+        f"/openings/acme--a/assertions/{assertion.id}/ruling",
+        data={
+            "fit": "Strong",
+            "redirect_to": "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=stretch",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=stretch"
+    )
+
+    after = client.get(response.headers["location"])
+    assert after.status_code == 200
+    assert after.text.count('class="fit-segment fit-strong active"') == 4
+
+
+@pytest.mark.parametrize(
+    "field,value,expected_status",
+    [
+        ("target", "not-a-target", 400),
+        ("opening_a_id", "no-such-opening", 404),
+        ("opening_b_id", "no-such-opening", 404),
+        ("outcome", "not-an-outcome", 400),
+    ],
+)
+def test_submit_comparison_rejects_bad_input(
+    client: TestClient,
+    db_path: Path,
+    field: str,
+    value: str,
+    expected_status: int,
+) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    data = {
+        "opening_a_id": "acme--a",
+        "opening_b_id": "widgets--b",
+        "target": "stretch",
+        "outcome": "a",
+    }
+    data[field] = value
+    response = client.post("/compare", data=data, follow_redirects=False)
+    assert response.status_code == expected_status
+
+
+def test_submit_comparison_rejects_same_opening(client: TestClient, db_path: Path) -> None:
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("stretch", "Strong")],
+    )
+    response = client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "acme--a",
+            "target": "stretch",
+            "outcome": "a",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+
+
 def test_index_empty_queue_renders(client: TestClient) -> None:
     """An empty queue still returns a valid HTML document."""
     response = client.get("/")
@@ -272,27 +647,23 @@ def test_index_empty_queue_renders(client: TestClient) -> None:
     assert "<html" in response.text
 
 
-def test_index_queue_no_raw_floats_and_renders_boundary_glyph(
+def test_index_queue_renders_median_marker_settledness_and_no_probability(
     client: TestClient, db_path: Path
 ) -> None:
-    """The queue row replaces raw standing/reach/ceiling floats with the credible-
-    interval boundary glyph (low/median/high on a fixed 0-1 `overall` axis)."""
+    """The queue row replaces raw standing/reach/ceiling floats and any decimal
+    probability with the shared boundary glyph; with fewer than `top_k` openings
+    there is no boundary yet, so the median marker renders fully settled (alpha 1)."""
     config = load_scoring_config()
-    strong = [
-        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
-    ]
+    strong = [_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
     response = client.get("/")
     assert response.status_code == 200
     body = response.text
-    score_response = client.get("/queue")
-    scores = score_response.json()
-    score = next(item for item in scores if item["opening_id"] == "acme--eng")
-    standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
-    assert f"{standing:.3f}" not in body
-    assert f"{reach:.3f}" not in body
-    assert f"{ceiling:.3f}" not in body
     assert "boundary-glyph" in body
+    assert "crossing_probability" not in body
+    assert "% chance" not in body
+    assert "rank-band" not in body
+    assert re.search(r"--settledness:\s*1\.0", body) is not None
     assert "sparkline" not in body
     assert "chip band" not in body
     for label in ("no path", "contender", "established", "capped", "wide open"):
@@ -307,53 +678,86 @@ def test_index_queue_no_raw_floats_and_renders_boundary_glyph(
     assert range_left <= median <= range_right
 
 
-def test_rate_opening_renders_assertions(client: TestClient, db_path: Path) -> None:
-    """`GET /openings/{id}/rate` is a distinct read-only rating surface."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    body = response.text
-    assert "acme Inc" in body
-    assert "acme--eng title" in body
-    assert "stretch" in body
-    assert "Strong" in body
-    assert "Back to queue" in body
-
-
-def test_rate_opening_score_block_no_raw_floats_and_renders_boundary_glyph(
+def test_index_queue_median_marker_settledness_reflects_top_k_straddle(
     client: TestClient, db_path: Path
 ) -> None:
-    """The per-opening score block replaces raw floats with the credible-interval
-    boundary glyph on the fixed 0-1 `overall` axis."""
+    """Once the pool exceeds `top_k` size, an opening near the boundary whose rank band
+    straddles it renders a partial (not full, not zero) settledness alpha."""
     config = load_scoring_config()
-    strong = [
-        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
-    ]
+    targets = (*config.dimension_weights,)
+    for i in range(config.top_k + 3):
+        fit: Fit = "Strong" if i % 2 == 0 else "Mixed"
+        _seed_opening(
+            db_path,
+            company_id=f"c{i}",
+            opening_id=f"c{i}--eng",
+            assertions=[
+                Assertion(
+                    target=slug,  # type: ignore[arg-type]
+                    fit=fit,
+                    provenance="model_proposed",
+                    chunk="verbatim source text",
+                    citations=[_CITATION],
+                    created_at=_NOW,
+                )
+                for slug in targets
+            ],
+        )
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.text
+    assert re.search(r"--settledness:\s*0\.6\b", body) is not None
+
+
+def test_index_queue_median_marker_settledness_is_zero_when_fully_outside_top_k(
+    client: TestClient, db_path: Path
+) -> None:
+    """An opening whose entire rank band sits worse than the top-K boundary renders an
+    outline-only median marker (alpha 0) and the 'outside' settledness label."""
+    config = load_scoring_config()
+    targets = (*config.dimension_weights,)
+    for i in range(config.top_k):
+        _seed_opening(
+            db_path,
+            company_id=f"c{i}",
+            opening_id=f"c{i}--eng",
+            assertions=[_assertion(slug, "Strong") for slug in targets],
+        )
+    _seed_opening(
+        db_path,
+        company_id="tail",
+        opening_id="tail--eng",
+        assertions=[_assertion(slug, "Poor") for slug in targets],
+    )
+
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.text
+    assert re.search(r"--settledness:\s*0\.0\b", body) is not None
+    assert "outside the top 5" in body
+
+
+def test_rate_opening_score_block_renders_median_marker_settledness_and_no_probability(
+    client: TestClient, db_path: Path
+) -> None:
+    """The per-opening score block replaces raw floats and any decimal probability
+    with the same boundary glyph the queue uses."""
+    config = load_scoring_config()
+    strong = [_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
     response = client.get("/openings/acme--eng/rate")
     assert response.status_code == 200
     body = response.text
-    score_response = client.get("/queue")
-    score = next(item for item in score_response.json() if item["opening_id"] == "acme--eng")
-    standing, reach, ceiling = score["standing"], score["reach"], score["ceiling"]
-    assert f"{standing:.3f}" not in body
-    assert f"{reach:.3f}" not in body
-    assert f"{ceiling:.3f}" not in body
     assert "boundary-glyph" in body
+    assert "crossing_probability" not in body
+    assert "% chance" not in body
+    assert "rank-band" not in body
+    assert "--settledness:" in body
     assert "sparkline" not in body
     assert "band-" not in body
     assert "chip band" not in body
     for label in ("no path", "contender", "established", "capped", "wide open"):
         assert label not in body
-
     median, range_left, range_right = _boundary_glyph_positions(body)
     assert range_left <= median <= range_right
 
@@ -734,9 +1138,7 @@ def test_submit_ruling_confirming_current_value_still_ratifies(
 def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> None:
     """Submitting a ruling changes the rendered standing when it flips a target's fit."""
     config = load_scoring_config()
-    strong = [
-        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
-    ]
+    strong = [_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
     stretch_assertion = next(a for a in strong if a.target == "stretch")
 
@@ -778,6 +1180,27 @@ def test_submit_ruling_404_when_opening_missing(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_submit_ruling_ignores_off_site_redirect_to(client: TestClient, db_path: Path) -> None:
+    """`redirect_to` only honors same-origin relative paths — an absolute or
+    protocol-relative URL is ignored and the usual HTMX partial is returned instead of
+    an open redirect."""
+    assertion = _assertion("stretch", "Mixed")
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--eng",
+        assertions=[assertion],
+    )
+
+    response = client.post(
+        f"/openings/acme--eng/assertions/{assertion.id}/ruling",
+        data={"fit": "Strong", "redirect_to": "//evil.example.com/"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert 'id="rating-content"' in response.text
+
+
 def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) -> None:
     assertion = _assertion("stretch", "Mixed")
     _seed_opening(
@@ -792,694 +1215,6 @@ def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) ->
     )
 
     assert response.status_code == 422
-
-
-def test_rate_opening_shows_dimension_ruling_control_per_group(
-    client: TestClient, db_path: Path
-) -> None:
-    """Each dimension group offers a single-click 2D control to submit a `(fit,
-    settledness)` pin."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    body = response.text
-    assert 'action="/openings/acme--eng/dimensions/stretch/ruling"' in body
-    assert "dimension-ruling-pad" in body
-    assert 'name="mean"' in body
-    assert 'name="settledness"' in body
-
-
-def test_rate_opening_shows_no_existing_dimension_ruling_by_default(
-    client: TestClient, db_path: Path
-) -> None:
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    assert "dimension-ruling-pin" not in response.text
-
-
-def test_rate_opening_shows_existing_dimension_ruling_distinctly(
-    client: TestClient, db_path: Path
-) -> None:
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-    conn = connect(db_path)
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--eng", target="stretch", mean=0.5, settledness=0.8, created_at=_NOW
-        ),
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    assert "dimension-ruling-pin" in response.text
-
-
-def test_rate_opening_shows_stale_border_when_pin_has_uncovered_assertions(
-    client: TestClient, db_path: Path
-) -> None:
-    """A pin whose snapshot predates an assertion filed under its target renders the
-    stale border class, distinct from a fresh pin."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-    conn = connect(db_path)
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--eng",
-            target="stretch",
-            mean=0.5,
-            settledness=0.8,
-            created_at=_NOW,
-            covered_assertion_ids=[],
-        ),
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    assert "dimension-ruling-pin-stale" in response.text
-
-
-def test_rate_opening_omits_stale_border_when_pin_covers_every_assertion(
-    client: TestClient, db_path: Path
-) -> None:
-    """A pin whose snapshot covers every assertion currently under its target is not
-    stale and does not render the stale border class."""
-    stretch = _assertion("stretch", "Strong")
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=[stretch])
-    conn = connect(db_path)
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--eng",
-            target="stretch",
-            mean=0.5,
-            settledness=0.8,
-            created_at=_NOW,
-            covered_assertion_ids=[stretch.id],
-        ),
-    )
-
-    response = client.get("/openings/acme--eng/rate")
-
-    assert "dimension-ruling-pin-stale" not in response.text
-
-
-def test_submit_dimension_ruling_writes_and_swaps_partial(
-    client: TestClient, db_path: Path
-) -> None:
-    """POSTing a dimension pin writes a `DimensionRuling` and returns the rating-content
-    partial via HTMX swap."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling",
-        data={"mean": "0.5", "settledness": "0.8"},
-    )
-
-    assert response.status_code == 200
-    assert "<html" not in response.text
-    assert 'id="rating-content"' in response.text
-    assert "dimension-ruling-pin" in response.text
-
-    conn = connect(db_path)
-    rulings = dimension_rulings_for_opening(conn, "acme--eng")
-    assert len(rulings) == 1
-    assert rulings[0].target == "stretch"
-    assert rulings[0].mean == 0.5
-    assert rulings[0].settledness == 0.8
-
-
-def test_submit_dimension_ruling_stamps_covered_assertion_ids(
-    client: TestClient, db_path: Path
-) -> None:
-    """A pin snapshots the target's current assertion ids so later drift detection can
-    tell exactly which assertions were and weren't seen."""
-    stretch_assertions = [_assertion("stretch", "Strong"), _assertion("stretch", "Poor")]
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[*stretch_assertions, _assertion("internal_culture", "Strong")],
-    )
-
-    client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling",
-        data={"mean": "0.5", "settledness": "0.8"},
-    )
-
-    conn = connect(db_path)
-    rulings = dimension_rulings_for_opening(conn, "acme--eng")
-    assert len(rulings) == 1
-    stretch_ids = {a.id for a in stretch_assertions}
-    assert set(rulings[0].covered_assertion_ids) == stretch_ids
-
-
-def test_submit_dimension_ruling_replaces_prior_pin_for_same_target(
-    client: TestClient, db_path: Path
-) -> None:
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling", data={"mean": "-0.5", "settledness": "0.2"}
-    )
-    client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling", data={"mean": "0.9", "settledness": "0.7"}
-    )
-
-    conn = connect(db_path)
-    rulings = dimension_rulings_for_opening(conn, "acme--eng")
-    assert len(rulings) == 1
-    assert rulings[0].mean == 0.9
-    assert rulings[0].settledness == 0.7
-
-
-def test_submit_dimension_ruling_changes_standing(client: TestClient, db_path: Path) -> None:
-    config = load_scoring_config()
-    strong = [
-        _assertion(slug, "Strong") for slug in (*config.dimension_weights, *config.constraints)
-    ]
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
-
-    before = client.get("/openings/acme--eng/rate")
-    response = client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling",
-        data={"mean": "-1.0", "settledness": "1.0"},
-    )
-
-    assert response.status_code == 200
-    assert response.text != before.text
-
-
-def test_submit_dimension_ruling_404_when_opening_missing(client: TestClient) -> None:
-    response = client.post(
-        "/openings/no-such-opening/dimensions/stretch/ruling",
-        data={"mean": "0.5", "settledness": "0.8"},
-    )
-    assert response.status_code == 404
-
-
-def test_submit_dimension_ruling_rejects_out_of_range_mean(
-    client: TestClient, db_path: Path
-) -> None:
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling",
-        data={"mean": "1.5", "settledness": "0.8"},
-    )
-
-    assert response.status_code == 422
-
-
-def test_submit_dimension_ruling_rejects_out_of_range_settledness(
-    client: TestClient, db_path: Path
-) -> None:
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-
-    response = client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling",
-        data={"mean": "0.5", "settledness": "1.5"},
-    )
-
-    assert response.status_code == 422
-
-
-def test_focus_opening_shows_only_budgeted_tasks(client: TestClient, db_path: Path) -> None:
-    """`GET /openings/{id}/focus` renders only the highest-leverage unrated tasks, not
-    every dimension/assertion."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[
-            _assertion("stretch", "Strong"),
-            _assertion("domain", "Strong"),
-        ],
-    )
-
-    response = client.get("/openings/acme--eng/focus")
-
-    assert response.status_code == 200
-    body = response.text
-    # stretch (weight 3, unexamined) should outrank domain (weight 1) for budget inclusion.
-    assert '<h3 class="dimension-title">stretch</h3>' in body
-
-
-def test_focus_opening_hides_fully_ruled_dimensions(client: TestClient, db_path: Path) -> None:
-    """A dimension with a pin already in place has nothing left to rate and is excluded
-    from the focused view."""
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
-    )
-    conn = connect(db_path)
-    (stretch_id,) = [
-        a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "stretch"
-    ]
-    upsert_dimension_ruling(
-        conn,
-        DimensionRuling(
-            opening_id="acme--eng",
-            target="stretch",
-            mean=0.9,
-            settledness=1.0,
-            created_at=_NOW,
-            covered_assertion_ids=[stretch_id],
-        ),
-    )
-
-    response = client.get("/openings/acme--eng/focus")
-
-    assert response.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' not in response.text
-
-
-def test_focus_opening_404_when_missing(client: TestClient) -> None:
-    response = client.get("/openings/no-such-opening/focus")
-    assert response.status_code == 404
-
-
-def test_focus_opening_submission_stays_focused(client: TestClient, db_path: Path) -> None:
-    """Submitting a ruling from the focused view keeps the swapped-in content focused,
-    not the full unfiltered rating page — the same focused view, swapped via HTMX.
-    Which targets are budgeted can legitimately shift after a rating changes the swing
-    ranking — what must hold is that the swap stays under budget, not full."""
-    all_targets = [
-        "stretch",
-        "schematic",
-        "peer",
-        "trajectory",
-        "mission",
-        "agentic",
-        "compensation",
-        "domain",
-    ]
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[_assertion(target, "Strong") for target in all_targets],
-    )
-    focus_response = client.get("/openings/acme--eng/focus")
-    budget = load_scoring_config().rating_task_budget
-    focus_shown = [
-        t for t in all_targets if f'<h3 class="dimension-title">{t}</h3>' in focus_response.text
-    ]
-    assert len(focus_shown) <= budget
-
-    conn = connect(db_path)
-    (assertion,) = [
-        a for a in assertions_for_opening(conn, "acme--eng") if a.target in focus_shown
-    ][:1]
-    fields = _focus_snapshot_fields(focus_response.text)
-    submit_response = client.post(
-        f"/openings/acme--eng/assertions/{assertion.id}/ruling?focus=1",
-        data={"fit": "Mixed", **fields},
-    )
-    assert submit_response.status_code == 200
-    submit_shown = [
-        t for t in all_targets if f'<h3 class="dimension-title">{t}</h3>' in submit_response.text
-    ]
-    assert len(submit_shown) <= budget
-
-
-def test_focus_opening_dimension_ruling_keeps_dimension_visible(
-    client: TestClient, db_path: Path
-) -> None:
-    """After submitting a dimension pin from the focused view, that dimension stays
-    present in the swapped-in content — otherwise the task the operator just acted on
-    vanishes mid-click, which reads as a bug even though the ranking is doing its job.
-    Here `stretch` starts as the sole remaining task (its assertions are all ratified,
-    so only the dimension pin is left); pinning it removes it from the candidate set
-    entirely, but the just-completed group must still render — the just-acted-on task
-    stays visible until the operator navigates away, not just while in budget.
-    """
-    assertions = [
-        Assertion(
-            target="stretch",
-            fit="Strong",
-            provenance="ratified",
-            chunk="strong assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-        Assertion(
-            target="stretch",
-            fit="Poor",
-            provenance="ratified",
-            chunk="poor assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-        Assertion(
-            target="stretch",
-            fit="Mixed",
-            provenance="ratified",
-            chunk="mixed assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-    ]
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
-    conn = connect(db_path)
-    for a in assertions:
-        upsert_assertion_ruling(
-            conn,
-            AssertionRuling(
-                id=str(uuid4()), assertion_id=a.id, fit=cast(Fit, a.fit), created_at=_NOW
-            ),
-        )
-
-    before = client.get("/openings/acme--eng/focus")
-    assert before.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' in before.text
-
-    fields = _focus_snapshot_fields(before.text)
-    after = client.post(
-        "/openings/acme--eng/dimensions/stretch/ruling?focus=1",
-        data={"mean": "0.5", "settledness": "0.8", **fields},
-    )
-    assert after.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' in after.text
-
-
-def test_focus_opening_stable_task_set_survives_multiple_submissions(
-    client: TestClient, db_path: Path
-) -> None:
-    """Completing task B must not make task A disappear (operator feedback): the
-    focused screen's task set is fixed at the initial GET and echoed back via hidden
-    `focus_snapshot_*` fields on every submit, not recomputed after each one — so both
-    A and B stay visible for the whole session, and no new task not shown on the
-    initial GET appears either."""
-    a_target_assertion = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="stretch assertion",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    b_target_assertion = Assertion(
-        target="domain",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="domain assertion",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[a_target_assertion, b_target_assertion],
-    )
-
-    initial = client.get("/openings/acme--eng/focus")
-    assert initial.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' in initial.text
-    assert '<h3 class="dimension-title">domain</h3>' in initial.text
-    fields = _focus_snapshot_fields(initial.text)
-
-    conn = connect(db_path)
-    (a_id,) = [a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "stretch"]
-    (b_id,) = [a.id for a in assertions_for_opening(conn, "acme--eng") if a.target == "domain"]
-
-    after_a = client.post(
-        f"/openings/acme--eng/assertions/{a_id}/ruling?focus=1",
-        data={"fit": "Mixed", **fields},
-    )
-    assert after_a.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' in after_a.text
-    assert '<h3 class="dimension-title">domain</h3>' in after_a.text
-
-    after_b = client.post(
-        f"/openings/acme--eng/assertions/{b_id}/ruling?focus=1",
-        data={"fit": "Mixed", **fields},
-    )
-    assert after_b.status_code == 200
-    assert '<h3 class="dimension-title">stretch</h3>' in after_b.text
-    assert '<h3 class="dimension-title">domain</h3>' in after_b.text
-
-
-def test_focus_view_shows_next_opening_link(client: TestClient, db_path: Path) -> None:
-    """The focused view for an opening includes a link to the next opening in leverage
-    order, so the operator can continue the session without returning to the queue."""
-    first = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    second = Assertion(
-        target="stretch",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="first", opening_id="first--eng", assertions=[first])
-    _seed_opening(db_path, company_id="second", opening_id="second--eng", assertions=[second])
-
-    response = client.get("/openings/first--eng/focus")
-
-    assert response.status_code == 200
-    assert "/openings/second--eng/focus" in response.text
-    assert "Next opening" in response.text
-
-
-def test_focus_view_last_opening_shows_back_to_queue(client: TestClient, db_path: Path) -> None:
-    """The focused view for the last opening shows a link back to the queue instead of a
-    disabled next link."""
-    _seed_opening(db_path, company_id="only", opening_id="only--eng", assertions=[])
-
-    response = client.get("/openings/only--eng/focus")
-
-    assert response.status_code == 200
-    assert "Back to queue" in response.text
-
-
-def test_focus_opening_assertion_only_task_hides_digest_and_dimension_control(
-    client: TestClient, db_path: Path
-) -> None:
-    """When the highest-ranked candidate for a target is an assertion-ruling task, not
-    the whole-dimension pin, the focused view shows that assertion without the digest or
-    dimension-ruling pad — those belong to the bigger, unselected task. Fixture found by
-    search: `stretch`'s only budgeted candidate is its lone assertion, not a dimension
-    task, under the fixed scoring seed."""
-    fixture = [
-        ("stretch", "Poor", "model_proposed"),
-        ("schematic", "Poor", "ratified"),
-        ("schematic", "Strong", "precedent_matched"),
-        ("schematic", "Mixed", "ratified"),
-        ("peer", "Strong", "model_proposed"),
-        ("peer", "Strong", "ratified"),
-        ("trajectory", "Mixed", "ratified"),
-        ("trajectory", "Mixed", "ratified"),
-        ("mission", "Strong", "precedent_matched"),
-        ("mission", "Strong", "precedent_matched"),
-        ("mission", "Poor", "model_proposed"),
-        ("agentic", "Mixed", "precedent_matched"),
-        ("agentic", "Mixed", "precedent_matched"),
-        ("agentic", "Strong", "model_proposed"),
-        ("compensation", "Poor", "model_proposed"),
-        ("compensation", "Poor", "model_proposed"),
-        ("domain", "Poor", "model_proposed"),
-        ("domain", "Strong", "ratified"),
-        ("domain", "Mixed", "ratified"),
-        ("location", "Mixed", "precedent_matched"),
-        ("location", "Strong", "ratified"),
-        ("internal_culture", "Strong", "precedent_matched"),
-        ("internal_culture", "Mixed", "precedent_matched"),
-        ("internal_culture", "Poor", "precedent_matched"),
-        ("extractive_business", "Strong", "ratified"),
-        ("extractive_business", "Poor", "precedent_matched"),
-        ("extractive_business", "Mixed", "precedent_matched"),
-        ("extractive_business", "Strong", "ratified"),
-    ]
-    assertions = [
-        Assertion(
-            target=cast(Target, target),
-            fit=cast(Fit, fit),
-            provenance=cast(Provenance, provenance),
-            chunk=f"{target}-{provenance}-{fit}",
-            citations=[_CITATION],
-            created_at=_NOW,
-        )
-        for target, fit, provenance in fixture
-    ]
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
-    response = client.get("/openings/acme--eng/focus")
-    assert response.status_code == 200
-    body = response.text
-    assert '<h3 class="dimension-title">stretch</h3>' in body
-    stretch_section = body[body.index('<h3 class="dimension-title">stretch</h3>') :]
-    stretch_section = stretch_section[: stretch_section.find("</section>")]
-    assert "digest" not in stretch_section.lower()
-    assert "dimension-ruling-pad" not in stretch_section
-
-
-def test_focus_opening_context_assertions_under_dimension_task_are_collapsible(
-    client: TestClient, db_path: Path
-) -> None:
-    """When the budgeted task for a target is the whole-dimension pin, assertions
-    underneath are shown collapsed by default (compact, not full interactive cards) but
-    remain reachable — expand to correct one if it's the reason the dimension pin feels
-    wrong (operator principle: always able to dig into what's lower in the hierarchy).
-    Here `stretch` has all three assertions already ruled, so the only remaining budgeted
-    task is the dimension pin; the assertions must still carry a `ruling-form` (reachable),
-    just collapsed inside a `<details>` disclosure, not open by default."""
-    assertions = [
-        Assertion(
-            target="stretch",
-            fit="Strong",
-            provenance="ratified",
-            chunk="strong assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-        Assertion(
-            target="stretch",
-            fit="Poor",
-            provenance="ratified",
-            chunk="poor assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-        Assertion(
-            target="stretch",
-            fit="Mixed",
-            provenance="ratified",
-            chunk="mixed assertion",
-            citations=[_CITATION],
-            created_at=_NOW,
-        ),
-    ]
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=assertions)
-    conn = connect(db_path)
-    for assertion, fit in zip(assertions, ["Strong", "Poor", "Mixed"], strict=True):
-        upsert_assertion_ruling(
-            conn,
-            AssertionRuling(
-                id=str(uuid4()),
-                assertion_id=assertion.id,
-                fit=cast(Fit, fit),
-                created_at=_NOW,
-            ),
-        )
-
-    response = client.get("/openings/acme--eng/focus")
-    assert response.status_code == 200
-    body = response.text
-    assert "dimension-ruling-pad" in body
-    assert "strong assertion" in body
-    assert "poor assertion" in body
-    assert "mixed assertion" in body
-    stretch_section = body[body.index('<h3 class="dimension-title">stretch</h3>') :]
-    stretch_section = stretch_section[: stretch_section.find("</section>")]
-    # reachable — the fit-ruling form is present so an assertion can be corrected
-    assert stretch_section.count('class="ruling-form"') == 3
-    # but collapsed by default, not one interactive card per assertion up front
-    assert stretch_section.count("<details") == 3
-    assert "<details open" not in stretch_section
-    # collapsed summary carries the provenance glyph, a compact fit indicator, and the
-    # truncated snippet — not the full assertion text or a verbose fit label
-    first_summary = stretch_section[stretch_section.index("<summary>") :]
-    first_summary = first_summary[: first_summary.index("</summary>")]
-    assert "provenance-glyph" in first_summary
-    assert 'class="fit-indicator"' in first_summary
-    assert "fit-static" not in first_summary
-
-
-def test_index_renders_contested_review_link(client: TestClient, db_path: Path) -> None:
-    """The queue page exposes a manual-testing entrance to the new
-    crossing-probability ordering, without displaying the numeric value."""
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
-
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert "Start contested review" in response.text
-    assert 'href="/contested"' in response.text
-
-
-def test_contested_redirect_to_highest_crossing_probability_opening(
-    client: TestClient, db_path: Path
-) -> None:
-    """`GET /contested` redirects to the opening with the highest crossing probability,
-    which is the highest-standing opening under deterministic seeding."""
-    config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
-    for i in range(config.top_k):
-        poor_target = targets[0] if i > 0 else None
-        assertions = [
-            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
-        ]
-        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
-
-    response = client.get("/contested", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/openings/c0--eng/contested"
-
-
-def test_contested_redirect_falls_back_to_queue_when_fewer_than_top_k(
-    client: TestClient, db_path: Path
-) -> None:
-    """With fewer than `top_k` openings there is no K-th boundary, so the session
-    entry point falls back to the queue rather than defaulting an ordering."""
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
-
-    response = client.get("/contested", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/"
 
 
 def test_index_queue_hides_boundary_tick_when_fewer_than_top_k(
@@ -1505,7 +1240,7 @@ def test_index_queue_shows_boundary_tick_when_at_least_top_k(
     """With at least `top_k` scored openings the K-th opening exists, so every row's
     glyph shows a boundary tick and a crossing-probability tooltip."""
     config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
+    targets = (*config.dimension_weights,)
     for i in range(config.top_k):
         _seed_opening(
             db_path,
@@ -1519,7 +1254,7 @@ def test_index_queue_shows_boundary_tick_when_at_least_top_k(
     assert response.status_code == 200
     body = response.text
     assert "boundary-tick" in body
-    assert "chance of crossing the boundary" in body
+    assert 'title="locked into top ' in body
 
 
 def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
@@ -1528,7 +1263,7 @@ def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
     """The per-opening score block renders the same marks (interval band, median dot,
     boundary tick) as the queue row, via the shared `boundary_glyph` macro."""
     config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
+    targets = (*config.dimension_weights,)
     for i in range(config.top_k):
         _seed_opening(
             db_path,
@@ -1544,99 +1279,6 @@ def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
     assert "boundary-glyph" in body
     for mark in ("boundary-range", "boundary-median", "boundary-tick"):
         assert mark in body
-
-
-def test_contested_per_opening_shows_next_link(client: TestClient, db_path: Path) -> None:
-    """A contested review session chains through openings ordered by the signal, without
-    rendering the probability value. It reuses the focused per-opening UI so the operator
-    sees only the high-leverage tasks worth rating."""
-    config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
-    for i in range(config.top_k):
-        poor_target = targets[0] if i > 0 else None
-        assertions = [
-            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
-        ]
-        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
-
-    response = client.get("/openings/c0--eng/contested")
-
-    assert response.status_code == 200
-    assert "Next contested opening" in response.text
-    assert 'href="/openings/' in response.text
-    assert '/contested"' in response.text
-    # Focused UI: the page carries the stable-task-set snapshot and submits via focus=1.
-    assert 'name="focus_snapshot_assertion_ids"' in response.text
-    assert 'name="focus_snapshot_dimension_targets"' in response.text
-    assert '?focus=1"' in response.text
-
-
-def test_contested_per_opening_last_shows_back_to_queue(client: TestClient, db_path: Path) -> None:
-    """The last opening in the contested ordering offers a link back to the queue."""
-    config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
-    for i in range(config.top_k):
-        poor_target = targets[0] if i > 0 else None
-        assertions = [
-            _assertion(slug, "Poor" if slug == poor_target else "Strong") for slug in targets
-        ]
-        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
-
-    response = client.get(f"/openings/c{config.top_k - 1}--eng/contested")
-
-    assert response.status_code == 200
-    assert "Back to queue" in response.text
-
-
-def test_contested_session_skips_openings_with_no_rating_tasks(
-    client: TestClient, db_path: Path
-) -> None:
-    """A contested opening with no remaining rating tasks has nothing for the operator
-    to evaluate there — the uncertainty is inherent in the opportunity, not actionable
-    by rating — so the session skips it even if its crossing probability is high."""
-    config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
-
-    def _strong() -> list[Assertion]:
-        return [_assertion(slug, "Strong") for slug in targets]
-
-    # Fully ruled/pinned: highest standing but no rating tasks left.
-    _seed_opening(db_path, company_id="done", opening_id="done--eng", assertions=_strong())
-    conn = connect(db_path)
-    for a in assertions_for_opening(conn, "done--eng"):
-        upsert_assertion_ruling(
-            conn,
-            AssertionRuling(id=str(uuid4()), assertion_id=a.id, fit="Strong", created_at=_NOW),
-        )
-    for target in targets:
-        covered_ids = [
-            a.id for a in assertions_for_opening(conn, "done--eng") if a.target == target
-        ]
-        upsert_dimension_ruling(
-            conn,
-            DimensionRuling(
-                opening_id="done--eng",
-                target=target,
-                mean=1.0,
-                settledness=1.0,
-                created_at=_NOW,
-                covered_assertion_ids=covered_ids,
-            ),
-        )
-    conn.close()
-
-    # Same evidence but unruled: second-highest standing and has rating tasks.
-    _seed_opening(db_path, company_id="active", opening_id="active--eng", assertions=_strong())
-
-    # Fill the rest of the queue so the boundary exists.
-    for i in range(config.top_k - 2):
-        poor = [_assertion(slug, "Poor") for slug in targets]
-        _seed_opening(db_path, company_id=f"f{i}", opening_id=f"f{i}--eng", assertions=poor)
-
-    response = client.get("/contested", follow_redirects=False)
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "/openings/active--eng/contested"
 
 
 _LIVE_NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
@@ -1663,7 +1305,7 @@ def _seed_research_trace(data_root: Path, opening_id: str) -> None:
     )
 
 
-def _seed_live_opening(db_path: Path, opening_id: str, budget: int = 5) -> None:
+def _seed_live_opening(db_path: Path, opening_id: str) -> None:
     conn = connect(db_path)
     company_id = opening_id.split("--", maxsplit=1)[0]
     upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=_LIVE_NOW))
@@ -1675,7 +1317,6 @@ def _seed_live_opening(db_path: Path, opening_id: str, budget: int = 5) -> None:
             title=f"{opening_id} title",
             url=f"https://example.com/{opening_id}",
             research_trace_id=f"tx-{opening_id}",
-            research_turns_budget=budget,
             created_at=_LIVE_NOW,
         ),
     )
@@ -1781,13 +1422,14 @@ def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
             raise AssertionError("batch never finished")
         assert "Researching" not in status.text
 
-        # One turn was actually spent.
+        # One turn was actually spent (2 turns total: 1 seeded + 1 from the batch).
         conn = connect(db_path)
         opening = get_opening(conn, "acme--eng")
         assert opening is not None
-        used, budget = opening_research_status(db_path.parent, opening)
+        trace_path = research_trace_path_for(db_path.parent, opening.research_trace_id)
+        used = replay_research_trace(trace_path).turns_used
         conn.close()
-        assert (used, budget) == (2, 5)
+        assert used == 2
 
 
 def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> None:
@@ -1813,7 +1455,7 @@ def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> N
 def test_queue_hides_research_turns_used_and_budget(client: TestClient, db_path: Path) -> None:
     """Queue rows no longer show the turns-used/budget counter (queue-page-cleanup
     bearing, Done When)."""
-    _seed_live_opening(db_path, "acme--eng", budget=5)
+    _seed_live_opening(db_path, "acme--eng")
     response = client.get("/")
     assert response.status_code == 200
     assert "research-status" not in response.text
@@ -1865,7 +1507,7 @@ def test_moving_opening_out_of_screening_drops_it_from_boundary_computation(
     """A de-queued opening never anchors the `top_k` boundary — moving the K-th-ranked
     opening out of `screening` shifts the boundary to the new K-th opening."""
     config = load_scoring_config()
-    targets = (*config.dimension_weights, *config.constraints)
+    targets = (*config.dimension_weights,)
     for i in range(config.top_k + 1):
         _seed_opening(
             db_path,
@@ -1970,3 +1612,18 @@ def test_index_links_to_archive(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert 'href="/archive"' in response.text
+
+
+def test_retired_routes_return_404(client: TestClient) -> None:
+    """The old contested/focus sessions and dimension-ruling POST are gone; requests
+    to their former URLs fall through to a 404 instead of resurrecting stale surfaces."""
+    assert client.get("/contested").status_code == 404
+    assert client.get("/openings/acme--eng/contested").status_code == 404
+    assert client.get("/openings/acme--eng/focus").status_code == 404
+    assert (
+        client.post(
+            "/openings/acme--eng/dimensions/stretch/ruling",
+            data={"mean": 0.0, "settledness": 0.5},
+        ).status_code
+        == 404
+    )

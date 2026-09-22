@@ -20,7 +20,6 @@ from screen.intake.fakes import FakeTavily
 from screen.research.actions import FetchAction, StopAction
 from screen.research.batch import RunDispatchDeps
 from screen.research.fakes import FakeBrowser, FakePlanner
-from screen.score.loader import load_scoring_config
 from tests.helpers import canned_assertion, fake_identifier
 
 
@@ -61,24 +60,6 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
     assert list(tmp_path.rglob("company.json")) == []
     assert list(tmp_path.rglob("opening.json")) == []
     assert list(tmp_path.rglob("assertions.jsonl")) == []
-
-
-def test_pipeline_seeds_research_turns_budget_from_scoring_yaml(tmp_path: Path) -> None:
-    """intake seeds Opening.research_turns_budget from scoring.yaml, not a literal."""
-    url = "https://example.com/jobs/42"
-    pipeline_module.intake_url(
-        url,
-        data_dir=tmp_path,
-        client_factory=lambda: _fake_tavily_for(url),
-        identifier_factory=fake_identifier,
-        extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        deps_factory=lambda: RunDispatchDeps(
-            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
-        ),
-    )
-    conn = sqlite3.connect(tmp_path / "screen.db")
-    budget = conn.execute("SELECT research_turns_budget FROM openings").fetchone()
-    assert budget == (load_scoring_config().research_turns_budget,)
 
 
 def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Path) -> None:

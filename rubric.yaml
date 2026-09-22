@@ -5,94 +5,13 @@
 # is the change log — no in-file version/revision_note; this isn't a schema
 # with multiple versions live at once.
 #
-# Cross-references: docs/architecture/decisions.md (R4, S1-S8, D15, D16, D18).
+# Cross-references: docs/architecture/decisions.md (R4, S2-S8, D7).
 # Schema: `src/screen/baml_src/extract.baml` (`Assertion`) and `src/screen/types.py`.
 #
 # Privacy boundary: this file is public. Compensation baseline, résumé, and
 # contact details live in untracked config, not here.
 # ---------------------------------------------------------------------------
-# Constraints — tolerability discounts, multiplied against quality (D7)
-# ---------------------------------------------------------------------------
-#
-# Constraints are not gates and have no pass/fail states. Each resolves to a
-# tolerability factor in [0, 1] with its own uncertainty, and they multiply
-# against the quality rollup: overall = quality × Π(tolerability factors).
-#
-# Research proposes a situation label, not a number. The label maps to a
-# range in config. Evidence stays discrete; only the math is continuous.
-# Negotiability is variance, not a lower value.
-
-constraints:
-  - slug: location
-    label: "Location fit"
-    definition: >
-      Whether the role's location policy is compatible with the operator's
-      situation. Negotiability is represented as spread on the tolerability
-      range: a confident narrow kill versus a wide range with real upside.
-      The kill emerges from the arithmetic rather than a coded rule.
-    situations:
-      - label: "Remote, any location"
-        tolerability: "1.0"
-        notes: "No discount."
-      - label: "Hybrid/onsite, same metro (bikeable)"
-        tolerability: "1.0"
-        notes: "A genuine pass — satisfies the tolerable bar directly."
-      - label: "Hybrid/onsite, different metro"
-        tolerability: "0.15 – 0.95"
-        notes: "Wide: plausibly negotiable, real upside."
-      - label: "Relocation required, stated, no flexibility language"
-        tolerability: "0.02 – 0.10"
-        notes: "Confident kill; sorts to the bottom without being removed by rule."
-      - label: "Not examined"
-        tolerability: "0.0 – 1.0"
-        notes: "Penalized in the mean, rewarded in the variance — pulls toward research."
-
-  - slug: internal_culture
-    label: "Internal culture"
-    definition: >
-      Stack-ranking, extractive-toward-employees dynamics, or leadership
-      instability. Internal culture is distinct from mission fit — this
-      constraint captures how the company treats its own people, not its
-      customers or the world.
-    situations:
-      - label: "Researched, no negative evidence found"
-        tolerability: "1.0"
-        notes: ""
-      - label: "Negative evidence at Low confidence only"
-        tolerability: "1.0"
-        notes: "Logged as a hypothesis; doesn't discount (D2)."
-      - label: "Forced-ranking, punitive layoffs, or leadership whiplash at Medium/High confidence"
-        tolerability: "0.10 – 0.45"
-        notes: >
-          Heavy — at bar=0.60 a 0.45 ceiling can't clear it however strong
-          the rest of the record (D18).
-      - label: "Not examined"
-        tolerability: "0.0 – 1.0"
-        notes: >
-          'Nothing bad turned up' and 'nobody checked' are different states (D5).
-
-  - slug: extractive_business
-    label: "Extractive core business model"
-    definition: >
-      Extreme or obvious cases where the core business model extracts value
-      from users rather than creating it. Anything less obvious flows into
-      the Mission fit dimension, which is built for nuanced middle ground.
-      This constraint is for clear-cut anchor cases only.
-    situations:
-      - label: "No signal, having looked"
-        tolerability: "1.0"
-        notes: "The outcome of looking, not the starting state (D19)."
-      - label: "Clear-cut anchor case at Medium/High confidence"
-        tolerability: "0.02 – 0.10"
-        notes: "Near-certain, no real evidence-gathering needed."
-      - label: "Not examined"
-        tolerability: "0.0 – 1.0"
-        notes: >
-          The default. Reasoning from a company's mission that it is
-          generative rather than extractive is what promotes it to 1.0 (D19).
-
-# ---------------------------------------------------------------------------
-# Scored dimensions — weighted rollup (D6)
+# Scored dimensions — weighted rollup (D6, D7)
 # ---------------------------------------------------------------------------
 #
 # Fit vocabulary: Poor = −1, Mixed = 0, Strong = +1 (D2, D3).
@@ -103,8 +22,15 @@ constraints:
 # Unexamined dimensions are Uniform(−1, +1) — same mean as confirmed Mixed,
 # far wider spread. They are not dropped from the denominator (D5, D6).
 #
-# Ranking sorts on P(overall > bar) by Monte Carlo, not on the mean (D10).
-# bar is a config value, not set here.
+# `location`, `internal_culture`, and `extractive_business` carry no special
+# scoring path — a rank-based queue only needs a sufficiently-weighted additive
+# dimension to sink a bad case out of top K; there is no separate multiplicative
+# "constraint" mechanism to maintain. Their weights are unmeasured placeholders,
+# same status as `top_k` (open-questions.md OQ9) — expect them to move once real
+# ranking runs.
+#
+# Ranking sorts on P(rank ≤ top_k) by Monte Carlo (S9), not on the mean (D10).
+# top_k is a config value, not set here.
 
 dimensions:
   - slug: stretch
@@ -260,7 +186,7 @@ dimensions:
       Does the business win when the customer wins, or by extracting from
       them — plus whether any 'AI-powered' claim is real product leverage
       or investor decoration. Internal culture is NOT part of this dimension;
-      that is the internal_culture constraint above.
+      that is the separate `internal_culture` dimension below.
     fit_anchors:
       Poor: >
         Wins by extracting from the customer, or AI claims read as decoration.
@@ -299,14 +225,16 @@ dimensions:
     label: "Compensation"
     weight: 2
     definition: >
-      A plain comparison against the configured baseline
-      (SCREEN_COMPENSATION_BASELINE). No justification branching —
-      domain coolness handles the 'would justify a below-baseline offer'
-      case through the weighted average.
+      Would total compensation likely be higher than the operator's
+      configured baseline (SCREEN_COMPENSATION_BASELINE)? A likelihood
+      judgment, not a flat band comparison — domain coolness handles the
+      "would justify a below-baseline offer" case through the weighted
+      average, so this dimension asks only whether the evidence points
+      above or below baseline.
     fit_anchors:
-      Poor: "Notably below baseline."
-      Mixed: "Roughly at baseline."
-      Strong: "Above baseline."
+      Poor: "Evidence points to total compensation below baseline."
+      Mixed: "Evidence is mixed, or points to roughly baseline."
+      Strong: "Evidence points to total compensation above baseline."
     look_for: >
       Posted range (best signal); Levels.fyi/comparable benchmarks;
       recruiter-stated range.
@@ -326,6 +254,80 @@ dimensions:
     look_for: >
       Operator's own reaction to the domain; overlap with known interests
       (creative/music/audio, novel technical domains).
+
+  - slug: location
+    label: "Location compatibility"
+    weight: 6
+    definition: >
+      Whether the role's location arrangement is workable and desirable for the
+      operator's actual situation. Ordered: remote-first company > remote as
+      an option > hybrid or awkward remote > relocation required. Negotiability
+      shows up as spread within a Fit band via the ordinary shrinkage math.
+    fit_anchors:
+      Poor: >
+        Relocation required, stated, with no flexibility language; or a
+        commute/schedule the operator's situation cannot accommodate.
+      Mixed: >
+        Remote is offered but the posting is silent on travel or team
+        distribution culture; or the company is centrally based and hiring
+        this seat remotely as an exception; or hybrid with mandated in-office
+        days that create a genuine commute/schedule burden.
+      Strong: >
+        A genuinely distributed / remote-first company, or a remote role that
+        openly acknowledges only occasional travel as the tradeoff.
+    look_for: >
+      Explicit location/remote policy language; whether the team/company is
+      distributed by design or centrally based; travel expectations; whether
+      remote hires exist at the level being applied for; metro/commute distance
+      from the operator's home base; any relocation assistance or flexibility
+      language.
+
+  - slug: internal_culture
+    label: "Internal culture"
+    weight: 4
+    definition: >
+      Stack-ranking, extractive-toward-employees dynamics, or leadership
+      instability. Distinct from `mission` — this captures how the company
+      treats its own people, not its customers or the world.
+    fit_anchors:
+      Poor: >
+        Forced-ranking, punitive layoffs, or leadership whiplash at
+        Medium/High confidence — heavy enough that no other dimension's
+        strength should be expected to fully offset it.
+      Mixed: >
+        Negative evidence exists only at Low confidence (logged as a
+        hypothesis, not yet discounting), or no strong signal either way.
+      Strong: >
+        Researched, no negative evidence found — 'nothing bad turned up'
+        after genuinely looking, not the default state of nobody checking.
+    look_for: >
+      Layoff framing and cadence; stated performance-management practices
+      (forced ranking, stack ranking); leadership tenure/turnover; employee
+      review sites, weighted for recency and corroboration.
+
+  - slug: extractive_business
+    label: "Extractive core business model"
+    weight: 4
+    definition: >
+      Extreme or obvious cases where the core business model extracts value
+      from users rather than creating it. Anything less obvious flows into
+      `mission`, which is built for nuanced middle ground; this dimension is
+      for clear-cut anchor cases only.
+    fit_anchors:
+      Poor: >
+        A clear-cut anchor case of value extraction at Medium/High
+        confidence — near-certain, not a borderline call.
+      Mixed: >
+        Ambiguous, or no clear signal either way after looking.
+      Strong: >
+        No signal of extraction, having looked — the outcome of looking,
+        not the starting state. Reasoning from the company's mission that
+        it is generative rather than extractive is what earns this, not
+        the absence of evidence.
+    look_for: >
+      Revenue mechanics; user complaints framed around exploitation
+      (dark patterns, addictive design, predatory pricing); comparison
+      against anchor cases.
 
 # ---------------------------------------------------------------------------
 # Non-scoring targets

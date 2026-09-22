@@ -34,7 +34,6 @@ def _seed_opening(conn: sqlite3.Connection) -> None:
             title="Eng",
             url="https://example.com/jobs/42",
             research_trace_id="t1",
-            research_turns_budget=5,
             created_at=datetime.now(UTC),
         ),
     )

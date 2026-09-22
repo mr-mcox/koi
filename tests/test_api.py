@@ -16,7 +16,8 @@ from fastapi.testclient import TestClient
 
 from screen.api.app import create_app
 from screen.score.loader import load_scoring_config
-from screen.score.scorer import score
+from screen.score.scorer import rank_pool
+from screen.score.types import PoolInput
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
@@ -65,7 +66,6 @@ def _seed_opening(
             title=f"{opening_id} title",
             url=f"https://example.com/{opening_id}",
             research_trace_id=f"tx-{opening_id}",
-            research_turns_budget=5,
             created_at=_NOW,
         ),
     )
@@ -84,7 +84,9 @@ def test_opening_score_returns_404_when_opening_missing(client: TestClient) -> N
     assert response.status_code == 404
 
 
-def test_opening_score_matches_direct_scorer_call(client: TestClient, db_path: Path) -> None:
+def test_opening_score_reports_pool_rank_readouts(client: TestClient, db_path: Path) -> None:
+    """`/openings/{id}/score` returns the same pool-scored rank readouts the queue uses.
+    With only one opening in the pool it is unambiguously rank 1 and top-K."""
     assertion = Assertion(
         target="stretch",
         fit="Strong",
@@ -94,6 +96,12 @@ def test_opening_score_matches_direct_scorer_call(client: TestClient, db_path: P
         created_at=_NOW,
     )
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=[assertion])
+    config = load_scoring_config()
+    expected = rank_pool(
+        [PoolInput(opening_id="acme--eng", assertions=[assertion])],
+        config,
+        top_k=config.top_k,
+    ).opening_ranks[0]
 
     response = client.get("/openings/acme--eng/score")
 
@@ -103,9 +111,13 @@ def test_opening_score_matches_direct_scorer_call(client: TestClient, db_path: P
     assert body["company_id"] == "acme"
     assert body["company_name"] == "acme Inc"
     assert body["opening_title"] == "acme--eng title"
-    expected = score([assertion], load_scoring_config())
-    assert body["standing"] == pytest.approx(expected.standing)
-    assert body["ceiling"] == pytest.approx(expected.ceiling)
+    assert body["p_top_k"] == pytest.approx(expected.p_top_k)
+    assert body["expected_rank"] == pytest.approx(expected.expected_rank)
+    assert body["rank_q10"] == pytest.approx(expected.rank_q10)
+    assert body["rank_q50"] == pytest.approx(expected.rank_q50)
+    assert body["rank_q90"] == pytest.approx(expected.rank_q90)
+    assert body["top_k"] == config.top_k
+    assert 0.0 <= body["settledness"] <= 1.0
 
 
 def test_queue_is_empty_when_no_openings_exist(client: TestClient) -> None:
@@ -114,9 +126,9 @@ def test_queue_is_empty_when_no_openings_exist(client: TestClient) -> None:
     assert response.json() == []
 
 
-def test_queue_sorts_by_standing_descending(client: TestClient, db_path: Path) -> None:
-    """A well-evidenced opening (strong, ratified assertions across every target) must
-    outrank an unexamined one — sort order matches direct `score()` calls."""
+def test_queue_sorts_by_p_top_k_descending(client: TestClient, db_path: Path) -> None:
+    """A well-evidenced opening should have a higher `P(rank ≤ top_k)` than an unexamined
+    one, and the queue sorts on that (then expected rank, then id)."""
     config = load_scoring_config()
     strong_assertions = [
         Assertion(
@@ -127,7 +139,7 @@ def test_queue_sorts_by_standing_descending(client: TestClient, db_path: Path) -
             citations=[_CITATION],
             created_at=_NOW,
         )
-        for slug in (*config.dimension_weights, *config.constraints)
+        for slug in (*config.dimension_weights,)
     ]
     _seed_opening(
         db_path, company_id="acme", opening_id="acme--strong", assertions=strong_assertions
@@ -139,11 +151,8 @@ def test_queue_sorts_by_standing_descending(client: TestClient, db_path: Path) -
     assert response.status_code == 200
     body = response.json()
     assert [item["opening_id"] for item in body] == ["acme--strong", "widgets--unexamined"]
-    expected_strong = score(strong_assertions, config).standing
-    expected_unexamined = score([], config).standing
-    assert body[0]["standing"] == pytest.approx(expected_strong)
-    assert body[1]["standing"] == pytest.approx(expected_unexamined)
-    assert body[0]["standing"] >= body[1]["standing"]
+    assert body[0]["p_top_k"] >= body[1]["p_top_k"]
+    assert body[0]["expected_rank"] < body[1]["expected_rank"]
 
 
 def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Path) -> None:
@@ -160,11 +169,10 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
             citations=[_CITATION],
             created_at=_NOW,
         )
-        for slug in (*config.dimension_weights, *config.constraints)
+        for slug in (*config.dimension_weights,)
     ]
     _seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=weak_assertions)
     _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
-
     conn = connect(db_path)
     for assertion in weak_assertions:
         upsert_assertion_ruling(
@@ -177,27 +185,24 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
             ),
         )
     conn.close()
-
     response = client.get("/queue")
     assert response.status_code == 200
     body = response.json()
     assert [item["opening_id"] for item in body] == ["acme--ruled", "widgets--unexamined"]
-
-    score_response = client.get("/openings/acme--ruled/score").json()
     queue_item = next(item for item in body if item["opening_id"] == "acme--ruled")
-    assert score_response["standing"] == pytest.approx(queue_item["standing"])
-    assert score_response["reach"] == pytest.approx(queue_item["reach"])
-    assert score_response["ceiling"] == pytest.approx(queue_item["ceiling"])
-    assert score_response["unreachable"] == queue_item["unreachable"]
+    score_response = client.get("/openings/acme--ruled/score").json()
+    assert score_response["p_top_k"] == pytest.approx(queue_item["p_top_k"])
+    assert score_response["expected_rank"] == pytest.approx(queue_item["expected_rank"])
+    assert score_response["rank_q10"] == pytest.approx(queue_item["rank_q10"])
+    assert score_response["rank_q50"] == pytest.approx(queue_item["rank_q50"])
+    assert score_response["rank_q90"] == pytest.approx(queue_item["rank_q90"])
+    assert score_response["settledness"] == pytest.approx(queue_item["settledness"])
 
 
-def test_queue_includes_crossing_probability_when_enough_openings(
-    client: TestClient, db_path: Path
-) -> None:
-    """With at least `top_k` openings, every queue item carries a
-    `crossing_probability` computed against the K-th-ranked opening's trace under the
-    shared `config.seed`. `scoring.yaml`'s real `top_k` is 10; seed exactly that many
-    openings at strictly decreasing standing so rank K is unambiguous."""
+def test_queue_includes_settledness_when_enough_openings(client: TestClient, db_path: Path) -> None:
+    """With at least `top_k` openings, every queue item carries the pool's top-K
+    settledness and the shared `top_k`. Seed exactly `top_k` openings so the boundary
+    exists but the pool is fully separated."""
     config = load_scoring_config()
     for i in range(config.top_k):
         assertions = [
@@ -209,44 +214,40 @@ def test_queue_includes_crossing_probability_when_enough_openings(
                 citations=[_CITATION],
                 created_at=_NOW,
             )
-            for slug in (*config.dimension_weights, *config.constraints)
+            for slug in (*config.dimension_weights,)
         ]
         _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
-
     response = client.get("/queue")
 
     assert response.status_code == 200
     body = response.json()
     assert len(body) == config.top_k
     for item in body:
-        assert "crossing_probability" in item
-        assert 0.0 <= item["crossing_probability"] <= 1.0
-    # The K-th-ranked opening (last in the sorted list) always crosses itself.
-    assert body[-1]["crossing_probability"] == pytest.approx(0.0)
+        assert "settledness" in item
+        assert "top_k" in item
+        assert item["top_k"] == config.top_k
+        assert 0.0 <= item["settledness"] <= 1.0
+    # A fully separated pool reports K/K overlap.
+    assert body[0]["settledness"] == pytest.approx(1.0)
 
 
-def test_queue_omits_crossing_probability_when_fewer_than_top_k(
-    client: TestClient, db_path: Path
-) -> None:
-    """Fewer than `top_k` openings: no K-th opening exists, so `crossing_probability`
-    is omitted rather than defaulting to 0 or 1 — a small backlog isn't "everyone
-    stable," it's "the boundary doesn't exist yet." """
+def test_queue_settledness_is_one_when_fewer_than_top_k(client: TestClient, db_path: Path) -> None:
+    """Fewer than `top_k` openings: every opening is in the top K by definition, so
+    settledness is 1.0."""
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
-
     response = client.get("/queue")
 
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1
-    assert body[0]["crossing_probability"] is None
+    assert body[0]["settledness"] == pytest.approx(1.0)
+    assert body[0]["top_k"] == load_scoring_config().top_k
 
 
-def test_queue_crossing_probability_is_deterministic_across_calls(
-    client: TestClient, db_path: Path
-) -> None:
-    """Two `/queue` calls against the same DB snapshot return identical
-    `crossing_probability` values — both draw under the shared `config.seed`, so this
-    is reproducibility, not sampling noise."""
+def test_queue_p_top_k_is_deterministic_across_calls(client: TestClient, db_path: Path) -> None:
+    """Two `/queue` calls against the same DB snapshot return identical `p_top_k`
+    values — both draw under the shared `config.seed`, so this is reproducibility,
+    not sampling noise."""
     config = load_scoring_config()
     for i in range(config.top_k):
         assertions = [
@@ -258,13 +259,9 @@ def test_queue_crossing_probability_is_deterministic_across_calls(
                 citations=[_CITATION],
                 created_at=_NOW,
             )
-            for slug in (*config.dimension_weights, *config.constraints)
+            for slug in (*config.dimension_weights,)
         ]
         _seed_opening(db_path, company_id=f"d{i}", opening_id=f"d{i}--eng", assertions=assertions)
-
     first = client.get("/queue").json()
     second = client.get("/queue").json()
-
-    assert [item["crossing_probability"] for item in first] == [
-        item["crossing_probability"] for item in second
-    ]
+    assert [item["p_top_k"] for item in first] == [item["p_top_k"] for item in second]

@@ -1,1 +1,1 @@
-docs/features/batch-intake/bearing.md
+docs/features/pairwise-ranking/bearing.md

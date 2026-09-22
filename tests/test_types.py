@@ -8,7 +8,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from screen.types import Assertion, AssertionRuling, Citation, Company, DimensionRuling, Opening
+from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
 
 
 def _company(**overrides) -> dict:
@@ -28,7 +28,6 @@ def _opening(**overrides) -> dict:
         "title": "Staff Platform Engineer",
         "url": "https://www.acmehealth.example/careers/staff-platform-engineer",
         "research_trace_id": "tx0123456789abcdef",
-        "research_turns_budget": 5,
         "created_at": "2026-08-22T12:00:00Z",
     }
     base.update(overrides)
@@ -51,7 +50,6 @@ def test_opening_round_trip_minimum_valid() -> None:
     assert json.loads(json.dumps(dumped)) == {**raw, "stage": "screening"}
     assert opening.company_id == "acme-health"
     assert opening.research_trace_id == "tx0123456789abcdef"
-    assert opening.research_turns_budget == 5
     assert opening.stage == "screening"
 
 
@@ -199,13 +197,10 @@ def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
         "agentic",
         "compensation",
         "domain",
+        "location",
+        "internal_culture",
+        "extractive_business",
     ]:
-        a = Assertion.model_validate(_assertion(target=slug))
-        assert a.target == slug
-
-
-def test_assertion_accepts_constraint_slugs() -> None:
-    for slug in ["location", "internal_culture", "extractive_business"]:
         a = Assertion.model_validate(_assertion(target=slug))
         assert a.target == slug
 
@@ -284,66 +279,3 @@ def test_assertion_ruling_rejects_unknown_field() -> None:
 def test_assertion_ruling_rejects_invalid_fit() -> None:
     with pytest.raises(ValidationError):
         AssertionRuling.model_validate(_assertion_ruling(fit="7.5"))
-
-
-# ---------------------------------------------------------------------------
-# DimensionRuling — operator's continuous placement for one dimension/opening
-# ---------------------------------------------------------------------------
-
-
-def _dimension_ruling(**overrides: object) -> dict:  # type: ignore[type-arg]
-    base = {
-        "opening_id": "opening-1",
-        "target": "stretch",
-        "mean": 0.5,
-        "settledness": 0.8,
-        "created_at": "2026-08-30T12:00:00Z",
-        "covered_assertion_ids": ["assertion-1", "assertion-2"],
-    }
-    base.update(overrides)
-    return base
-
-
-def test_dimension_ruling_round_trip_minimum_valid() -> None:
-    raw = _dimension_ruling()
-    ruling = DimensionRuling.model_validate(raw)
-    assert ruling.opening_id == raw["opening_id"]
-    assert ruling.target == "stretch"
-    assert ruling.mean == 0.5
-    assert ruling.settledness == 0.8
-    assert ruling.covered_assertion_ids == ["assertion-1", "assertion-2"]
-
-
-def test_dimension_ruling_covered_assertion_ids_defaults_empty() -> None:
-    raw = _dimension_ruling()
-    del raw["covered_assertion_ids"]
-    ruling = DimensionRuling.model_validate(raw)
-    assert ruling.covered_assertion_ids == []
-
-
-def test_dimension_ruling_is_frozen() -> None:
-    ruling = DimensionRuling.model_validate(_dimension_ruling())
-    with pytest.raises(ValidationError):
-        ruling.mean = 0.1  # type: ignore[misc]
-
-
-def test_dimension_ruling_rejects_unknown_field() -> None:
-    with pytest.raises(ValidationError):
-        DimensionRuling.model_validate({**_dimension_ruling(), "fit": "Strong"})
-
-
-@pytest.mark.parametrize("mean", [-1.001, 1.001])
-def test_dimension_ruling_rejects_mean_out_of_range(mean: float) -> None:
-    with pytest.raises(ValidationError):
-        DimensionRuling.model_validate(_dimension_ruling(mean=mean))
-
-
-@pytest.mark.parametrize("settledness", [-0.001, 1.001])
-def test_dimension_ruling_rejects_settledness_out_of_range(settledness: float) -> None:
-    with pytest.raises(ValidationError):
-        DimensionRuling.model_validate(_dimension_ruling(settledness=settledness))
-
-
-def test_dimension_ruling_accepts_boundary_values() -> None:
-    DimensionRuling.model_validate(_dimension_ruling(mean=-1.0, settledness=0.0))
-    DimensionRuling.model_validate(_dimension_ruling(mean=1.0, settledness=1.0))

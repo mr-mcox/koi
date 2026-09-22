@@ -1,16 +1,12 @@
 # Scoring dials — operator-owned config, not versioned rubric content.
 #
 # rubric.yaml owns dimension/constraint definitions and dimension weights (R4: rubric text
-# and weights are load-bearing, versioned). This file owns the Monte Carlo mechanics: `bar`
-# is explicitly called out in rubric.yaml as "a config value, not set here" (rubric.yaml
-# line ~137); provenance-rung widths are dials expected to move with use, not decisions
-# worth a version bump each time they're retuned.
+# and weights are load-bearing, versioned). This file owns the Monte Carlo mechanics;
+# provenance-rung widths are dials expected to move with use, not decisions worth a version
+# bump each time they're retuned.
 #
 # See docs/architecture/open-questions.md OQ1 (provenance-rung widths). Everything below is a
 # named placeholder, not a measurement.
-
-# The queue sorts on P(overall > bar). `overall` lives in [0, 1].
-bar: 0.60
 
 # Monte Carlo. `seed` makes a ranking reproducible run-to-run — without it, two openings
 # whose P differs by less than sampling noise would swap places between runs.
@@ -41,45 +37,28 @@ provenance_weight:
   precedent_matched: 3.0
   ratified: 8.0
 
-# DimensionRuling half-width bounds. The operator's
-# `settledness` (0 = loose opinion, 1 = strongest stated conviction) maps to half_width via
-#     half_width = hw_max - settledness * (hw_max - hw_min)
-# — rising conviction narrows the distribution but never to a point estimate (hw_min > 0):
-# the operator may be noisy even at maximum stated confidence. Unmeasured placeholders,
-# same status as bar above.
-#
-# These bounds also set the pin's implicit weight for drift handling: a pin's
-# half_width is interpreted as the equivalent evidence count
-#     n_pin = 1 / half_width^2
-# so settledness naturally determines how much pseudo-evidence the operator's pin carries.
-# That derivation means a zero-conviction pin (settledness=0, half_width=hw_max=1.0) carries
-# the same weight as the ordinary unexamined-target prior, and a maximum-conviction pin
-# dominates a single new assertion. No separate weight dial needed.
-dimension_ruling:
-  hw_max: 1.0
-  hw_min: 0.05
-
-# Rating-VOI triage. Per-opening cap on how many
-# unrated assertion/dimension tasks the focused view surfaces at once — the "switching
-# cost" that keeps attention on one opening instead of spreading across a dozen half-rated
-# ones. Unmeasured placeholder, same status as bar/bands above.
-rating_task_budget: 4
-
 # Attention allocation. The queue's competitive cutoff: the operator applies to
 # roughly the top K openings each week. K≈5 today and expected to grow with
-# capacity — unmeasured placeholder, same status as bar/rating_task_budget above.
+# capacity — unmeasured placeholder.
 top_k: 5
-
-# Research resumability. Per-opening lifetime cap on
-# research turns (one `search` or `fetch` action). Seeded onto every opening at intake;
-# existing openings are backfilled to this same value. Manually bumpable per opening —
-# no formula from queue position yet, that's the deferred research-pass bandit's job.
-# Unmeasured placeholder, same status as bar/top_k above.
-research_turns_budget: 5
 
 # Research targeting. Per-target
 # action cap while a target is sticky: once the planner picks a primary target, it
 # stays on that target for up to this many actions before the ranking is allowed to
 # switch. Prevents mid-chain thrash when a fetch on one target incidentally yields an
-# assertion about another target. Unmeasured placeholder, same status as bar/top_k above.
+# assertion about another target. Unmeasured placeholder, same status as top_k above.
 research_target_action_cap: 3
+
+# Pairwise comparisons. `beta` scales the
+# Thurstone/probit comparison likelihood: how decisively a win separates two latent
+# values. Unmeasured placeholder, same status as top_k above — later fit from the
+# calibration log.
+comparison_beta: 0.5
+
+# Compare picker jitter. Log-normal multiplicative noise (score *= exp(N(0, sigma)))
+# applied to each (pair, dimension) candidate's score before argmax, so one comparison
+# result can't sink a pair's priority permanently. 0.3 is the smallest value that, in
+# simulation against a live 33-opening pool, got every scored dimension picked at least
+# once over 60 rounds without visibly loosening focus on the top-K boundary — same
+# unmeasured-placeholder status as top_k, expected to move with use.
+comparison_jitter_sigma: 0.3

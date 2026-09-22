@@ -1,8 +1,6 @@
 """Pure data shapes for the Scorer (docs/architecture/domain-model.md, Scorer section).
-`ScoreResult` stores the Monte Carlo trace plus `bar` and the closed-form
-`ceiling` — nothing else is frozen that could drift out of agreement with the
-trace it was computed from. `standing`, `hits`, `p_stderr`, and `unreachable`
-are properties computed from those three fields on read.
+`PoolScoreResult` stores the pool's joint Monte Carlo trace; rank, `p_top_k`, and
+settledness are computed from it on read, never stored fields of their own.
 """
 
 from __future__ import annotations
@@ -11,27 +9,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from screen.types import Fit, Provenance
+from screen.types import Assertion, Fit, Provenance
 
 FIT_VALUES: dict[Fit, float] = {"Poor": -1.0, "Mixed": 0.0, "Strong": 1.0}
-
-
-@dataclass(frozen=True)
-class ConstraintRange:
-    """A constraint's tolerability support, derived from `rubric.yaml`'s situation labels.
-
-    `worst`/`best` are the narrowest and widest examined-situation bounds (excluding "not
-    examined"); an assertion's shrunk fit value is affine-mapped onto `[worst, best]`.
-    `unexamined_lo/hi` is the rubric's own declared "not examined" range, used directly
-    when a constraint has no counted evidence — not derived from `worst`/`best`, because the
-    rubric states this prior explicitly rather than leaving it implied by the examined
-    situations (rubric.yaml's `location.situations` "Not examined" note).
-    """
-
-    worst: float
-    best: float
-    unexamined_lo: float
-    unexamined_hi: float
 
 
 @dataclass(frozen=True)
@@ -39,18 +19,14 @@ class ScoringConfig:
     """Everything the Scorer needs, pre-loaded. No I/O happens past this point —
     `screen.score.loader` is where `rubric.yaml`/`scoring.yaml` get read."""
 
-    bar: float
     seed: int
     samples: int
     provenance_weight: dict[Provenance, float]
     dimension_weights: dict[str, int]
-    constraints: dict[str, ConstraintRange]
-    dimension_ruling_hw_max: float
-    dimension_ruling_hw_min: float
-    rating_task_budget: int
     top_k: int
-    research_turns_budget: int
     research_target_action_cap: int
+    comparison_beta: float
+    comparison_jitter_sigma: float
 
     @property
     def total_weight(self) -> int:
@@ -58,38 +34,55 @@ class ScoringConfig:
 
 
 @dataclass(frozen=True)
-class ScoreResult:
-    """One Monte Carlo run of `overall` over `samples` draws. `standing` and `reach`
-    (docs/architecture/domain-model.md, Scorer section) are two instances of this same type,
-    scored against two different assertion sets — not fields bolted onto one record."""
+class PoolInput:
+    """One opening's evidence for a pool-scored ranking: its assertions and any per-assertion
+    rulings. `PoolInput` does not carry `dimension_rulings` — a per-target pin has no place
+    in the pool-scored model."""
 
+    opening_id: str
+    assertions: list[Assertion]
+    rulings: dict[str, Fit] | None = None
+
+
+@dataclass(frozen=True)
+class DimensionPosterior:
+    """One dimension's joint posterior over a set of openings, produced by a batch
+    pairwise fit (`screen.score.compare.fit_pairwise`).
+
+    `opening_ids` gives `means`/`covariance`'s row order. For covered openings, this
+    posterior replaces the independent assertion-derived prior entirely: a comparison
+    shifts the mean, not just correlation. Openings not in `opening_ids` keep their
+    ordinary assertion-derived prior for this dimension."""
+
+    opening_ids: list[str]
+    means: np.ndarray
+    covariance: np.ndarray
+
+
+@dataclass(frozen=True)
+class OpeningRank:
+    """One opening's rank readouts, derived from `PoolScoreResult.trace` on read: `1` is
+    best. `p_top_k` is the fraction of samples landing at rank `<= top_k`; `rank_q10/50/90`
+    are quantiles of the sampled rank distribution, not the overall-score distribution."""
+
+    opening_id: str
+    expected_rank: float
+    p_top_k: float
+    rank_q10: float
+    rank_q50: float
+    rank_q90: float
+
+
+@dataclass(frozen=True)
+class PoolScoreResult:
+    """One Monte Carlo run of the whole screening pool: `trace` is openings x samples of
+    `overall`, sampled jointly so cross-opening correlation is possible. `opening_ranks`
+    and `settledness` are computed from `trace` on read — rank is a property of the joint
+    draw, never a per-opening scalar stored on its own."""
+
+    opening_ids: list[str]
     trace: np.ndarray = field(compare=False, repr=False)
-    bar: float
-    ceiling: float
-
-    @property
-    def samples(self) -> int:
-        return len(self.trace)
-
-    @property
-    def hits(self) -> int:
-        return int(np.count_nonzero(self.trace > self.bar))
-
-    @property
-    def standing(self) -> float:
-        return self.hits / self.samples
-
-    @property
-    def p_stderr(self) -> float:
-        """Monte Carlo standard error on `standing`. In the doldrums, `standing` is estimated
-        from a handful of hits — two results can differ by less than this and the ordering,
-        while reproducible, is not a real one (S6's corollary)."""
-        p = self.standing
-        return (p * (1 - p) / self.samples) ** 0.5
-
-    @property
-    def unreachable(self) -> bool:
-        """No draw of this distribution can clear the bar (S4 · Unreachability is analytic,
-        not sampled, docs/architecture/decisions.md) — the analytic ceiling, not a sampled
-        zero, decides this."""
-        return self.ceiling <= self.bar
+    dimension_trace: dict[str, np.ndarray] = field(compare=False, repr=False)
+    top_k: int
+    opening_ranks: list[OpeningRank]
+    settledness: float

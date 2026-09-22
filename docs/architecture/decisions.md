@@ -25,7 +25,7 @@ Company A–D pseudonyms.
 
 ## Scoring core
 
-### S1 · Companies are distributions; the queue sorts on P(value > bar) · `demonstrated` (D6)
+### S1 · Companies are distributions; the queue sorts on P(value > bar) · `demonstrated` (D6) · superseded by S9
 
 Four required properties: convergence at full coverage; an incentive to keep collecting
 when evidence is thin; honesty about what isn't known; a sort favoring a wide-open unknown
@@ -37,7 +37,7 @@ than strong-but-hybrid — sorting on the mean buries the case worth one email.
 unknowns-as-zero with fixed denominator (mathematically `score × coverage`, makes
 unresearched companies sort low — backwards).
 
-### S2 · Constraints are discount factors, not gates and not weights · `demonstrated` (D7)
+### S2 · Constraints are discount factors, not gates and not weights · `demonstrated` (D7) · superseded by S12
 
 Location, internal culture, extractive business: each a tolerability factor in [0, 1] with
 its own uncertainty, multiplied against quality. Negotiability is **variance**, not a lower
@@ -58,13 +58,13 @@ was. `no_signal` is a label research *earns*; under the opposite default the sin
 valuable research action on the prototype's best company would have been worth nothing.
 Measured consequence, accepted: every P drops ~an order of magnitude; ordering unchanged.
 
-### S4 · Unreachability is analytic, not sampled · `demonstrated` (D20)
+### S4 · Unreachability is analytic, not sampled · `demonstrated` (D20) · superseded by S9
 
 The queue splits live / over-the-cliff. Over the cliff = the closed-form ceiling (everything
 at the top of its support) is at or below the bar. "No sample cleared" and "no sample
 *could*" are different claims; only the second justifies demotion. Nothing is deleted.
 
-### S5 · The queue reads a standing/reach pair; reach never sorts · `demonstrated` (D21)
+### S5 · The queue reads a standing/reach pair; reach never sorts · `demonstrated` (D21) · superseded by S9
 
 `standing` = P(> bar) now, the only sort key. `reach` = P(> bar) after one good pass on
 every unexamined target; it describes the remaining upside and collapses to standing at full coverage. **Reach saturates — an empty
@@ -100,6 +100,95 @@ the accumulating ruling corpus.
 
 This also answers "does unreviewed evidence score": yes, wider. Review is the top rungs of
 one ladder, not a separate flag.
+
+### S9 · The Scorer is pool-scoped; rank is the only sort key · `demonstrated` (pairwise-ranking/rank-pool.md) · supersedes S1, S4, S5
+
+The operator's actual question is "which 5 are my front runners," not "which openings clear
+a threshold." `P(value > bar)` answers a question nobody asked and forces `bar` into being
+a dial with no natural value (open-questions.md OQ9's "placeholder set off eleven
+observations, seven synthetic"). Sorting the pool on `P(rank ≤ top_k)` (expected-rank
+tiebreak) answers the real question directly, needs no `bar`, and reshuffles correctly as
+openings enter and leave the pool — exactly the behavior the operator wants when a strong
+new opening should visibly bump a weak one out of the top 5.
+
+The Scorer changes shape to make this possible: it no longer scores one opening in
+isolation against a fixed threshold. It scores every `screening`-stage opening jointly in
+one Monte Carlo run, so each opening's rank is a property of where its samples land
+relative to every other opening's samples in the same draw — not a per-opening scalar
+comparable only after the fact. `bar` is deleted, not deprecated: it sorts and filters
+nothing, anywhere (domain-model wall 7).
+
+**Rejected:** keeping `P(> bar)` as a secondary sort or display value alongside rank —
+two ranking signals invite the operator to reconcile disagreements between them, which is
+exactly the kind of manufactured precision wall 4 rules out. **Rejected:** scoring openings
+independently and then sorting the independent scores — that is `P(> bar)` with extra
+steps; it cannot express "my top 5 changed because a new opening entered," which is the
+whole point.
+
+### S10 · Reach and the cliff retire; the rank band is the only "room left" signal · `demonstrated` (pairwise-ranking/rank-pool.md) · supersedes S4, S5
+
+Reach's job — describing how much upside remains — and the cliff's job — flagging an
+opening no realistic research pass could rescue — are both already answered by a rank
+distribution: a wide q10–q90 rank band *is* "a lot of room either way," and
+`P(rank ≤ top_k) ≈ 0` under a kill-level constraint *is* "this opening cannot reach the
+top K," read directly off the same trace every other number comes from. Computing reach as
+a second scored pass (`resolve_favourably` against a hypothetical best case) and the cliff
+as a separate analytic ceiling check duplicated information the rank band already carries,
+in two more fields the operator had to learn to read.
+
+**Rejected:** keeping reach as a quantile band on the old standing scale — redefining reach
+instead of retiring it, considered and rejected (rank-pool.md §Agreed): the rank band
+already covers "room left" without a second number needing its own explanation.
+
+### S11 · Dimension rulings retire; `AssertionRuling` is the only Ruling type · `demonstrated` (pairwise-ranking/rank-pool.md) · supersedes the Ruling section's original two-type design
+
+`DimensionRuling` — a continuous `(mean, settledness)` pin over a whole dimension,
+superseding every assertion under it — existed to let the operator declare a target
+"settled" and stop the Scorer from moving it. Pool-scoped rank removes the need: rank is
+recomputed fresh from assertions on every read, across the whole pool, so there is no
+per-target aggregate value for a pin to override, and no operator action currently writes
+one (the rating-page pin form retired with it). The research planner's use of
+`DimensionRuling` settledness as a "stop researching this target" signal falls back to
+plain assertion-derived uncertainty; it re-researches a target until its turn/action-cap
+budget runs out rather than stopping early on an operator pin.
+
+**Rejected:** converting existing `DimensionRuling` rows into priors or into synthetic
+pairwise comparisons — no conversion of retiring data into the new model (rank-pool.md
+§Approach). The `dimension_rulings` table stays in the database, unread, as historical
+record; no migration drops it.
+
+### S12 · Constraints retire as a target family; every scored target is a weighted dimension · `demonstrated` (constraints-and-rubric.md) · supersedes S2
+
+S2's argument was measured against `P(overall > bar)`: to drag a perfect company below
+neutral via additive weight, a constraint would have to outweigh all seven dimensions
+combined. That threshold no longer exists (S9) — the queue sorts on `P(rank ≤ top_k)`, so a
+constraint only needs enough weight to sit below the K-th best opening, not below a fixed
+neutral point. Measured: `location` at weight 6 of 31 total sinks an otherwise-Strong
+opening to `P(top 1) < 0.1` against a clean competitor (`tests/test_scorer.py`). Former
+constraints (`location`, `internal_culture`, `extractive_business`) are now ordinary
+`rubric.yaml` dimensions, scored by the same shrinkage math as every other dimension — no
+separate `ConstraintRange`/tolerability-range machinery, no situation-label vocabulary.
+
+**Rejected:** collecting a discrete situation label per constraint instead of `Fit`
+(open-questions.md OQ14's proposed direction) — moot once constraints aren't a separate
+target family; `Fit` is the single vocabulary for every scored target.
+
+### S13 · `location` absorbs distributed-work quality; one ladder, one weight · `demonstrated` (constraints-and-rubric.md) · supersedes the `distributed` half of S12
+
+S12 split location into two dimensions: `distributed` (how genuinely remote the company is)
+and `location` (whether the arrangement is workable at all). Operator's read: the two
+already covaried — a remote-first company is also trivially workable, and "must relocate"
+only arises when the company isn't remote — so they're one severity ladder, not two
+independent axes: remote-first (Strong) > remote-as-option or hybrid-with-a-bad-commute
+(Mixed) > must relocate (Poor). Merged into `location` at its original weight 6, not the
+summed 11, because the two dimensions were measuring overlapping evidence, not orthogonal
+risks. Kept the `location` slug (not `distributed`) so existing `location` assertions stay
+valid without a migration — broadening what the slug means costs nothing; renaming it would
+have orphaned every existing assertion under the old slug.
+
+**Rejected:** keeping both dimensions and just tuning their weights — the operator's ladder
+description puts hybrid-with-mandated-office-days in Mixed, not Poor, which only the merged
+ladder expresses; keeping them separate would still special-case that severity call.
 
 ---
 
@@ -162,7 +251,7 @@ calibration rounds to converge; expect it to keep moving.
 Different mechanism (frequency of reps vs. height of bar) — exactly the shape that later
 earns its own dimension. Watch it.
 
-### R3 · Compensation scores against a single configured baseline · `demonstrated` (D8, D23)
+### R3 · Compensation scores against a single configured baseline · `demonstrated` (D8, D23) · superseded by R6
 
 Poor below, Mixed at, Strong above; no justification branching. **The number is private
 config, untracked from day one** — the prototype let it leak into committed files and had
@@ -190,6 +279,14 @@ Considered and set aside: folding "competes for top regional talent" into a new
 dimension. Comp already carries a large share of this signal for the affected weight
 budget; a new dimension would double-count without new information (tracked as an open
 question, not built).
+
+### R6 · Compensation asks a likelihood question against a private baseline, not a flat band · `adopted` · supersedes R3
+
+Still a single configured baseline (`SCREEN_COMPENSATION_BASELINE`), never committed — D8/D23's
+privacy discipline is unchanged. What changed is the framing: "would total compensation
+likely be higher than baseline" instead of a flat Poor/below Mixed/at Strong/above band,
+following from S12 (compensation is now an ordinary dimension, not a constraint the old
+band language was written against).
 
 ---
 

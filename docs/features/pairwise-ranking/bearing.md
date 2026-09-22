@@ -23,11 +23,14 @@ location cases (F55). Terrain: [scouting.md](./scouting.md)
 - [ ] Pairwise comparisons by the operator move the ranking → compare.md §Done When
 - [ ] Research turns concentrate on openings near the top-K boundary
       → research-targeting.md §Done When
-- [ ] Constraints score from situation labels, and `distributed` is a weighted dimension
-      → constraints-and-rubric.md §Done When
-- [ ] `docs/architecture/decisions.md` supersedes S1, S4, S5 and R3, each carrying its
-      rejected alternatives; domain-model §Scorer, §Ruling and walls 7 are rewritten
-      → grep `decisions.md` for new entries naming S1, S4, S5, R3
+- [x] Former constraints (`location`, `internal_culture`, `extractive_business`) become
+      ordinary weighted dimensions; compensation is reframed as a dimension; distributed-work
+      quality is folded into `location` → constraints-and-rubric.md §Done When + §Amendment
+      (constraints retired as a target family)
+- [ ] `docs/architecture/decisions.md` supersedes S1, S4, S5, each carrying its rejected
+      alternatives; domain-model §Scorer, §Ruling and walls 7 are rewritten → grep
+      `decisions.md` for new entries naming S1, S4, S5 (S2/R3's supersession by S12/R6
+      landed with constraints-and-rubric.md)
 
 ## Approach
 

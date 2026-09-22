@@ -43,16 +43,17 @@ An evidence container with identity. Company-level targets:
 
 - Dimensions: mission fit, trajectory & leverage, peer caliber, agentic/AI engineering
   culture, domain coolness (measures the operator's own reaction — manual entry only,
-  never researched; an automated pass leaves it unexamined rather than guessing).
-- Constraints: internal culture, extractive business.
+  never researched; an automated pass leaves it unexamined rather than guessing), internal
+  culture, extractive business.
 
 ### Opening
 
 **The scored, actioned, applied-to unit.** References a Company; a second opening at a
 known company inherits all company-level evidence free.
 
-- Role-level dimensions: stretch & frontier, compensation.
-- Role-level constraint: location.
+- Role-level dimensions: stretch & frontier, compensation, location compatibility
+  (covers both remote/distributed-work quality and physical workability on one ladder,
+  decisions.md S13).
 - Non-scoring targets: obtainability / rise-above-the-noise (see the wall below).
 - Affordances — collected data, never directives: where to apply, cover letter accepted,
   posting date, requisition level.
@@ -65,8 +66,8 @@ known company inherits all company-level evidence free.
 One claim, append-only. The prototype's central format finding: granular, auditable,
 pointed at exactly one target.
 
-- `target` — one dimension or constraint, at company or opening level. Non-scoring targets
-  accept assertions; the Scorer ignores them.
+- `target` — one dimension, at company or opening level. Non-scoring targets accept
+  assertions; the Scorer ignores them.
 - `fit` — Poor / Mixed / Strong, **or undetermined** (well-sourced fact, verdict genuinely
   open — e.g. a recent acquisition at Company A: narrow on sourcing, wide on meaning). One
   observation may yield several interpretations, each its own assertion against its own
@@ -105,7 +106,7 @@ the Q3 meters). The contract, amending the prototype's D14 for its O6 defect:
 
 A **versioned entity, not config**. Dimension definitions whose text is load-bearing —
 sliced verbatim into research prompts and review screens, so proposal and review are judged
-against identical words. Weights, constraint tolerability ranges, the dials (`bar`), and configured action costs. **Every change carries a reason; the change log is
+against identical words. Weights, the dials (`top_k`), and configured action costs. **Every change carries a reason; the change log is
 the dimension-stability instrument** (the prototype's Q2/Q5).
 
 The compensation baseline and the operator's extended résumé are **private config**,
@@ -113,53 +114,58 @@ injected at runtime, never committed (D23).
 
 ### Scorer
 
-A pure domain service: `(assertions, rubric) → per-target distributions → Monte Carlo trace
-→ standing, reach, ceiling`. Stateless, deterministic given a seed. The trace is the
-source of truth — standing, hits, and sampling noise are computed from it on read, not
-stored as separately-frozen fields that could drift out of agreement with it.
+A pure domain service, **pool-scoped**: `(every screening opening's assertions, rubric) →
+per-target distributions sampled jointly across the whole pool → a rank distribution per
+opening`. Stateless, deterministic given a seed. The joint trace is the source of truth —
+rank, `P(rank ≤ top_k)`, and the pool's top-K settledness are computed from it on read, not
+stored as separately-frozen fields that could drift out of agreement with it. Scoring one
+opening in isolation is not a supported operation: rank is a property of the pool, and
+`/openings/{id}/score` scores the whole live pool to report one opening's slice of it
+(see pairwise-ranking/rank-pool.md).
 
-The new modeling decision, steel-threaded first because it is the least proven:
+The modeling decision carried over unchanged from the per-opening Scorer it replaced:
 **an assertion is a noisy measurement of what the operator would conclude, and provenance
 sets the noise.** Unexamined → maximal width (D5). Model-proposed → wide.
-Precedent-matched → narrower. Ratified → narrowest, not zero. This amends the letter of
-the prototype's D2 (Medium/High identical — the rung-less ladder the plane data complained
-about) while keeping its spirit: **provenance widens a distribution; it never multiplies
-fit.** Blending the two axes into one number is the thrice-rejected mistake. The Scorer
-consumes `Assertion.provenance` as an already-assigned input; how a Ruling or
-PrecedentLookup match comes to set that value is the Ruling mechanism's concern, not the
-Scorer's (see Ruling, below).
+Precedent-matched → narrower. Ratified → narrowest, not zero. **Provenance widens a
+distribution; it never multiplies fit.** Blending the two axes into one number is the
+thrice-rejected mistake (walls 1–2). The Scorer consumes `Assertion.provenance` as an
+already-assigned input; how a Ruling or PrecedentLookup match comes to set that value is the
+Ruling mechanism's concern, not the Scorer's (see Ruling, below).
 
-`standing` and `reach` are not two fields of one result — they are the same result type
-scored against two different assertion sets. `standing` scores the assertions as they
-actually exist; `reach` scores a counterfactual where every unexamined target has received
-one hypothetical good research pass. Comparing the two numbers describes how much room
-remains: `standing` is the only sort key; `reach` never sorts (it saturates — an empty
-record out-reaches a researched good one); the cliff is analytic, not sampled; within-noise
-neighbors are marked as such.
+Each dimension is a Gaussian per opening, variance-matched to the shrinkage formula that
+produced the old per-opening Uniform (`std = half_width / sqrt(3)`), sampled jointly across
+the pool from a mean vector and a covariance matrix — diagonal (independent openings)
+until compare.md fills in measured cross-opening correlation from operator comparisons.
+`overall` is the weighted sum of every dimension in `rubric.yaml`, including `location`,
+`internal_culture`, and `extractive_business` — there is no second, differently-scored
+target family. Rank is computed by sorting each Monte Carlo sample's `overall` score across
+openings; `P(rank ≤ top_k)`, expected rank, and rank quantiles (q10/50/90) are read off the
+resulting rank matrix — none of them a per-opening scalar computed independently of the
+rest of the pool.
 
-Implemented in `src/screen/score/` (`types.py`, `scorer.py`, `loader.py`),
-verified against real seed data.
-One open tension surfaced during implementation: constraints (location, internal_culture,
-extractive_business) are scored by affine-mapping an assertion's `Fit` onto the
-constraint's tolerability range, shrunk the same way a dimension is — but the prototype's
-constraint model read a discrete *situation label* per constraint, not `Fit`, and
-`screen.types.Assertion` has no situation-label field. This passes every acceptance test
-but is an interpretive bridge nobody has confirmed reads correctly (→ open-questions.md
-OQ14).
+`standing`, `reach`, and the cliff ceiling do not exist in this model (S9–S11 in
+`decisions.md` supersede S1, S4, S5): a wide-open opening's rank distribution already spans
+from contender to irrelevant, and `P(rank ≤ top_k)` already collapses to ≈0 for an opening a
+kill-level dimension has ruled out. There is no second regime to compute, store, or
+display — rank is the only sort key, everywhere.
+
+Implemented in `src/screen/score/` (`types.py`, `scorer.py`, `loader.py`), verified against
+synthetic pools and real seed data.
 
 ### Ruling
 
-The operator's review event: proposed vs. final labels, the raw click, remediation path.
-Granularity is settled: rulings exist at both levels as siblings, not as one type with a
-scope field. `AssertionRuling` is a categorical confirm/override on one assertion;
-`DimensionRuling` is the operator's continuous `(mean, settledness)` placement over a
-whole dimension — different author-intents with different payload shapes (see
-`screen.types`). Also settled: reviews are not required to be worked in a fixed
-batch-then-generalize shape (D27's batch screen was prototype
-instrumentation for one pivot question, not a UX pattern — see `decisions.md` W4). The
-accumulating corpus is the calibration data for everything: confidence-ladder geometry,
-precedent matching, the encodability answer.
-
+`AssertionRuling` is the one Ruling type: a categorical confirm/override on one assertion.
+`DimensionRuling` — the operator's continuous `(mean, settledness)` placement over a whole
+dimension, superseding every assertion under it — is retired (pairwise-ranking/rank-pool.md;
+decisions.md S9–S11 supersede S1/S4/S5). Rank is a pool property computed fresh from
+assertions on every read; there is no per-target aggregate for an operator pin to
+supersede, and no UI writes one. The `dimension_rulings` table stays in the database,
+unread, rather than migrated away — its rows are historical record, not live input.
+Reviews are not required to be worked in a fixed batch-then-generalize shape (D27's batch
+screen was prototype instrumentation for one pivot question, not a UX pattern — see
+`decisions.md` W4). The accumulating `AssertionRuling` corpus is the calibration data for
+everything: confidence-ladder geometry, precedent matching, the encodability answer, and
+(pairwise-ranking) the pairwise comparison log compare.md adds alongside it.
 **Open tension, not yet resolved:** provenance may belong to Ruling rather than being a
 field Assertion carries directly. Candidate mechanism: an assertion's rung is *derived*
 from whether and how it links to the Ruling corpus — no link → `unexamined`; a
@@ -183,9 +189,11 @@ with the measured agreement rate as the argument. Not before.
 The product is **ranking plus routing** — signal through noise, most promising rises — not
 a to-do generator. Three thin pieces:
 
-- **Queue** — a projection, not an entity. Live and over-the-cliff sections; standing/reach
-  pair; sampling-noise marks; "what changed since you last looked" (re-entry is the
-  primary mode); reorder lenses for urgency and obtainability.
+- **Queue** — a projection, not an entity. Ordered by pool-scored rank (`P(rank ≤ top_k)`,
+  expected-rank tiebreak), with rank bands and a top-K settledness readout; "what changed
+  since you last looked" (re-entry is the primary mode); reorder lenses for urgency and
+  obtainability. `bar` is not a sort key or filter anywhere in this projection
+  (pairwise-ranking/rank-pool.md; decisions.md S9–S11).
 - **ResearchQueue** — proposed research targets ranked by value of information, where VOI
   means *"would knowing this change what happens to this opening"* rather than "how far does
   standing move." The operator batch-authorizes. The stopping rule falls out: when no
@@ -220,21 +228,23 @@ tool.
 1. **Raw plane positions never reach the Scorer.** A continuous confidence next to a
    multiplication is one careless commit from confidence-as-multiplier (rejected 3×).
 2. **Fit and provenance never blend into one number.** Provenance widens; it never scales.
-3. **Non-scoring targets never enter standing.** Obtainability multiplied in cost 14–21×
+3. **Non-scoring targets never enter rank.** Obtainability multiplied in cost 14–21×
    in the tail and put every cold-apply company over the cliff (D24's measurement) — and it
    is the one axis an *action changes*, so scoring it inverts the exploration incentive.
 4. **Precision ranks; displays avoid false precision.** A single review must never produce "6.7/10."
 5. **Unexamined ≠ clean, everywhere including display wording.** "Wide because negotiable"
    and "wide because nobody looked" never share a label.
 6. **Assertions are append-only; rubric changes carry reasons.**
-7. **Reach never becomes a sort key.**
+7. **Rank is the only sort key; `bar` sorts and filters nothing.** Superseded from "reach
+   never becomes a sort key" — reach and the `bar`-relative cliff no longer exist to
+   tempt anyone (decisions.md S9–S11 supersede S1/S4/S5).
 8. **Private config stays private.** Compensation baseline, extended résumé, contact/
    obtainability details, and collected evidence data never enter committed files.
 
 ## Steel thread, and the increments after it
 
 **Thread:** one Opening at a new Company, entered by link → one ResearchPass writes
-Assertions at both levels → Scorer produces a standing/reach pair from provenance-widened distributions →
+Assertions at both levels → Scorer produces a pool-scored rank from provenance-widened distributions →
 the operator rules on a handful of entries → re-score shows ratification narrowing → the
 queue reflects it. This exercises the three novel decisions (company/opening split,
 provenance-as-variance, pass contract) before anything is layered on them.
@@ -247,5 +257,5 @@ and the Inbox → PrecedentLookup (needs corpus volume) → intake adapters → 
 - Provenance-variance calibration: the actual widths per rung.
 - Rung count and anchor placement (the plane clusters say three fit buckets may be wrong).
 - Rise-above-the-noise: collected now, modeled only if a later stage needs approach-EV.
-- `bar`: placeholder set off eleven observations, seven synthetic.
+- `top_k`: placeholder set off eleven observations, seven synthetic.
 - Whether organizational pace earns its own dimension (folded into Stretch provisionally).

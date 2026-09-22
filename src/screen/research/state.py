@@ -12,7 +12,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 from screen.research.context import FetchContext, SearchContext
-from screen.types import Assertion, DimensionRuling
+from screen.types import Assertion
 
 
 class LoopState(BaseModel):
@@ -37,9 +37,6 @@ class LoopState(BaseModel):
     last_context: SearchContext | FetchContext | None = None
     visited_urls: list[str] = []
     prior_queries: list[str] = []
-    # Operator pins for this opening. The research planner reads settledness to
-    # raise or suppress urgency, but never writes rulings (domain-model.md wall).
-    rulings: dict[str, DimensionRuling] = {}
     # All rubric targets the planner may be asked to research. Needed so an
     # unexamined target can outrank a thinly examined one in the uncertainty ranking.
     targets: list[str] = []

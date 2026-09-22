@@ -1,0 +1,63 @@
+{% macro assertion_item(assertion, rulings, fit_values=None, opening=None, collapsed=False, redirect_url=None) %}
+  {% set is_ruled = assertion.id in rulings %}
+  {% set current_fit = rulings[assertion.id].fit if is_ruled else assertion.fit %}
+  {% set display_provenance = "ratified" if is_ruled else assertion.provenance %}
+  {% set snippet = assertion.chunk[:80] ~ ("\u2026" if assertion.chunk|length > 80 else "") %}
+  {% set controls %}
+    <div class="assertion-controls">
+      <span class="provenance-glyph provenance-{{ display_provenance }}" aria-label="{{ display_provenance }}" title="{{ display_provenance }}"></span>
+      {% if fit_values and opening %}
+      {% if redirect_url %}
+      <form class="ruling-form" method="post" action="/openings/{{ opening.id }}/assertions/{{ assertion.id }}/ruling">
+        <input type="hidden" name="redirect_to" value="{{ redirect_url }}">
+        <div class="fit-control" role="group" aria-label="fit for {{ assertion.target }}">
+          {% for fit in fit_values %}
+          <button type="submit" name="fit" value="{{ fit }}"
+                  class="fit-segment fit-{{ fit|lower }}{% if current_fit == fit %} active{% endif %}"
+                  aria-label="{{ fit }}"
+                  title="{{ fit }}"></button>
+          {% endfor %}
+        </div>
+      </form>
+      {% else %}
+      <form class="ruling-form" hx-post="/openings/{{ opening.id }}/assertions/{{ assertion.id }}/ruling"
+            hx-target="#rating-content" hx-swap="outerHTML" hx-trigger="submit">
+        <div class="fit-control" role="group" aria-label="fit for {{ assertion.target }}">
+          {% for fit in fit_values %}
+          <button type="submit" name="fit" value="{{ fit }}"
+                  class="fit-segment fit-{{ fit|lower }}{% if current_fit == fit %} active{% endif %}"
+                  aria-label="{{ fit }}"
+                  title="{{ fit }}"></button>
+          {% endfor %}
+        </div>
+      </form>
+      {% endif %}
+      {% else %}
+      <span class="fit-label fit-{{ current_fit|lower }}" title="{{ current_fit }}">{{ current_fit }}</span>
+      {% endif %}
+    </div>
+    <a class="citation-link" href="{{ assertion.citations[0].url }}" target="_blank" rel="noopener noreferrer">{{ assertion.citations[0].host }}</a>
+  {% endset %}
+  {% if collapsed %}
+  <li>
+    <details class="assertion-context">
+      <summary>
+        <span class="provenance-glyph provenance-{{ display_provenance }}" aria-label="{{ display_provenance }}" title="{{ display_provenance }}"></span>
+        <span class="assertion-snippet">{{ snippet }}</span>
+        <span class="fit-indicator" aria-label="current fit: {{ current_fit }}" role="img">
+          <span class="fit-segment fit-poor{% if current_fit == 'Poor' %} active{% endif %}"></span>
+          <span class="fit-segment fit-mixed{% if current_fit == 'Mixed' %} active{% endif %}"></span>
+          <span class="fit-segment fit-strong{% if current_fit == 'Strong' %} active{% endif %}"></span>
+        </span>
+      </summary>
+      <blockquote>{{ assertion.chunk }}</blockquote>
+      {{ controls }}
+    </details>
+  </li>
+  {% else %}
+  <li>
+    <blockquote>{{ assertion.chunk }}</blockquote>
+    {{ controls }}
+  </li>
+  {% endif %}
+{% endmacro %}

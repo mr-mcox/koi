@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-16
 commit: 3a676c42c8f847be76358b4c7be74106e72cac75
 branch: main
-status: orienting
+status: implementing
 parent: ./bearing.md
 scouting: ./scouting.md
 ---
@@ -18,32 +18,35 @@ here too. Terrain: [scouting.md](./scouting.md)
 
 ## Done When
 
-- [ ] Queue page and `/queue` API order openings by `P(rank ≤ top_k)`, with expected rank
-      breaking ties → new ordering tests over a synthetic pool in `tests/test_web.py`, `tests/test_api.py`
-- [ ] Each queue row shows a q10–q90 rank band and no decimal probability
-      → `tests/test_web.py` asserts band text and the absence of decimals
-- [ ] The queue shows top-K settledness: K/K for a fully separated pool, fewer when two
-      indistinguishable openings straddle rank K → unit test on the readout
-- [ ] Ranks are reproducible under `seed` and independent of opening or assertion order
+- [x] Queue page, `/queue` API and `/openings/{id}/score` report the same pool-scored rank readouts,
+      ordered by `P(rank ≤ top_k)` with expected-rank tiebreak → tests over a synthetic pool in `tests/test_web.py`, `tests/test_api.py`
+- [x] Queue row and rating-page score glyph show a visual q10–q90 rank band (the boundary
+      glyph's wash/range) and no decimal probability or rank-number text
+      → `tests/test_web.py` asserts glyph markup and the absence of decimals
+- [x] Each opportunity shows its own top-K settledness via the glyph's median-marker fill:
+      solid when its whole rank band is inside top-K, faint when it straddles the boundary,
+      outline-only when it's fully outside — unit test per state, no global settledness readout
+      (operator feedback: per-opportunity over global, redundant with a page-level count)
+- [x] Ranks are reproducible under `seed` and independent of opening or assertion order
       → `tests/test_scorer.py`
-- [ ] Given a correlated per-dimension covariance, sampled correlation between two openings
+- [x] Given a correlated per-dimension covariance, sampled correlation between two openings
       matches it; with no comparisons the covariance is diagonal → unit test
-- [ ] A kill-level constraint puts an otherwise-best opening at `P(top K)` ≈ 0 → unit test
-- [ ] `/contested`, `/openings/{id}/contested`, `/openings/{id}/focus` and the dimension-ruling
+- [x] A kill-level constraint puts an otherwise-best opening at `P(top K)` ≈ 0 → unit test
+- [x] `/contested`, `/openings/{id}/contested`, `/openings/{id}/focus` and the dimension-ruling
       POST return 404; the rating page shows digests and assertion overrides with no pad
       → `tests/test_web.py`
-- [ ] Nothing under `src/` reads `DimensionRuling`, settledness, reach, `unreachable`, the
+- [x] Nothing under `src/` reads `DimensionRuling`, settledness, reach, `unreachable`, the
       cliff ceiling, `crossing_probability`, `bar`, `rating_task_budget` or the
       `dimension_ruling` dials → grep over `src/` and `scoring.yaml` returns nothing
-- [ ] The research planner ranks targets without settledness → `tests/test_baml_planner.py`
-- [ ] Live queue order and rank bands look plausible → **needs you**: open `/` on live data
+- [x] The research planner ranks targets without settledness → `tests/test_baml_planner.py`
+- [x] Live queue order and rank bands look plausible → **needs you**: open `/` on live data
 
 ## Approach
 
 - One pure pool-scoped entry point takes every screening opening's assertions, assertion
-  rulings and config, and returns an openings × samples trace plus the rank readouts.
-  The per-opening `score()` and `score_opening` are replaced, not kept alongside
-  (→ scouting F12, F26, F80)
+  rulings and config, and returns an openings × samples trace plus the rank readouts. The
+  per-opening `score()` and `score_opening` are replaced, not kept alongside; queue row, rating
+  page glyph and `/openings/{id}/score` all read from the same pool result (→ scouting F12, F26, F80)
 - Dimensions are Gaussians variance-matched to today's `TargetStats`, sampled jointly per
   dimension from a mean vector and covariance matrix. That matrix is the seam compare.md
   plugs into; this node ships it diagonal (→ scouting F5, F6, F23)

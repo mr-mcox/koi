@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from screen.score.bandit import aggregate_uncertainty, draw_opening
+from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, Fit, Provenance, Target
@@ -63,7 +63,7 @@ def test_fully_examined_opening_has_lower_uncertainty_than_untouched_one(
     everywhere) has strictly higher aggregate uncertainty than one where every target has
     been heavily, consistently examined."""
     untouched: list[Assertion] = []
-    all_targets = list(config.dimension_weights) + list(config.constraints)
+    all_targets = list(config.dimension_weights)
     examined = [
         _assertion(target, "Strong", "ratified") for target in all_targets for _ in range(10)
     ]
@@ -94,3 +94,17 @@ def test_draw_opening_is_deterministic_given_a_seeded_generator() -> None:
     seq_a = [draw_opening(weights, rng_a) for _ in range(10)]
     seq_b = [draw_opening(weights, rng_b) for _ in range(10)]
     assert seq_a == seq_b
+
+
+def test_boundary_weight_is_maximized_at_the_boundary_and_zero_at_the_extremes() -> None:
+    """`boundary_weight` peaks at p_top_k=0.5 (maximally contested) and vanishes at
+    p_top_k=0 or 1 (settled in or out) — the shape `p*(1-p)` guarantees this."""
+    assert boundary_weight(0.5) == pytest.approx(0.25)
+    assert boundary_weight(0.0) == pytest.approx(0.0)
+    assert boundary_weight(1.0) == pytest.approx(0.0)
+    assert boundary_weight(0.5) > boundary_weight(0.2)
+    assert boundary_weight(0.5) > boundary_weight(0.8)
+
+
+def test_boundary_weight_is_symmetric_around_the_midpoint() -> None:
+    assert boundary_weight(0.3) == pytest.approx(boundary_weight(0.7))

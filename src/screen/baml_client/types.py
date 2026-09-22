@@ -45,7 +45,7 @@ def all_succeeded(checks: typing.Dict[CheckName, Check]) -> bool:
 # #########################################################################
 
 class Assertion(BaseModel):
-    target: str = Field(description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, constraint slugs, or \'non_scoring:obtainability\'. See the rubric text for the complete closed vocabulary.')
+    target: str = Field(description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or \'non_scoring:obtainability\'. See the rubric text for the complete closed vocabulary.')
     fit: str = Field(description='Poor, Mixed, or Strong — the claim\'s polarity in rubric vocabulary. Do not emit numeric scores.')
     provenance: str = Field(description='Always \'model_proposed\' for assertions produced by this function.')
     chunk: str = Field(description='The verbatim span from the page content that grounded this claim. Must be non-empty.')
