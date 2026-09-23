@@ -103,3 +103,29 @@ def test_same_company_openings_auto_tie_on_company_level_dimension(config: Scori
 
     mission_trace = result.dimension_trace["mission"]
     assert mission_trace[0].mean() == pytest.approx(mission_trace[1].mean(), abs=0.05)
+
+
+def test_stale_comparison_naming_opening_outside_pool_is_ignored(config: ScoringConfig) -> None:
+    """A comparison recorded while both openings were in the pool must not crash scoring
+    once one of them has moved on (e.g. staged to `applied`) and the pool no longer includes
+    it — `rank_screening_pool` passes every stored comparison for the dimension regardless of
+    which openings are still live, so `pool_for_screening` must tolerate stale references
+    rather than KeyError deep in the fit."""
+    a = _opening("acme--a", "acme")
+    b = _opening("widgets--b", "widgets")
+    assertions_by_opening = {a.id: [_assertion("stretch")], b.id: [_assertion("stretch")]}
+    comparisons_by_target = {
+        "stretch": [Comparison(winner="moved-on--c", loser=b.id, tie=False)]
+    }
+
+    result = pool_for_screening(
+        [a, b],
+        assertions_by_opening,
+        {},
+        config,
+        top_k=1,
+        comparisons_by_target=comparisons_by_target,
+        companies_by_opening={a.id: "acme", b.id: "widgets"},
+    )
+
+    assert {r.opening_id for r in result.opening_ranks} == {a.id, b.id}

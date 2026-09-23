@@ -147,11 +147,18 @@ def dimension_posteriors(
     """Fit every dimension that has either a recorded comparison or a same-company pair
     needing an auto-tie. A dimension with
     neither is left out entirely — `rank_pool` falls back to its ordinary assertion-derived
-    prior for any dimension missing from the returned dict."""
+    prior for any dimension missing from the returned dict. Comparisons naming an opening
+    outside the current pool (e.g. moved out of screening since the comparison was made)
+    are dropped rather than fed to `fit_pairwise`, which indexes strictly by `prior_means`."""
     posteriors: dict[str, DimensionPosterior] = {}
     for target, means in prior_means.items():
         opening_ids = list(means)
-        comparisons = list(comparisons_by_target.get(target, []))
+        valid_ids = set(opening_ids)
+        comparisons = [
+            c
+            for c in comparisons_by_target.get(target, [])
+            if c.winner in valid_ids and c.loser in valid_ids
+        ]
         if target in COMPANY_LEVEL_TARGETS:
             comparisons += _auto_tie_comparisons(opening_ids, companies_by_opening)
         if not comparisons:
