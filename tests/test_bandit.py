@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
+from screen.score.bandit import (
+    aggregate_uncertainty,
+    boundary_weight,
+    draw_opening,
+    target_suppression,
+)
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, Fit, Provenance, Target
@@ -108,3 +113,27 @@ def test_boundary_weight_is_maximized_at_the_boundary_and_zero_at_the_extremes()
 
 def test_boundary_weight_is_symmetric_around_the_midpoint() -> None:
     assert boundary_weight(0.3) == pytest.approx(boundary_weight(0.7))
+
+
+def test_target_suppression_is_identity_at_zero() -> None:
+    """A target with no stalls must not be penalized."""
+    assert target_suppression(0) == pytest.approx(1.0)
+
+
+def test_target_suppression_follows_s_curve_shape() -> None:
+    """Family A from the bearing: slight dip at one stall, sharp at two,
+    floor above zero at three-plus so the target remains theoretically reachable."""
+    s1 = target_suppression(1)
+    s2 = target_suppression(2)
+    s3 = target_suppression(3)
+    s4 = target_suppression(4)
+    assert s1 == pytest.approx(0.88, abs=0.02)
+    assert s2 == pytest.approx(0.12, abs=0.01)
+    assert s3 < 0.01
+    assert s4 < s3
+
+
+def test_target_suppression_is_monotonic() -> None:
+    """Each additional stall never increases the weight."""
+    values = [target_suppression(s) for s in range(6)]
+    assert all(values[i] >= values[i + 1] for i in range(len(values) - 1))

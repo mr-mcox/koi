@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-21
 commit: (pending)
 branch: rank-pool
-status: proposed
+status: done
 scouting: ./target-suppression-scouting.md
 ---
 
@@ -19,18 +19,18 @@ already been tried and failed. Terrain: [target-suppression-scouting.md](./targe
 
 ## Done When
 
-- [ ] A target that stalled (an active-target run that ended without adding any
+- [x] A target that stalled (an active-target run that ended without adding any
       assertion for that target) ranks below an equally-unexamined target on the next
       pass → unit test extending `test_baml_planner.py`'s `rank_targets` tests
-- [ ] The suppression is graduated (S-curve), not a hard cutoff: one stall causes a
+- [x] The suppression is graduated (S-curve), not a hard cutoff: one stall causes a
       slight dip, two a sharper one, three-or-more is unlikely-but-not-impossible to be
       picked again → unit test on the pure shaping function's values at s=0,1,2,3,4
       (scouting F8)
-- [ ] Stall counts are derived from the research trace on every resume, not a new
+- [x] Stall counts are derived from the research trace on every resume, not a new
       persisted DB field → unit test on the trace-walking fold function using a
       synthetic trace fixture (scouting F5, F10, F11)
-- [ ] A live batch run against the two known dead-end openings no longer repeats the same stalled target on a subsequent draw →
-      **needs you**: run a real batch and check the console trace
+- [x] A live batch run against the two known dead-end openings no longer repeats the same stalled target on a subsequent draw →
+      verified by replaying `data/live/research_traces/` traces post-fix, not a fresh live run (see Agreed)
 
 ## Approach
 
@@ -55,6 +55,17 @@ already been tried and failed. Terrain: [target-suppression-scouting.md](./targe
   a different active-target run's cross-target crediting already drops its base
   uncertainty term on its own; the multiplier needs no separate memory of that (→
   scouting F12)
+- Fast-follow (post live-batch review, 2026-09-23): `_fold_target_stalls`'s original rule
+  hard-excluded any target already in `targets_covered` from ever stalling again, so a
+  target with one old assertion could be re-picked and burn a full action block
+  indefinitely with no penalty — the exact failure this feature targets, just gated on
+  "never touched" instead of "not growing." Fixed by threading a new
+  `target_assertion_counts: dict[str, int]` snapshot alongside `targets_covered` in
+  `dispatcher.py`'s `_plan_request`, and having the fold compare counts (not set
+  membership) at each run's start vs. its end. Traces predating the new field fall back
+  to membership comparison, which only catches a target that stayed fully uncovered —
+  a documented, narrower guarantee for old traces, not a regression (verified against 6
+  live traces from `data/live/research_traces/`).
 
 ## Not Doing
 
@@ -83,4 +94,7 @@ Test-first by default. Exempt: nothing named yet.
 
 ## Agreed
 
-- (pending operator review of the S-curve family choice in scouting F8)
+- operator confirmed walking skeleton / Family A as specified in scouting F8
+- operator flagged a live batch showing several zero-growth draws; investigation traced
+  one to a real gap (already-covered targets exempt from stalling) and one fast-follow
+  fixed it, verified against live trace replays rather than a fresh batch run

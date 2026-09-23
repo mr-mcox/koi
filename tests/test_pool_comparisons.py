@@ -114,9 +114,7 @@ def test_stale_comparison_naming_opening_outside_pool_is_ignored(config: Scoring
     a = _opening("acme--a", "acme")
     b = _opening("widgets--b", "widgets")
     assertions_by_opening = {a.id: [_assertion("stretch")], b.id: [_assertion("stretch")]}
-    comparisons_by_target = {
-        "stretch": [Comparison(winner="moved-on--c", loser=b.id, tie=False)]
-    }
+    comparisons_by_target = {"stretch": [Comparison(winner="moved-on--c", loser=b.id, tie=False)]}
 
     result = pool_for_screening(
         [a, b],

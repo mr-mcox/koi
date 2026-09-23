@@ -46,6 +46,11 @@ class LoopState(BaseModel):
     active_target: str | None = None
     active_target_actions: int = 0
     active_target_action_cap: int = 3
+    # Derived from the research trace on resume: how many contiguous runs on each
+    # target ended without adding an assertion for that target. Multiplied into the
+    # per-target uncertainty ranking so failed targets sink without becoming permanently
+    # unreachable (the S-curve floor stays above zero).
+    target_stall_counts: dict[str, int] = Field(default_factory=dict)
     # Transient directive computed by the dispatcher (or planner in tests) and
     # passed to DecidePlan so the model knows which target to focus this turn.
     primary_target: str | None = None

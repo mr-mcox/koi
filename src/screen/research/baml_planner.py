@@ -16,6 +16,7 @@ from screen.baml_client.sync_client import b
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
+from screen.score.bandit import target_suppression
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Provenance
 
@@ -82,13 +83,18 @@ def _target_uncertainty(
 
 def rank_targets(state: LoopState, config: ScoringConfig) -> list[tuple[str, float]]:
     """Rank all known targets by composite uncertainty, descending.
-
-    Ties are broken by target slug for deterministic ordering.
+    Ties are broken by target slug for deterministic ordering. Targets with
+    prior unproductive runs are suppressed by an S-curve multiplier reconstructed
+    from the research trace, so a stalled target ranks below an equally
+    unexamined target on the next pass.
     """
     n_by_target = _assertion_weight_by_target(state.assertions, config.provenance_weight)
     targets = state.targets or list(n_by_target)
+    stalls = state.target_stall_counts or {}
     uncertainties = {
-        target: _target_uncertainty(target, n_by_target=n_by_target) for target in targets
+        target: _target_uncertainty(target, n_by_target=n_by_target)
+        * target_suppression(stalls.get(target, 0))
+        for target in targets
     }
     return sorted(uncertainties.items(), key=lambda item: (-item[1], item[0]))
 

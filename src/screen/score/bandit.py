@@ -6,6 +6,8 @@ Pure `(assertions, rulings, config) -> float` — no I/O, mirroring `scorer.py`.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from screen.score.scorer import stats_for_target
@@ -30,6 +32,17 @@ def boundary_weight(p_top_k: float) -> float:
     """How contested an opening's top-K membership is: `p*(1-p)`, maximized at 0.5
     (genuinely on the boundary) and zero at 0 or 1 (settled in or out)."""
     return p_top_k * (1 - p_top_k)
+
+
+def target_suppression(stall_count: int) -> float:
+    """Graduated down-weight for targets that have burned research turns without
+    adding assertions. Logistic decay centered at 1.5 stalls, so one prior stall
+    gives a slight penalty (~0.88), two a sharp one (~0.12), three-or-more makes
+    the target very unlikely to be chosen again while leaving it theoretically
+    reachable if every alternative is exhausted."""
+    if stall_count <= 0:
+        return 1.0
+    return float(1.0 / (1.0 + math.exp(4.0 * (stall_count - 1.5))))
 
 
 def draw_opening[K](weights: dict[K, float], rng: np.random.Generator) -> K:

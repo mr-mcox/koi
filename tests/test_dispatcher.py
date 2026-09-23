@@ -136,6 +136,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
     assert event.request["opening_title"] == "Staff Software Engineer"
     assert event.request["turns_used"] == 2
     assert event.request["targets_covered"] == ["stretch"]
+    assert event.request["target_assertion_counts"] == {"stretch": 1}
     assert event.request["last_context"] is None
     assert event.response == {"actions": [{"tag": "stop", "reason": "Nothing left to check."}]}
 

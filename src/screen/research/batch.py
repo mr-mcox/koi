@@ -178,7 +178,7 @@ def run_dispatch(
     replay = (
         resume
         if resume is not None
-        else TraceReplay(turns_used=0, visited_urls=[], prior_queries=[])
+        else TraceReplay(turns_used=0, visited_urls=[], prior_queries=[], target_stalls={})
     )
     d = deps if deps is not None else RunDispatchDeps()
     state = LoopState(
@@ -200,6 +200,7 @@ def run_dispatch(
         prior_queries=replay.prior_queries,
         targets=targets,
         active_target_action_cap=scoring_config.research_target_action_cap,
+        target_stall_counts=replay.target_stalls,
     )
 
     def _persist_assertions(new_assertions: list[Assertion]) -> None:

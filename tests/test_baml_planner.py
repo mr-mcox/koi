@@ -16,6 +16,7 @@ from screen.research.baml_planner import (
     BAMLPlanner,
     _coerce,
     _prior_queries_text,
+    _target_uncertainty,
     last_context_text,
     rank_targets,
     select_primary_target,
@@ -256,6 +257,24 @@ def test_select_primary_target_releases_at_cap() -> None:
     )
     # cap reached, re-rank; unexamined compensation wins
     assert select_primary_target(state, config) == "compensation"
+
+
+def test_rank_targets_suppresses_stalled_target() -> None:
+    """A target with prior unproductive runs ranks below an otherwise more
+    attractive target: without suppression the unexamined stalled target would
+    win, but the S-curve multiplier pushes it below the examined alternative."""
+    config = _config()
+    state = _state(
+        assertions=[_assertion("compensation")],
+        targets=["stretch", "compensation"],
+        target_stall_counts={"stretch": 2},
+    )
+    ranked = rank_targets(state, config)
+    assert ranked[0][0] == "compensation"
+    # Sanity check the base signal: unexamined stretch outranks examined compensation.
+    assert _target_uncertainty("stretch", n_by_target={}) > _target_uncertainty(
+        "compensation", n_by_target={"compensation": 1.0}
+    )
 
 
 # ---------------------------------------------------------------------------

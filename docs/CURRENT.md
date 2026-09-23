@@ -1,1 +1,1 @@
-docs/features/pairwise-ranking/bearing.md
+docs/features/target-supression/bearing.md

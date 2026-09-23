@@ -174,3 +174,131 @@ def test_replay_counts_failed_research_pass_search_as_a_turn(tmp_path: Path) -> 
     replay = replay_research_trace(path)
     assert replay.turns_used == 1
     assert replay.prior_queries == ["Acme Corp culture"]
+
+
+def _plan_event(
+    active_target: str,
+    targets_covered: list[str],
+    target_assertion_counts: dict[str, int] | None = None,
+) -> ResearchTraceEvent:
+    request: dict[str, object] = {
+        "active_target": active_target,
+        "primary_target": active_target,
+        "targets_covered": targets_covered,
+    }
+    if target_assertion_counts is not None:
+        request["target_assertion_counts"] = target_assertion_counts
+    return ResearchTraceEvent(
+        ts=datetime.now(UTC),
+        tool="decide_plan",
+        request=request,
+        response={"actions": [{"tag": "stop", "reason": "done"}]},
+    )
+
+
+def test_replay_counts_single_target_stall(tmp_path: Path) -> None:
+    """One unproductive active-target run is recorded as one stall for that target."""
+    path = tmp_path / "trace.jsonl"
+    append_line(path, _plan_event("agentic", []).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls == {"agentic": 1}
+
+
+def test_replay_skips_stall_when_target_already_covered(tmp_path: Path) -> None:
+    """A run on a target that already has assertions is not a new stall."""
+    path = tmp_path / "trace.jsonl"
+    append_line(path, _plan_event("agentic", ["agentic"]).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls == {}
+
+
+def test_replay_skips_stall_when_later_run_covers_target(tmp_path: Path) -> None:
+    """Cross-target crediting: a target covered during a later run is not stalled."""
+    path = tmp_path / "trace.jsonl"
+    append_line(path, _plan_event("agentic", []).model_dump_json())
+    append_line(path, _plan_event("culture", ["agentic", "culture"]).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls == {}
+
+
+def test_replay_accumulates_separate_stalls_for_same_target(tmp_path: Path) -> None:
+    """Two separated unproductive runs on the same target count as two stalls."""
+    path = tmp_path / "trace.jsonl"
+    append_line(path, _plan_event("agentic", []).model_dump_json())
+    append_line(path, _plan_event("culture", []).model_dump_json())
+    append_line(path, _plan_event("agentic", []).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls == {"agentic": 2, "culture": 1}
+
+
+def test_replay_flags_stall_on_already_covered_target_when_counts_present(tmp_path: Path) -> None:
+    """The gap this closes: a target that already has one assertion from an
+    earlier run must still stall if a later run re-picks it and adds nothing new
+    — membership alone (`targets_covered`) can't see this, real counts can."""
+    path = tmp_path / "trace.jsonl"
+    append_line(
+        path,
+        _plan_event(
+            "compensation",
+            ["compensation"],
+            target_assertion_counts={"compensation": 1},
+        ).model_dump_json(),
+    )
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls == {"compensation": 1}
+
+
+def test_replay_does_not_flag_stall_when_counts_grew(tmp_path: Path) -> None:
+    """A re-picked target whose count is higher by the next run's snapshot
+    (a genuinely productive re-pick) is not a stall, even though it was
+    already covered going in."""
+    path = tmp_path / "trace.jsonl"
+    append_line(
+        path,
+        _plan_event(
+            "compensation",
+            ["compensation"],
+            target_assertion_counts={"compensation": 1},
+        ).model_dump_json(),
+    )
+    append_line(
+        path,
+        _plan_event(
+            "stretch",
+            ["compensation", "stretch"],
+            target_assertion_counts={"compensation": 2, "stretch": 1},
+        ).model_dump_json(),
+    )
+    replay = replay_research_trace(path)
+    assert "compensation" not in replay.target_stalls
+
+
+def test_replay_counts_based_stall_accumulates_across_repicks(tmp_path: Path) -> None:
+    """Three separate re-picks of a stuck-at-one-assertion target accumulate
+    three stalls, matching the S-curve's near-floor suppression at s=3."""
+    path = tmp_path / "trace.jsonl"
+    for other in ("domain", "extractive_business", "stretch"):
+        append_line(
+            path,
+            _plan_event(
+                "compensation",
+                ["compensation"],
+                target_assertion_counts={"compensation": 1},
+            ).model_dump_json(),
+        )
+        append_line(
+            path,
+            _plan_event(
+                other,
+                ["compensation"],
+                target_assertion_counts={"compensation": 1},
+            ).model_dump_json(),
+        )
+
+    replay = replay_research_trace(path)
+    assert replay.target_stalls["compensation"] == 3

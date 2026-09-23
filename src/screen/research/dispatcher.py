@@ -42,6 +42,16 @@ def _targets_covered(state: LoopState) -> list[str]:
     return list(dict.fromkeys(a.target for a in state.assertions))
 
 
+def _target_assertion_counts(state: LoopState) -> dict[str, int]:
+    """Assertion count per target, so a resume can detect a run that repeated a
+    target already holding assertions but added none *new* — `targets_covered`
+    alone is a membership set and can't distinguish that from real growth."""
+    counts: dict[str, int] = {}
+    for a in state.assertions:
+        counts[a.target] = counts.get(a.target, 0) + 1
+    return counts
+
+
 def _plan_request(state: LoopState) -> dict[str, object]:
     """Snapshot of what the planner had to decide from, for the audit trail.
 
@@ -61,6 +71,7 @@ def _plan_request(state: LoopState) -> dict[str, object]:
         "prior_queries": list(state.prior_queries),
         "visited_urls": list(state.visited_urls),
         "targets_covered": _targets_covered(state),
+        "target_assertion_counts": _target_assertion_counts(state),
         "last_context": (
             state.last_context.model_dump(mode="json") if state.last_context is not None else None
         ),
