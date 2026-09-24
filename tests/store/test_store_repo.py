@@ -89,12 +89,12 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
         ),
     )
     first = _assertion("stretch")
-    second = _assertion("peer")
+    second = _assertion("trajectory")
     append_assertions(conn, [first], opening_id="acme--eng-abc123")
     append_assertions(conn, [second], opening_id="acme--eng-abc123")
 
     result = assertions_for_opening(conn, "acme--eng-abc123")
-    assert [a.target for a in result] == ["stretch", "peer"]
+    assert [a.target for a in result] == ["stretch", "trajectory"]
 
 
 def test_assertions_for_opening_returns_empty_list_when_none_exist(tmp_path: Path) -> None:
@@ -285,7 +285,7 @@ def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
             created_at=_NOW,
         ),
     )
-    other_assertion = _assertion("peer")
+    other_assertion = _assertion("trajectory")
     append_assertions(conn, [other_assertion], opening_id="acme--pm-def456")
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)

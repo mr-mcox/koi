@@ -221,7 +221,6 @@ def test_identify_research_trace_writes_assertions_to_db(tmp_path: Path) -> None
     parsed = assertions[0]
     assert parsed.target in [
         "stretch",
-        "peer",
         "trajectory",
         "mission",
         "agentic",

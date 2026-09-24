@@ -43,7 +43,6 @@ def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_propose
 PARTIALLY_RESEARCHED = [
     _assertion("stretch", "Strong", "ratified"),
     _assertion("schematic", "Strong", "ratified"),
-    _assertion("peer", "Strong", "ratified"),
     _assertion("trajectory", "Strong", "ratified"),
     _assertion("mission", "Strong", "ratified"),
     _assertion("agentic", "Strong", "ratified"),

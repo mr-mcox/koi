@@ -191,7 +191,6 @@ def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
     for slug in [
         "stretch",
         "schematic",
-        "peer",
         "trajectory",
         "mission",
         "agentic",

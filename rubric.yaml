@@ -123,39 +123,6 @@ dimensions:
       over/underqualified judgment emerges from combining this with `stretch`
       in the rollup, not from baking it into these anchors.
 
-  - slug: peer
-    label: "Peer caliber"
-    weight: 2
-    definition: >
-      Real code review culture and mutual exchange — not being the only
-      qualified person by default. Generic claims that review/mentorship
-      exist are not signal; nearly every posting makes them. What
-      discriminates is a specific, hard-to-fake claim.
-    fit_anchors:
-      Poor: >
-        Thin bench, no real pushback, an explicit signal of reduced
-        expectations, or the only evidence found is boilerplate process
-        language ("we do code reviews," "we value mentorship") that carries
-        no discriminating information — nearly every posting claims this.
-      Mixed: >
-        Genuinely split evidence — corroborated positives and negatives
-        both present — or a single differentiated claim without
-        corroboration.
-      Strong: >
-        A specific, hard-to-fake claim: a named senior IC/leadership hire
-        whose background is visibly above the operator's target level;
-        engineering-blog writing substantive enough to teach the reader
-        something nontrivial (not recruiting copy); a described hiring bar
-        or interview process detail; or a concrete technical practice with a
-        stated outcome, not just its existence.
-    look_for: >
-      Staff/Principal+ IC or leadership bios (blog bylines, LinkedIn, team
-      pages) above the operator's target level; substantive engineering-blog
-      technical content, not just its presence; specific hiring-bar or
-      interview-process claims; concrete practice-with-outcome descriptions.
-      Generic mentions of "code review," "mentorship," or "collaboration"
-      with no specific detail attached are not signal on their own.
-
   - slug: trajectory
     label: "Trajectory & Leverage"
     weight: 2

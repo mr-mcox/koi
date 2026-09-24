@@ -30,7 +30,7 @@ class Comparison:
     tie: bool = False
 
 
-COMPANY_LEVEL_TARGETS = frozenset({"mission", "trajectory", "peer", "agentic", "domain"})
+COMPANY_LEVEL_TARGETS = frozenset({"mission", "trajectory", "agentic", "domain"})
 """Dimensions scoped to the Company, not the Opening. Two openings at the same company
 auto-tie on these absent an explicit comparison — they share the same evidence, so an
 unexamined difference isn't real signal."""

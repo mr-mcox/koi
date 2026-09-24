@@ -34,7 +34,7 @@ def test_extract_assertions_appends_not_truncates(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     _seed_opening(conn)
 
-    fake_ext = FakeExtractor([[canned_assertion("stretch")], [canned_assertion("peer")]])
+    fake_ext = FakeExtractor([[canned_assertion("stretch")], [canned_assertion("trajectory")]])
 
     extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
     extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
@@ -45,7 +45,7 @@ def test_extract_assertions_appends_not_truncates(tmp_path: Path) -> None:
         "append_assertions must never truncate existing rows."
     )
     assert assertions[0].target == "stretch"
-    assert assertions[1].target == "peer"
+    assert assertions[1].target == "trajectory"
 
 
 def test_extract_assertions_each_result_is_valid_assertion(tmp_path: Path) -> None:

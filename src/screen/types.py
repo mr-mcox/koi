@@ -77,7 +77,6 @@ class IdentificationResult(BaseModel):
 _SCORING_TARGETS = [
     "stretch",
     "schematic",
-    "peer",
     "trajectory",
     "mission",
     "agentic",
@@ -99,7 +98,6 @@ _NON_SCORING_TARGETS = [
 Target = Literal[
     "stretch",
     "schematic",
-    "peer",
     "trajectory",
     "mission",
     "agentic",

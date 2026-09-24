@@ -112,14 +112,14 @@ test DecidePlan_FetchesWhenContextRevealedUrl {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
     prior_queries "(none)"
-    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer. Snippet: '...see compensation benchmarks at https://levels.fyi/companies/acme ...'"
+    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, trajectory. Snippet: '...see compensation benchmarks at https://levels.fyi/companies/acme ...'"
   }
   @@assert({{ this|length > 0 }})
   @@assert({{ this[0].tag == "fetch" }})
@@ -134,7 +134,7 @@ test DecidePlan_FetchesOneWhenMultipleUrlsAvailable {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
@@ -158,14 +158,14 @@ test DecidePlan_FetchesRelevantUrlAmongNoise {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
     prior_queries "(none)"
-    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer, trajectory, mission, agentic, domain. Snippet: '...compensation details: https://example.com/contact-us, https://example.com/home, https://levels.fyi/companies/acme, https://example.com/login, ...'"
+    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, trajectory, mission, agentic, domain. Snippet: '...compensation details: https://example.com/contact-us, https://example.com/home, https://levels.fyi/companies/acme, https://example.com/login, ...'"
   }
   @@assert({{ this|length == 1 }})
   @@assert({{ this[0].tag == "fetch" }})
@@ -181,14 +181,14 @@ test DecidePlan_AvoidsFetchWhenOnlyLowValueUrlsAvailable {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
     prior_queries "Acme Corp compensation 2024"
-    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, peer, trajectory, mission, agentic, domain. Snippet: 'Quick links: https://example.com/home | https://example.com/about | https://example.com/contact | https://example.com/login'"
+    last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: stretch, trajectory, mission, agentic, domain. Snippet: 'Quick links: https://example.com/home | https://example.com/about | https://example.com/contact | https://example.com/login'"
   }
   @@assert({{ this|length == 1 }})
   @@assert({{ this[0].tag != "fetch" }})
@@ -202,7 +202,7 @@ test DecidePlan_SearchContextWithUncoveredTarget {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
@@ -227,7 +227,7 @@ test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
     company_name "Acme Logistics Systems"
     opening_title "Staff Software Engineer - Platform Identity"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
@@ -249,7 +249,7 @@ test DecidePlan_StopsWhenPrimaryTargetLeadIsMinedOut {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
@@ -272,7 +272,7 @@ test DecidePlan_SearchQueryGroundedInCompanyName {
     company_name "Zylophonic"
     opening_title "Staff Software Engineer, Backend Platform"
     rubric_text #"
-Scored dimensions: stretch (weight 3), peer (weight 2), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture, extractive_business.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.

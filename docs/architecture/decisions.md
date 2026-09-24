@@ -288,6 +288,19 @@ likely be higher than baseline" instead of a flat Poor/below Mixed/at Strong/abo
 following from S12 (compensation is now an ordinary dimension, not a constraint the old
 band language was written against).
 
+### R7 · Peer caliber dropped — the signal isn't researchable · `demonstrated` · supersedes R5
+
+R5's calibration held up on the wording it was scoring, but the operator determined the
+underlying judgment — who they'd actually work with — needs interview or conversation
+history, not public evidence a research pass can gather. Corroborated by the live corpus
+(`data/live/screen.db`): 110 `peer` assertions skew heavily toward `Mixed` (68 of 110), the
+least-discriminating band, consistent with a dimension research can't move much either way.
+`peer` is removed outright — not converted to a manual/operator-only dimension, and not
+folded into another dimension's `look_for`. This reopens OQ16's "software is core to
+strategy" talent-density half, which R5 had folded into `peer`'s Strong band (named
+senior hire, hiring-bar detail); it is unhomed again and stays an open question, not
+resolved here.
+
 ---
 
 ## Workflow

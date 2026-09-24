@@ -1,1 +1,1 @@
-docs/features/target-supression/bearing.md
+docs/features/rubric-peer-stretch-revision/drop-peer.md

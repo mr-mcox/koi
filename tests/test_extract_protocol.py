@@ -46,7 +46,7 @@ def test_fake_extractor_requires_at_least_one_result() -> None:
 
 def test_fake_extractor_returns_results_in_order() -> None:
     a1 = _assertion(target="stretch")
-    a2 = _assertion(target="peer")
+    a2 = _assertion(target="trajectory")
     fake = FakeExtractor([[a1], [a2]])
     assert fake.extract_assertions("chunk", "rubric", []) == [a1]
     assert fake.extract_assertions("chunk", "rubric", []) == [a2]
@@ -86,7 +86,7 @@ def test_extract_assertions_returns_extractor_output_unchanged() -> None:
 
 def test_extract_assertions_passes_existing_through() -> None:
     """existing list is forwarded to the extractor; we verify via a spy."""
-    existing = [_assertion(target="peer")]
+    existing = [_assertion(target="trajectory")]
     captured: list[list[Assertion]] = []
 
     class SpyExtractor:
