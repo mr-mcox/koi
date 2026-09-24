@@ -10,6 +10,8 @@ from typing import Any, Protocol, TypedDict, cast, runtime_checkable
 
 from tavily import TavilyClient
 
+_MAX_FETCH_ATTEMPTS = 2
+
 
 class BrowserError(Exception):
     """Raised by BrowserProtocol implementations on fetch failure.
@@ -59,28 +61,51 @@ class TavilyBrowser:
     """Real Tavily implementation of BrowserProtocol. Constructor stores the
     API key; no network I/O until extract() or fetch() is called."""
 
-    def __init__(self, api_key: str) -> None:
-        self._client = TavilyClient(api_key=api_key)
+    def __init__(self, api_key: str, *, client: TavilyClient | None = None) -> None:
+        self._client = client if client is not None else TavilyClient(api_key=api_key)
 
     def extract(self, urls: Iterable[str]) -> dict[str, Any]:
         try:
-            return cast(dict[str, Any], cast(Any, self._client.extract(urls=list(urls))))
+            return cast(
+                dict[str, Any],
+                cast(Any, self._client.extract(urls=list(urls), extract_depth="advanced")),
+            )
         except Exception as exc:
             raise BrowserError(str(exc), details={"exception": str(exc)}) from exc
 
     def fetch(self, url: str) -> SearchHit:
-        """Fetch a single URL and return the first result hit."""
-        response = cast(_TavilyResponse, self.extract([url]))
-        results = response.get("results") or []
-        if results:
-            return cast(SearchHit, results[0])
-        failed = response.get("failed_results") or []
-        if failed:
-            raise BrowserError(
-                f"fetch failed for {url}: {failed[0]}",
-                details={"failed_results": failed},
+        """Fetch a single URL and return the first result hit.
+
+        Retries once on failure. Advanced-depth extraction against
+        JS-rendered ATS pages (Workday, AshbyHQ, Indeed) is occasionally
+        transiently flaky — observed failing on the first attempt and
+        succeeding immediately on the second with identical input. A
+        persistent failure (dead link, 404) fails the same way both times,
+        so retrying doesn't mask it, just costs one extra call.
+        """
+        last_error = BrowserError(
+            f"fetch returned no results for {url}", details={"failed_results": []}
+        )
+        for _ in range(_MAX_FETCH_ATTEMPTS):
+            try:
+                response = cast(_TavilyResponse, self.extract([url]))
+            except BrowserError as exc:
+                last_error = exc
+                continue
+            results = response.get("results") or []
+            if results:
+                return cast(SearchHit, results[0])
+            failed = response.get("failed_results") or []
+            if failed:
+                last_error = BrowserError(
+                    f"fetch failed for {url}: {failed[0]}",
+                    details={"failed_results": failed},
+                )
+                continue
+            last_error = BrowserError(
+                f"fetch returned no results for {url}", details={"failed_results": []}
             )
-        raise BrowserError(f"fetch returned no results for {url}", details={"failed_results": []})
+        raise last_error
 
     def search(self, query: str) -> list[SearchHit]:
         """Search Tavily and return hits."""

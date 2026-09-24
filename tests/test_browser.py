@@ -5,8 +5,23 @@ implementation; FakeTavily (in intake/fakes.py) is the test double used
 throughout the intake test suite.
 """
 
+from typing import Any
+
 from screen.browser import BrowserError, BrowserProtocol, SearchHit, TavilyBrowser
 from screen.intake.fakes import FakeTavily
+
+
+class _SpyTavilyClient:
+    """Stand-in for the Tavily SDK client, injected via TavilyBrowser's
+    `client` seam so tests exercise real dispatch logic without network I/O."""
+
+    def __init__(self, responses: list[dict[str, Any]]) -> None:
+        self._responses = list(responses)
+        self.extract_calls: list[dict[str, Any]] = []
+
+    def extract(self, **kwargs: Any) -> dict[str, Any]:
+        self.extract_calls.append(kwargs)
+        return self._responses.pop(0)
 
 
 def test_browser_protocol_is_runtime_checkable() -> None:
@@ -120,3 +135,56 @@ def test_fake_tavily_fetch_error_carries_failed_results_details() -> None:
         assert False, "expected BrowserError"
     except BrowserError as exc:
         assert "failed_results" in exc.details
+
+
+def test_tavily_browser_extract_uses_advanced_depth() -> None:
+    """basic-depth extraction fails outright or returns thin boilerplate on
+    JS-rendered ATS pages (Workday, AshbyHQ, Indeed, LinkedIn) — observed
+    across 16 of 18 live intake failures. advanced is the fix; this pins it
+    so a future refactor can't silently drop back to the default."""
+    spy = _SpyTavilyClient(responses=[{"results": [], "failed_results": []}])
+    client = TavilyBrowser(api_key="x", client=spy)
+    client.extract(["https://example.com/job/1"])
+    assert spy.extract_calls[0]["extract_depth"] == "advanced"
+
+
+def test_tavily_browser_fetch_retries_once_on_failure() -> None:
+    """A fetch failing on the first attempt and succeeding on an identical
+    retry is a real, observed pattern (transient timeouts against ATS
+    pages) — not a hidden failure being papered over."""
+    spy = _SpyTavilyClient(
+        responses=[
+            {
+                "results": [],
+                "failed_results": [
+                    {"url": "https://example.com/job/1", "error": "Failed to fetch url"}
+                ],
+            },
+            {
+                "results": [{"url": "https://example.com/job/1", "raw_content": "ok"}],
+                "failed_results": [],
+            },
+        ]
+    )
+    client = TavilyBrowser(api_key="x", client=spy)
+    hit = client.fetch("https://example.com/job/1")
+    assert hit["raw_content"] == "ok"
+    assert len(spy.extract_calls) == 2
+
+
+def test_tavily_browser_fetch_raises_after_max_attempts() -> None:
+    """A persistent failure (dead link, 404) fails the same way on both
+    attempts — retrying doesn't mask it, it still raises."""
+    fail_response = {
+        "results": [],
+        "failed_results": [{"url": "https://example.com/job/1", "error": "404 page not found"}],
+    }
+    spy = _SpyTavilyClient(responses=[dict(fail_response), dict(fail_response)])
+    client = TavilyBrowser(api_key="x", client=spy)
+    raised = False
+    try:
+        client.fetch("https://example.com/job/1")
+    except BrowserError:
+        raised = True
+    assert raised
+    assert len(spy.extract_calls) == 2

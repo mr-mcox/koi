@@ -9,6 +9,7 @@ from screen.store.repo import (
     list_intake_queue,
     mark_intake_url_done,
     mark_intake_url_failed,
+    reset_intake_url_to_pending,
 )
 
 
@@ -72,3 +73,29 @@ def test_mark_intake_url_failed_records_error(tmp_path: Path) -> None:
     row = list_intake_queue(conn)[0]
     assert row.status == "failed"
     assert row.error == "fetch: simulated transport failure"
+
+
+def test_reset_intake_url_to_pending_requeues_a_failed_row(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    item = enqueue_intake_url(conn, "https://example.com/jobs/1")
+    claim_next_pending_intake_url(conn)
+    mark_intake_url_failed(conn, item.id, "fetch: simulated transport failure")
+
+    reset_intake_url_to_pending(conn, item.id)
+
+    row = list_intake_queue(conn)[0]
+    assert row.status == "pending"
+    assert row.error is None
+
+
+def test_reset_intake_url_to_pending_is_a_no_op_on_a_done_row(tmp_path: Path) -> None:
+    """A stale retry click (e.g. the row already succeeded on a later worker
+    pass) must not bump a done row back to pending."""
+    conn = connect(tmp_path / "screen.db")
+    item = enqueue_intake_url(conn, "https://example.com/jobs/1")
+    claim_next_pending_intake_url(conn)
+    mark_intake_url_done(conn, item.id)
+
+    reset_intake_url_to_pending(conn, item.id)
+
+    assert list_intake_queue(conn)[0].status == "done"

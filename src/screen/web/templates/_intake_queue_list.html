@@ -5,6 +5,11 @@
   {% if item.error %}
   <p class="intake-queue-error">{{ item.error }}</p>
   {% endif %}
+  {% if item.status == "failed" %}
+  <form class="intake-queue-retry" hx-post="/intake-queue/{{ item.id }}/retry" hx-target="#intake-queue-list" hx-swap="innerHTML">
+    <button type="submit">Retry</button>
+  </form>
+  {% endif %}
 </li>
 {% else %}
 <li class="intake-queue-empty">Nothing queued yet.</li>

@@ -43,6 +43,7 @@ from screen.store.repo import (
     get_opening,
     list_intake_queue,
     list_openings,
+    reset_intake_url_to_pending,
     upsert_assertion_ruling,
     upsert_opening,
 )
@@ -682,6 +683,16 @@ def post_intake_queue(
     the worker (started once in the app lifespan) picks it up on its own,
     including a URL added while it's mid-batch."""
     enqueue_intake_url(conn, url)
+    items = list_intake_queue(conn)
+    return templates.TemplateResponse(request, "_intake_queue_list.html", {"items": items})
+
+
+@router.post("/intake-queue/{item_id}/retry", response_class=HTMLResponse)
+def retry_intake_url(request: Request, conn: Conn, item_id: str) -> HTMLResponse:
+    """Requeue one failed row as pending; the always-on worker picks it up
+    on its next poll. A no-op if the row isn't `failed` (e.g. a stale button
+    click after the row already advanced)."""
+    reset_intake_url_to_pending(conn, item_id)
     items = list_intake_queue(conn)
     return templates.TemplateResponse(request, "_intake_queue_list.html", {"items": items})
 

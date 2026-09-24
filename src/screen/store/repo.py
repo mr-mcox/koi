@@ -249,6 +249,18 @@ def mark_intake_url_failed(conn: sqlite3.Connection, item_id: str, error: str) -
     conn.commit()
 
 
+def reset_intake_url_to_pending(conn: sqlite3.Connection, item_id: str) -> None:
+    """Requeue a failed row for another worker pass. No-op on a row that
+    isn't `failed` — a done or already-pending/running row is never bumped
+    back to pending by a stray retry click."""
+    conn.execute(
+        "UPDATE intake_queue SET status = 'pending', error = NULL "
+        "WHERE id = ? AND status = 'failed'",
+        (item_id,),
+    )
+    conn.commit()
+
+
 def list_intake_queue(conn: sqlite3.Connection) -> list[IntakeQueueItem]:
     rows = conn.execute("SELECT * FROM intake_queue ORDER BY created_at").fetchall()
     return [intake_queue_item_from_row(dict(row)) for row in rows]
