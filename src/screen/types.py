@@ -75,7 +75,7 @@ class IdentificationResult(BaseModel):
 # an ordinary weighted dimension — there is no separate constraint or multiplicative
 # scoring path.
 _SCORING_TARGETS = [
-    "stretch",
+    "craft_direction",
     "schematic",
     "trajectory",
     "mission",
@@ -96,7 +96,7 @@ _NON_SCORING_TARGETS = [
 # Wall 3: closed vocabulary; any value outside this set is rejected at
 # validation time, not by scorer logic.
 Target = Literal[
-    "stretch",
+    "craft_direction",
     "schematic",
     "trajectory",
     "mission",

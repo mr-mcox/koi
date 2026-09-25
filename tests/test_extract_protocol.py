@@ -23,7 +23,7 @@ def _citation(**overrides: object) -> Citation:
 
 def _assertion(**overrides: object) -> Assertion:
     base = {
-        "target": "stretch",
+        "target": "craft_direction",
         "fit": "Strong",
         "provenance": "model_proposed",
         "chunk": "Staff Platform Engineer, 10+ years required.",
@@ -45,7 +45,7 @@ def test_fake_extractor_requires_at_least_one_result() -> None:
 
 
 def test_fake_extractor_returns_results_in_order() -> None:
-    a1 = _assertion(target="stretch")
+    a1 = _assertion(target="craft_direction")
     a2 = _assertion(target="trajectory")
     fake = FakeExtractor([[a1], [a2]])
     assert fake.extract_assertions("chunk", "rubric", []) == [a1]

@@ -29,7 +29,7 @@ def _comparison(outcome: str) -> Comparison:
     return Comparison(
         opening_a_id="a",
         opening_b_id="b",
-        target="stretch",
+        target="craft_direction",
         outcome=outcome,  # type: ignore[arg-type]
         predicted_a_beats_b=0.5,
         created_at=_NOW,

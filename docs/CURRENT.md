@@ -1,1 +1,1 @@
-docs/features/rubric-peer-stretch-revision/drop-peer.md
+docs/features/rubric-peer-stretch-revision/redefine-stretch.md

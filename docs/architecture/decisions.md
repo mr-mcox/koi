@@ -238,7 +238,7 @@ as mismatches; that channel is gone.
 
 ## Rubric
 
-### R1 · Stretch & Frontier is an inverted U keyed to personal ability · `demonstrated` (D15)
+### R1 · Stretch & Frontier is an inverted U keyed to personal ability · `demonstrated` (D15) · superseded by R8
 
 Poor at both tails (well-trodden personal pattern; or no realistic path to qualified);
 Strong = stretch *plus* a foundation to climb from. Résumé–JD alignment folds in here — it
@@ -263,7 +263,7 @@ Definitions are sliced verbatim into research prompts and review screens — pro
 review judged against identical words. Every rubric change carries a reason; the change log
 *is* the dimension-stability instrument.
 
-### R5 · Peer caliber demotes generic "we do code reviews" language to non-signal · `demonstrated`
+### R5 · Peer caliber demotes generic "we do code reviews" language to non-signal · `demonstrated` · superseded by R7
 
 Measured against the live corpus (`data/live/screen.db`): every plain mention of code
 review / mentorship / collaboration existing (10 of 10 in the peer-target assertion set)
@@ -300,6 +300,52 @@ folded into another dimension's `look_for`. This reopens OQ16's "software is cor
 strategy" talent-density half, which R5 had folded into `peer`'s Strong band (named
 senior hire, hiring-bar detail); it is unhomed again and stays an open question, not
 resolved here.
+
+### R8 · Stretch redefined as a discipline-preference ladder, renamed `craft_direction` · `demonstrated` · supersedes R1
+
+R1's ability-distance/inverted-U model wasn't discriminating in the live corpus
+(`data/live/screen.db`): 89 Strong / 3 Mixed / 0 Poor across 92 `stretch` assertions, almost
+all keyed to bare requisition-level/title language regardless of domain — R1's own
+"strongest single signal" claim had swallowed the dimension. The operator's actual use of
+the concept is a discipline-preference ladder: is this a way they want to keep growing in,
+independent of both `domain` (industry novelty) and `schematic` (shape of the work). New
+fit anchors, verbatim from the operator: Strong = genuine mixture of AI engineering/LLM
+solution design and standard ML/deep learning; Mixed = data engineering, analytics
+engineering, dev ops, backend engineering (done before, less exciting); Poor = front end
+engineering, embedded systems (little depth, high ramp-up cost). The résumé-alignment
+mechanism and the D16 "expect overrides / least trustworthy" caveat are dropped along with
+the old model — both were written against ability-distance, not discipline preference.
+
+Slug renamed `stretch` → `craft_direction` rather than reinterpreted in place, so stale
+`Strong` assertions collected under the old ability-distance semantics don't silently carry
+over as if they meant something about discipline fit; re-fetch is expected. Stays in normal
+research gap-detection, unlike `domain` (OQ12) — JD-legible by default, but corroborating
+evidence (blog/talks/shipped-work discussion) changes confidence, and its *absence* under an
+aspirational "we do AI/ML" JD is itself a negative signal.
+
+R2's "organizational pace folds into Stretch" was written against the ability-distance
+model (pace limiting how often the edge gets touched) and has no equivalent under the
+discipline-preference framing; it is not carried forward and is not superseded here —
+left as-is per append-only discipline, its premise no longer applies to `craft_direction`.
+
+### R9 · Retired rubric targets are dropped at the SQLite read boundary, not migrated · `provisional`
+
+When `rubric.yaml` renames or removes a dimension, the operator's live `data/live/screen.db`
+still holds assertions, cached `dimension_digests`, and `comparisons` rows tagged with the old
+slug. Rather than require a blocking migration before the app renders, the read-path mappers in
+`src/screen/store/mappers.py` validate each stored `target` against the current closed `Target`
+vocabulary and `warnings.warn` + drop rows whose target is no longer current. This makes the UI
+and scorer resilient to rubric drift; retired evidence becomes unexamined rather than
+silently reinterpreted under a renamed dimension. A migration (targeted `DELETE` for the
+retired slug, then re-fetch for current dimensions) remains an option if the warnings become
+noisy or if the operator wants to reclaim space. This is explicitly a tolerance seam, not a
+validation rule — new writes still pass the strict `Target` Literal in `screen.types`.
+
+Set aside: a one-time startup migration that rewrites old slugs into new ones. That would
+preserve the evidence, but it directly conflicts with the rename intent for `stretch` →
+`craft_direction`: stale `Strong` ability-distance assertions should not carry over as `Strong`
+craft-direction claims. Dropping them is the conservative default; migration only makes sense
+after the operator confirms which rows are worth re-fetching.
 
 ---
 

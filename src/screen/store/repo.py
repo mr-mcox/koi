@@ -81,7 +81,7 @@ def assertions_for_opening(conn: sqlite3.Connection, opening_id: str) -> list[As
     rows = conn.execute(
         "SELECT * FROM assertions WHERE opening_id = ? ORDER BY created_at", (opening_id,)
     ).fetchall()
-    return [assertion_from_row(dict(row)) for row in rows]
+    return [a for a in (assertion_from_row(dict(row)) for row in rows) if a is not None]
 
 
 def upsert_assertion_ruling(conn: sqlite3.Connection, ruling: AssertionRuling) -> None:
@@ -151,7 +151,9 @@ def get_dimension_digest(
         "SELECT * FROM dimension_digests WHERE opening_id = ? AND target = ?",
         (opening_id, target),
     ).fetchone()
-    return dimension_digest_from_row(dict(row)) if row is not None else None
+    if row is None:
+        return None
+    return dimension_digest_from_row(dict(row))
 
 
 def upsert_dimension_digest(
@@ -205,7 +207,7 @@ def comparisons_for_target(conn: sqlite3.Connection, target: str) -> list[Compar
     rows = conn.execute(
         "SELECT * FROM comparisons WHERE target = ? ORDER BY created_at", (target,)
     ).fetchall()
-    return [comparison_from_row(dict(row)) for row in rows]
+    return [c for c in (comparison_from_row(dict(row)) for row in rows) if c is not None]
 
 
 def enqueue_intake_url(conn: sqlite3.Connection, url: str) -> IntakeQueueItem:

@@ -39,7 +39,7 @@ def _seed_opening(db_path: Path, opening_id: str, company_id: str) -> None:
             created_at=datetime.now(UTC),
         ),
     )
-    append_assertions(conn, [canned_assertion("stretch")], opening_id=opening_id)
+    append_assertions(conn, [canned_assertion("craft_direction")], opening_id=opening_id)
     conn.close()
 
 
@@ -57,8 +57,8 @@ def test_backfill_digests_warms_every_opening(
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
     conn = connect(tmp_path / "screen.db")
-    assert get_dimension_digest(conn, "acme--eng", "stretch") is not None
-    assert get_dimension_digest(conn, "widgets--eng", "stretch") is not None
+    assert get_dimension_digest(conn, "acme--eng", "craft_direction") is not None
+    assert get_dimension_digest(conn, "widgets--eng", "craft_direction") is not None
 
 
 def test_backfill_digests_reports_opening_count(

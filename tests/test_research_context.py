@@ -47,7 +47,7 @@ class TestFetchContext:
     def test_round_trips(self) -> None:
         ctx = FetchContext(
             url="https://example.com/about",
-            targets_added=["stretch", "mission"],
+            targets_added=["craft_direction", "mission"],
             snippet="First 500 chars of page.",
         )
         restored = FetchContext.model_validate_json(ctx.model_dump_json())

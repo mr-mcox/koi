@@ -42,7 +42,7 @@ def _citation() -> Citation:
     )
 
 
-def _assertion(target: str = "stretch") -> Assertion:
+def _assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,
         fit="Strong",
@@ -67,7 +67,7 @@ def _state(
         "opening_title": "Staff Software Engineer",
         "page_content": "Some posting text.",
         "url": "https://example.com/jobs/1",
-        "rubric_text": "stretch: ...",
+        "rubric_text": "craft_direction: ...",
         "assertions": assertions if assertions is not None else [_assertion()],
         "turn_budget": 5,
         "turns_used": turns_used,
@@ -135,8 +135,8 @@ def test_decide_plan_event_records_request_and_response() -> None:
     assert event.request["company_name"] == "Acme Corp"
     assert event.request["opening_title"] == "Staff Software Engineer"
     assert event.request["turns_used"] == 2
-    assert event.request["targets_covered"] == ["stretch"]
-    assert event.request["target_assertion_counts"] == {"stretch": 1}
+    assert event.request["targets_covered"] == ["craft_direction"]
+    assert event.request["target_assertion_counts"] == {"craft_direction": 1}
     assert event.request["last_context"] is None
     assert event.response == {"actions": [{"tag": "stop", "reason": "Nothing left to check."}]}
 
@@ -396,7 +396,7 @@ def test_dispatch_sticky_target_increments_action_counter() -> None:
     )
 
     state = _state(
-        targets=["stretch", "compensation"],
+        targets=["craft_direction", "compensation"],
         active_target="compensation",
         active_target_actions=1,
         active_target_action_cap=10,

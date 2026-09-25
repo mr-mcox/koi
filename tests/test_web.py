@@ -141,13 +141,13 @@ def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Pat
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="High-bar stretch culture.",
         assertion_count=1,
         computed_at=_NOW,
@@ -169,7 +169,7 @@ def test_index_renders_queue_html(client: TestClient, db_path: Path) -> None:
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     response = client.get("/")
@@ -254,13 +254,13 @@ def test_index_queue_reorders_after_comparison(client: TestClient, db_path: Path
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     _seed_opening(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     before = client.get("/")
@@ -273,7 +273,7 @@ def test_index_queue_reorders_after_comparison(client: TestClient, db_path: Path
             Comparison(
                 opening_a_id="widgets--b",
                 opening_b_id="acme--a",
-                target="stretch",
+                target="craft_direction",
                 outcome="a",
                 predicted_a_beats_b=0.5,
                 created_at=_NOW,
@@ -302,13 +302,13 @@ def test_compare_page_reachable_from_queue_and_submits_winner(
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     _seed_opening(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     queue = client.get("/")
@@ -317,7 +317,7 @@ def test_compare_page_reachable_from_queue_and_submits_winner(
 
     get_response = client.get("/compare")
     assert get_response.status_code == 200
-    assert "stretch" in get_response.text
+    assert "craft_direction" in get_response.text
     assert 'class="compare-column-title"' not in get_response.text
 
     post_response = client.post(
@@ -325,7 +325,7 @@ def test_compare_page_reachable_from_queue_and_submits_winner(
         data={
             "opening_a_id": "acme--a",
             "opening_b_id": "widgets--b",
-            "target": "stretch",
+            "target": "craft_direction",
             "outcome": "a",
         },
         follow_redirects=False,
@@ -342,7 +342,7 @@ def test_compare_page_reachable_from_queue_and_submits_winner(
     assert dict(rows[0]) == {
         "opening_a_id": "acme--a",
         "opening_b_id": "widgets--b",
-        "target": "stretch",
+        "target": "craft_direction",
         "outcome": "a",
         "predicted_a_beats_b": pytest.approx(0.5),
     }
@@ -365,13 +365,13 @@ def test_compare_page_previews_target_digests(client: TestClient, db_path: Path)
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     _seed_opening(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     response = client.get(
@@ -379,7 +379,7 @@ def test_compare_page_previews_target_digests(client: TestClient, db_path: Path)
         params={
             "opening_a_id": "acme--a",
             "opening_b_id": "widgets--b",
-            "target": "stretch",
+            "target": "craft_direction",
         },
     )
     assert response.status_code == 200
@@ -399,7 +399,9 @@ def test_compare_page_previews_target_digests(client: TestClient, db_path: Path)
     # same comparison, not the rating page's HTMX partial swap.
     assert response.text.count('class="ruling-form"') == 2
     assert "hx-post" not in response.text
-    redirect_url = "/compare?opening_a_id=acme--a&amp;opening_b_id=widgets--b&amp;target=stretch"
+    redirect_url = (
+        "/compare?opening_a_id=acme--a&amp;opening_b_id=widgets--b&amp;target=craft_direction"
+    )
     assert response.text.count(f'name="redirect_to" value="{redirect_url}"') == 2
 
 
@@ -409,7 +411,7 @@ def test_compare_page_rejects_invalid_pair(client: TestClient, db_path: Path) ->
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     missing = client.get(
@@ -417,7 +419,7 @@ def test_compare_page_rejects_invalid_pair(client: TestClient, db_path: Path) ->
         params={
             "opening_a_id": "acme--a",
             "opening_b_id": "no-such-opening",
-            "target": "stretch",
+            "target": "craft_direction",
         },
     )
     assert missing.status_code == 400
@@ -427,7 +429,7 @@ def test_compare_page_rejects_invalid_pair(client: TestClient, db_path: Path) ->
         params={
             "opening_a_id": "acme--a",
             "opening_b_id": "acme--a",
-            "target": "stretch",
+            "target": "craft_direction",
         },
     )
     assert same.status_code == 400
@@ -442,20 +444,20 @@ def test_compare_form_uses_get_show_and_post_outcome_buttons(
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     _seed_opening(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     auto = client.get("/compare")
     assert auto.status_code == 200
     assert '<form class="compare-form"' not in auto.text
     assert "Suggested comparison" not in auto.text
     assert 'class="compare-column-title"' not in auto.text
-    assert "stretch" in auto.text
+    assert "craft_direction" in auto.text
     assert auto.text.count('<form class="compare-actions" method="post" action="/compare">') == 1
     assert "Left wins" in auto.text
     assert "Right wins" in auto.text
@@ -464,7 +466,7 @@ def test_compare_form_uses_get_show_and_post_outcome_buttons(
         params={
             "opening_a_id": "acme--a",
             "opening_b_id": "widgets--b",
-            "target": "stretch",
+            "target": "craft_direction",
         },
     )
     assert preview.status_code == 200
@@ -480,7 +482,7 @@ def test_compare_blank_form_when_no_suggestion(client: TestClient, db_path: Path
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     response = client.get("/compare")
     assert response.status_code == 200
@@ -548,7 +550,7 @@ def test_compare_page_ruling_edit_redirects_back_to_same_comparison(
     """Setting an assertion's fit from the compare page redirects back to the same
     comparison (not the rating page's HTMX partial), and the updated fit is reflected
     on reload — the compare page is a primary place rulings get set."""
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -559,20 +561,20 @@ def test_compare_page_ruling_edit_redirects_back_to_same_comparison(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     response = client.post(
         f"/openings/acme--a/assertions/{assertion.id}/ruling",
         data={
             "fit": "Strong",
-            "redirect_to": "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=stretch",
+            "redirect_to": "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=craft_direction",
         },
         follow_redirects=False,
     )
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=stretch"
+        "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=craft_direction"
     )
 
     after = client.get(response.headers["location"])
@@ -600,18 +602,18 @@ def test_submit_comparison_rejects_bad_input(
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     _seed_opening(
         db_path,
         company_id="widgets",
         opening_id="widgets--b",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     data = {
         "opening_a_id": "acme--a",
         "opening_b_id": "widgets--b",
-        "target": "stretch",
+        "target": "craft_direction",
         "outcome": "a",
     }
     data[field] = value
@@ -624,14 +626,14 @@ def test_submit_comparison_rejects_same_opening(client: TestClient, db_path: Pat
         db_path,
         company_id="acme",
         opening_id="acme--a",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     response = client.post(
         "/compare",
         data={
             "opening_a_id": "acme--a",
             "opening_b_id": "acme--a",
-            "target": "stretch",
+            "target": "craft_direction",
             "outcome": "a",
         },
         follow_redirects=False,
@@ -769,7 +771,7 @@ def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path
         company_id="acme",
         opening_id="acme--eng",
         assertions=[
-            _assertion("stretch", "Strong"),
+            _assertion("craft_direction", "Strong"),
             _assertion("mission", "Mixed"),
         ],
     )
@@ -778,10 +780,10 @@ def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path
 
     assert response.status_code == 200
     body = response.text
-    assert '<h3 class="dimension-title">stretch</h3>' in body
+    assert '<h3 class="dimension-title">craft_direction</h3>' in body
     assert '<h3 class="dimension-title">mission</h3>' in body
     # Each dimension's assertion appears in its own section.
-    stretch_heading = body.index('<h3 class="dimension-title">stretch</h3>')
+    stretch_heading = body.index('<h3 class="dimension-title">craft_direction</h3>')
     mission_heading = body.index('<h3 class="dimension-title">mission</h3>')
     next_after_stretch = body.find('<h3 class="dimension-title">', stretch_heading + 1)
     stretch_section = body[stretch_heading:next_after_stretch]
@@ -799,13 +801,13 @@ def test_rate_opening_shows_cached_digest_above_assertions(
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="High-bar stretch culture.",
         assertion_count=1,
         computed_at=_NOW,
@@ -831,14 +833,14 @@ def test_rate_opening_dimension_order_is_weight_descending(
         opening_id="acme--eng",
         assertions=[
             _assertion("domain", "Mixed"),  # weight 1
-            _assertion("stretch", "Strong"),  # weight 3
+            _assertion("craft_direction", "Strong"),  # weight 3
         ],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="Stretch digest.",
         assertion_count=1,
         computed_at=_NOW,
@@ -869,13 +871,13 @@ def test_rate_opening_empty_dimension_shows_not_yet_examined(
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="Stretch digest.",
         assertion_count=1,
         computed_at=_NOW,
@@ -900,13 +902,13 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="Evidence is mixed:\n- Autonomy is real.\n- Process is heavy.",
         assertion_count=1,
         computed_at=_NOW,
@@ -930,13 +932,13 @@ def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_p
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng",
-        target="stretch",
+        target="craft_direction",
         digest="Stretch digest.",
         assertion_count=1,
         computed_at=_NOW,
@@ -963,7 +965,7 @@ def test_rate_opening_renders_citation_link(client: TestClient, db_path: Path) -
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     response = client.get("/openings/acme--eng/rate")
@@ -980,7 +982,7 @@ def test_rate_opening_shows_model_proposed_provenance(client: TestClient, db_pat
         db_path,
         company_id="acme",
         opening_id="acme--eng",
-        assertions=[_assertion("stretch", "Strong")],
+        assertions=[_assertion("craft_direction", "Strong")],
     )
 
     response = client.get("/openings/acme--eng/rate")
@@ -997,7 +999,7 @@ def test_rate_opening_shows_existing_ruling_in_fit_control(
 ) -> None:
     """An `AssertionRuling` already recorded for an assertion makes the control's
     active segment reflect the operator's value, not the original proposal."""
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1077,7 +1079,7 @@ def test_submit_ruling_writes_and_swaps_partial(client: TestClient, db_path: Pat
     """POSTing an override writes an `AssertionRuling` and returns the rating content
     partial (not a full document) reflecting the new ruling — an HTMX partial swap,
     not a full-document GET."""
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1108,7 +1110,7 @@ def test_submit_ruling_confirming_current_value_still_ratifies(
     """Clicking the already-active segment is an explicit confirm, not a no-op —
     it still records a ruling and flips the glyph to `ratified`."""
     assertion = Assertion(
-        target="stretch",
+        target="craft_direction",
         fit="Strong",
         provenance="model_proposed",
         chunk="verbatim source text",
@@ -1140,7 +1142,7 @@ def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> N
     config = load_scoring_config()
     strong = [_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
     _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
-    stretch_assertion = next(a for a in strong if a.target == "stretch")
+    stretch_assertion = next(a for a in strong if a.target == "craft_direction")
 
     before = client.get("/openings/acme--eng/rate")
     response = client.post(
@@ -1156,7 +1158,7 @@ def test_submit_ruling_replaces_prior_ruling_for_same_assertion(
     client: TestClient, db_path: Path
 ) -> None:
     """Re-submitting an override for the same assertion replaces the stored ruling."""
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1184,7 +1186,7 @@ def test_submit_ruling_ignores_off_site_redirect_to(client: TestClient, db_path:
     """`redirect_to` only honors same-origin relative paths — an absolute or
     protocol-relative URL is ignored and the usual HTMX partial is returned instead of
     an open redirect."""
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1202,7 +1204,7 @@ def test_submit_ruling_ignores_off_site_redirect_to(client: TestClient, db_path:
 
 
 def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) -> None:
-    assertion = _assertion("stretch", "Mixed")
+    assertion = _assertion("craft_direction", "Mixed")
     _seed_opening(
         db_path,
         company_id="acme",
@@ -1378,7 +1380,7 @@ def _pausable_engine(gate: threading.Event) -> BatchEngine:
         planner_factory=lambda: shared_planner,
         deps_factory=lambda: RunDispatchDeps(
             browser=FakeBrowser(search_fixtures={"paused query": []}),
-            extractor=FakeExtractor([[_assertion("stretch", "Strong")]]),
+            extractor=FakeExtractor([[_assertion("craft_direction", "Strong")]]),
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
@@ -1622,7 +1624,7 @@ def test_retired_routes_return_404(client: TestClient) -> None:
     assert client.get("/openings/acme--eng/focus").status_code == 404
     assert (
         client.post(
-            "/openings/acme--eng/dimensions/stretch/ruling",
+            "/openings/acme--eng/dimensions/craft_direction/ruling",
             data={"mean": 0.0, "settledness": 0.5},
         ).status_code
         == 404

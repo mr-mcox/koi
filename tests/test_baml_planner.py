@@ -59,7 +59,7 @@ def _citation() -> Citation:
     )
 
 
-def _assertion(target: str = "stretch") -> Assertion:
+def _assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,
         fit="Strong",
@@ -85,7 +85,7 @@ def _state(
         "opening_title": "Staff Software Engineer",
         "page_content": "Some posting text.",
         "url": "https://example.com/jobs/1",
-        "rubric_text": "stretch: ...",
+        "rubric_text": "craft_direction: ...",
         "assertions": assertions if assertions is not None else [],
         "turn_budget": 5,
         "turns_used": 0,
@@ -139,14 +139,14 @@ def test_last_context_text_none_returns_empty() -> None:
 def test_last_context_text_fetch_context_with_targets() -> None:
     ctx = FetchContext(
         url="https://levels.fyi/acme",
-        targets_added=["compensation", "stretch"],
+        targets_added=["compensation", "craft_direction"],
         snippet="Acme pays $400k TC",
     )
     state = _state(last_context=ctx)
     text = last_context_text(state)
     assert "https://levels.fyi/acme" in text
     assert "compensation" in text
-    assert "stretch" in text
+    assert "craft_direction" in text
 
 
 def test_last_context_text_fetch_context_no_targets() -> None:
@@ -215,8 +215,8 @@ def test_rank_targets_prefers_unexamined_target() -> None:
     """An unexamined target outranks a target with one assertion."""
     config = _config()
     state = _state(
-        assertions=[_assertion("stretch")],
-        targets=["stretch", "compensation"],
+        assertions=[_assertion("craft_direction")],
+        targets=["craft_direction", "compensation"],
     )
     ranked = rank_targets(state, config)
     assert ranked[0][0] == "compensation"
@@ -227,18 +227,18 @@ def test_rank_targets_falls_back_to_assertions() -> None:
     assertions exist."""
     config = _config()
     state = _state(
-        assertions=[_assertion("stretch")],
+        assertions=[_assertion("craft_direction")],
         targets=[],
     )
     ranked = dict(rank_targets(state, config))
-    assert "stretch" in ranked
+    assert "craft_direction" in ranked
 
 
 def test_select_primary_target_stays_active_until_cap() -> None:
     config = _config()
     state = _state(
-        assertions=[_assertion("stretch")],
-        targets=["stretch", "compensation"],
+        assertions=[_assertion("craft_direction")],
+        targets=["craft_direction", "compensation"],
         active_target="compensation",
         active_target_actions=1,
         active_target_action_cap=3,
@@ -249,9 +249,9 @@ def test_select_primary_target_stays_active_until_cap() -> None:
 def test_select_primary_target_releases_at_cap() -> None:
     config = _config()
     state = _state(
-        assertions=[_assertion("stretch")],
-        targets=["stretch", "compensation"],
-        active_target="stretch",
+        assertions=[_assertion("craft_direction")],
+        targets=["craft_direction", "compensation"],
+        active_target="craft_direction",
         active_target_actions=3,
         active_target_action_cap=3,
     )
@@ -266,13 +266,13 @@ def test_rank_targets_suppresses_stalled_target() -> None:
     config = _config()
     state = _state(
         assertions=[_assertion("compensation")],
-        targets=["stretch", "compensation"],
-        target_stall_counts={"stretch": 2},
+        targets=["craft_direction", "compensation"],
+        target_stall_counts={"craft_direction": 2},
     )
     ranked = rank_targets(state, config)
     assert ranked[0][0] == "compensation"
-    # Sanity check the base signal: unexamined stretch outranks examined compensation.
-    assert _target_uncertainty("stretch", n_by_target={}) > _target_uncertainty(
+    # Sanity check the base signal: unexamined craft_direction outranks examined compensation.
+    assert _target_uncertainty("craft_direction", n_by_target={}) > _target_uncertainty(
         "compensation", n_by_target={"compensation": 1.0}
     )
 
@@ -309,7 +309,7 @@ def test_baml_planner_plan_uses_state_primary_target(
     assert calls[0] == {
         "company_name": "Acme Corp",
         "opening_title": "Staff Software Engineer",
-        "rubric_text": "stretch: ...",
+        "rubric_text": "craft_direction: ...",
         "primary_target": "compensation",
         "last_context_text": "",
         "prior_queries": "Acme Corp salary",
@@ -331,8 +331,8 @@ def test_baml_planner_plan_computes_primary_target_from_config(
 
     planner = BAMLPlanner(config=_config())
     state = _state(
-        assertions=[_assertion("stretch")],
-        targets=["stretch", "compensation"],
+        assertions=[_assertion("craft_direction")],
+        targets=["craft_direction", "compensation"],
     )
     actions = planner.plan(state)
 
@@ -340,11 +340,11 @@ def test_baml_planner_plan_computes_primary_target_from_config(
     assert calls[0]["primary_target"] == "compensation"
 
 
-def test_baml_planner_plan_fallback_to_stretch(
+def test_baml_planner_plan_fallback_to_craft_direction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If neither state nor the planner carries a config, the planner falls
-    back to a hard-coded 'stretch' primary target so DecidePlan always has a
+    back to a hard-coded 'craft_direction' primary target so DecidePlan always has a
     value."""
     calls: list[dict[str, object]] = []
 
@@ -358,4 +358,4 @@ def test_baml_planner_plan_fallback_to_stretch(
     state = _state(primary_target=None)
     planner.plan(state)
 
-    assert calls[0]["primary_target"] == "stretch"
+    assert calls[0]["primary_target"] == "craft_direction"

@@ -33,54 +33,36 @@
 # top_k is a config value, not set here.
 
 dimensions:
-  - slug: stretch
-    label: "Stretch & Frontier"
+  - slug: craft_direction
+    label: "Craft Direction"
     weight: 3
     definition: >
-      Distance from the edge of the operator's current ability — novelty
-      relative to what has already been done, not novelty in the abstract.
-      Industry-level novelty matters only insofar as it puts the work near
-      that edge. An inverted U: Poor at both tails (D15). More novelty is
-      not monotonically better.
-
-      Strong requires stretch AND a foundation to stretch from. This is what
-      separates the middle of the U from its right tail: growth opportunity
-      resting on something solid. A role where the operator would be the
-      foundation has real novelty but nothing to climb.
-
-      Ability-indexed only, not shape-indexed — whether the operator would be
-      stretched, independent of whether the work involves originating structure
-      or mastering a fixed one (that's `schematic`). A protocol-mastery
-      role can be stretch-Strong while schematic-Poor, and the reverse also
-      holds.
-
-      Anchor companies: Company A (greenfield, built it, plateaued — the
-      left plateau); Company B (still had runway at departure — the shape
-      to look for).
+      Whether this role's day-to-day discipline is a way the operator wants to keep
+      growing in — a discipline-preference ladder, not a distance-from-ability
+      judgment. Independent of `domain` (industry/product-area novelty) and of
+      `schematic` (shape of the work): a role can be domain-Strong and
+      craft_direction-Poor (deep in an exciting industry but the wrong discipline),
+      or craft_direction-Strong and domain-Mixed (the right discipline in a familiar
+      industry).
     fit_anchors:
-      Poor: >
-        Either tail. Undershoot: senior-level scope; 'write code you won't
-        regret in six months'; a pattern with a strong track record on the
-        résumé already. Overshoot: no realistic path to being qualified.
-      Mixed: >
-        Something genuinely novel, but not the sweet spot. Novelty without
-        scaffolding (first-technical-hire roles). Also lands here when
-        organisational pace limits how often the edge actually gets
-        touched — large slow enterprises are Mixed or lower even when the
-        nominal problem is hard.
       Strong: >
-        Visible growth opportunity on a solid foundation. Most genuinely
-        staff-level roles land here. Also roles where the engineering bar
-        itself is the stretch, independent of domain novelty.
+        A genuine mixture of AI engineering / LLM solution design and standard ML
+        (deep learning especially) work.
+      Mixed: >
+        Data engineering, analytics engineering, dev ops, or backend engineering —
+        disciplines the operator has already done and can execute well, but is less
+        excited to keep deepening.
+      Poor: >
+        Front end engineering, embedded systems, or other disciplines where the
+        operator has little existing depth to draw from and ramp-up cost is high.
     look_for: >
-      Requisition level and scope (staff vs. senior is the strongest single
-      signal); stack and domain familiarity checked against résumé; whether
-      an established engineering bar exists to climb; organisational pace
-      and shipping cadence; years-of-experience requirements in unfamiliar
-      domains (overshoot signal).
-    notes: >
-      Expect overrides here (D16). Treat proposed ratings on this dimension
-      as the least trustworthy in the rubric.
+      JD-legible baseline: title and responsibilities describing the discipline mix
+      (model work, LLM/agent systems, data pipelines, backend services, UI work,
+      firmware). Corroboration signal: engineering-blog posts, conference talks, or
+      shipped-work discussion evidencing the claimed discipline mix is real, not
+      aspirational. Absence of corroboration under a JD that aspirationally claims
+      AI/ML work is itself a negative signal — often marks immature data or
+      infrastructure underneath the claim.
 
   - slug: schematic
     label: "Schematic"
@@ -94,7 +76,7 @@ dimensions:
       documents or construction administration, when a design is executed
       and detailed to spec.
 
-      Independent of `stretch` — shape of the work, not distance from
+      Independent of `craft_direction` — shape of the work, not distance from
       the operator's ability. Expected to correlate in practice
       (architecturally ambiguous roles tend to also be unfamiliar) but not
       redundant; the divergent cases are the ones worth catching.
@@ -120,7 +102,7 @@ dimensions:
       to recall.
     notes: >
       Anchors describe the role's shape only, not operator fit — the
-      over/underqualified judgment emerges from combining this with `stretch`
+      over/underqualified judgment emerges from combining this with `craft_direction`
       in the rollup, not from baking it into these anchors.
 
   - slug: trajectory

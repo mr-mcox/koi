@@ -44,7 +44,7 @@ def _seed_openings(conn) -> None:
 def test_comparisons_for_target_returns_empty_when_none_recorded(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     _seed_openings(conn)
-    assert comparisons_for_target(conn, "stretch") == []
+    assert comparisons_for_target(conn, "craft_direction") == []
 
 
 def test_append_then_read_comparison_round_trips(tmp_path: Path) -> None:
@@ -53,7 +53,7 @@ def test_append_then_read_comparison_round_trips(tmp_path: Path) -> None:
     comparison = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
-        target="stretch",
+        target="craft_direction",
         outcome="a",
         predicted_a_beats_b=0.75,
         created_at=_NOW,
@@ -61,7 +61,7 @@ def test_append_then_read_comparison_round_trips(tmp_path: Path) -> None:
 
     append_comparison(conn, comparison)
 
-    assert comparisons_for_target(conn, "stretch") == [comparison]
+    assert comparisons_for_target(conn, "craft_direction") == [comparison]
 
 
 def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) -> None:
@@ -72,7 +72,7 @@ def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) ->
     first = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
-        target="stretch",
+        target="craft_direction",
         outcome="a",
         predicted_a_beats_b=0.75,
         created_at=_NOW,
@@ -80,7 +80,7 @@ def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) ->
     second = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
-        target="stretch",
+        target="craft_direction",
         outcome="b",
         predicted_a_beats_b=0.25,
         created_at=_NOW,
@@ -89,7 +89,7 @@ def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) ->
     append_comparison(conn, first)
     append_comparison(conn, second)
 
-    assert comparisons_for_target(conn, "stretch") == [first, second]
+    assert comparisons_for_target(conn, "craft_direction") == [first, second]
 
 
 def test_comparisons_for_target_excludes_other_targets(tmp_path: Path) -> None:
@@ -107,4 +107,4 @@ def test_comparisons_for_target_excludes_other_targets(tmp_path: Path) -> None:
         ),
     )
 
-    assert comparisons_for_target(conn, "stretch") == []
+    assert comparisons_for_target(conn, "craft_direction") == []

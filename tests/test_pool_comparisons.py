@@ -52,9 +52,9 @@ def _opening(opening_id: str, company_id: str) -> Opening:
 
 
 def test_comparison_moves_rank_order_through_pool_for_screening(config: ScoringConfig) -> None:
-    """Two openings with identical assertions on `stretch` are tied until a comparison
+    """Two openings with identical assertions on `craft_direction` are tied until a comparison
     says B beat A three times; after that B must rank ahead of A."""
-    tied = [_assertion("stretch")]
+    tied = [_assertion("craft_direction")]
     a = _opening("acme--a", "acme")
     b = _opening("widgets--b", "widgets")
     assertions_by_opening = {a.id: tied, b.id: tied}
@@ -64,7 +64,7 @@ def test_comparison_moves_rank_order_through_pool_for_screening(config: ScoringC
     assert by_id[a.id].expected_rank == pytest.approx(by_id[b.id].expected_rank, abs=0.01)
 
     comparisons_by_target = {
-        "stretch": [Comparison(winner=b.id, loser=a.id, tie=False) for _ in range(3)]
+        "craft_direction": [Comparison(winner=b.id, loser=a.id, tie=False) for _ in range(3)]
     }
     result = pool_for_screening(
         [a, b],
@@ -87,7 +87,7 @@ def test_same_company_openings_auto_tie_on_company_level_dimension(config: Scori
     a = _opening("acme--a", "acme")
     b = _opening("acme--b", "acme")
     assertions_by_opening = {
-        a.id: [_assertion("mission"), _assertion("stretch")],
+        a.id: [_assertion("mission"), _assertion("craft_direction")],
         b.id: [_assertion("mission")],
     }
 
@@ -97,7 +97,7 @@ def test_same_company_openings_auto_tie_on_company_level_dimension(config: Scori
         {},
         config,
         top_k=1,
-        comparisons_by_target={"stretch": [Comparison(winner=a.id, loser=b.id, tie=False)]},
+        comparisons_by_target={"craft_direction": [Comparison(winner=a.id, loser=b.id, tie=False)]},
         companies_by_opening={a.id: "acme", b.id: "acme"},
     )
 
@@ -113,8 +113,13 @@ def test_stale_comparison_naming_opening_outside_pool_is_ignored(config: Scoring
     rather than KeyError deep in the fit."""
     a = _opening("acme--a", "acme")
     b = _opening("widgets--b", "widgets")
-    assertions_by_opening = {a.id: [_assertion("stretch")], b.id: [_assertion("stretch")]}
-    comparisons_by_target = {"stretch": [Comparison(winner="moved-on--c", loser=b.id, tie=False)]}
+    assertions_by_opening = {
+        a.id: [_assertion("craft_direction")],
+        b.id: [_assertion("craft_direction")],
+    }
+    comparisons_by_target = {
+        "craft_direction": [Comparison(winner="moved-on--c", loser=b.id, tie=False)]
+    }
 
     result = pool_for_screening(
         [a, b],

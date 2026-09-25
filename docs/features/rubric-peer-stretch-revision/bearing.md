@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-24
 commit: 531ee63
 branch: main
-status: decomposed
+status: done
 scouting: ./scouting.md
 ---
 
@@ -19,9 +19,9 @@ actually use the concept — a discipline-preference axis. Terrain:
 
 ## Done When
 
-- [ ] drop-peer done: `peer` is gone from `rubric.yaml`, `src/screen/types.py`, and the BAML
+- [x] drop-peer done: `peer` is gone from `rubric.yaml`, `src/screen/types.py`, and the BAML
       `Assertion` target enum; `check.py` passes with no `peer` references.
-- [ ] redefine-stretch done: `stretch` is renamed and redefined as a discipline-preference
+- [x] redefine-stretch done: `stretch` is renamed and redefined as a discipline-preference
       ladder per the operator's three tiers; the decision log records the superseded R1.
 
 ## Approach

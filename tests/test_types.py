@@ -109,7 +109,7 @@ def _citation(**overrides: object) -> dict:  # type: ignore[type-arg]
 def _assertion(**overrides: object) -> dict:  # type: ignore[type-arg]
     base = {
         "id": "00000000-0000-0000-0000-000000000001",
-        "target": "stretch",
+        "target": "craft_direction",
         "fit": "Strong",
         "provenance": "model_proposed",
         "chunk": "10+ years in platform or infrastructure engineering.",
@@ -133,7 +133,7 @@ def test_citation_round_trip_minimum_valid() -> None:
 def test_assertion_round_trip_minimum_valid() -> None:
     raw = _assertion()
     assertion = Assertion.model_validate(raw)
-    assert assertion.target == "stretch"
+    assert assertion.target == "craft_direction"
     assert assertion.fit == "Strong"
     assert assertion.provenance == "model_proposed"
     assert len(assertion.citations) == 1
@@ -189,7 +189,7 @@ def test_assertion_rejects_confidence_score() -> None:
 
 def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
     for slug in [
-        "stretch",
+        "craft_direction",
         "schematic",
         "trajectory",
         "mission",

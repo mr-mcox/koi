@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-24
 commit: 531ee63
 branch: main
-status: orienting
+status: done
 parent: ./bearing.md
 scouting: ./scouting.md
 ---
@@ -18,13 +18,13 @@ F1-F3).
 
 ## Done When
 
-- [ ] `rubric.yaml` has no `peer` dimension and no references to peer-specific concepts.
-- [ ] `src/screen/types.py` `_SCORING_TARGETS` and `Target` Literal no longer list `peer`.
-- [ ] BAML `Assertion` schema (extract.baml) target enum no longer lists `peer`.
-- [ ] `uv run python scripts/check.py` passes; grep for `peer` in `rubric.yaml`,
+- [x] `rubric.yaml` has no `peer` dimension and no references to peer-specific concepts.
+- [x] `src/screen/types.py` `_SCORING_TARGETS` and `Target` Literal no longer list `peer`.
+- [x] BAML `Assertion` schema (extract.baml) target enum no longer lists `peer`.
+- [x] `uv run python scripts/check.py` passes; grep for `peer` in `rubric.yaml`,
       `src/screen/types.py`, and `src/screen/baml_src/extract.baml` returns nothing
       (modulo prose comments).
-- [ ] `docs/architecture/decisions.md` carries a new R-entry: drop `peer`, superseding R5,
+- [x] `docs/architecture/decisions.md` carries a new R-entry: drop `peer`, superseding R5,
       noting the public-evidence signal (named hires, blog depth, etc.) is discarded, not
       folded elsewhere, because the operator can't act on it during screening.
 

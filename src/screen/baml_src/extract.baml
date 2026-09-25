@@ -94,7 +94,7 @@ About You
 10+ years in platform or infrastructure engineering. Shipped cloud platforms at staff level. Comfortable with Python, AWS, ECS/EKS, Terraform, fast-moving teams.
     "#
     rubric_text #"
-Scored dimensions: stretch (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
+Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Additional dimensions: location (weight 6), internal_culture (weight 4), extractive_business (weight 4).
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.

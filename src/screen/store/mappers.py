@@ -4,11 +4,18 @@ No ORM: `screen.types` is the one domain model;
 a row is a plain `dict[str, object]` shaped to match the `companies`/
 `openings`/`assertions` tables in `store/migrations/`. `sqlite3.Row` objects
 convert to this shape via `dict(row)`.
+
+Read-path mappers silently drop rows whose `target` is no longer in the
+closed rubric vocabulary, warning once per row. This lets the operator's
+live `data/live/` DB outlive rubric revisions without requiring a migration
+before the app can render; retired evidence becomes unexamined, not
+reinterpreted under a renamed dimension.
 """
 
 import json
+import warnings
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from screen.types import (
     Assertion,
@@ -19,7 +26,30 @@ from screen.types import (
     DimensionDigest,
     IntakeQueueItem,
     Opening,
+    Target,
 )
+
+_VALID_TARGETS: frozenset[str] = frozenset(get_args(Target))
+
+
+def _valid_target_or_warn(value: object) -> str | None:
+    """Return the target slug if it is current; otherwise warn and return None.
+
+    Dropping retired targets at the read boundary avoids crashes when an
+    existing DB contains assertions for a renamed or removed dimension. This
+    is a tolerance seam, not a validation rule — new writes still go through the
+    strict `Target` Literal in `screen.types`.
+    """
+    slug = str(value)
+    if slug in _VALID_TARGETS:
+        return slug
+    warnings.warn(
+        f"Dropping stored row with retired/unknown target {slug!r} — "
+        "not in current rubric; re-fetch if the dimension still matters.",
+        UserWarning,
+        stacklevel=3,
+    )
+    return None
 
 
 def company_to_row(company: Company) -> dict[str, object]:
@@ -77,12 +107,15 @@ def assertion_to_row(assertion: Assertion, *, opening_id: str) -> dict[str, obje
     }
 
 
-def assertion_from_row(row: dict[str, object]) -> Assertion:
+def assertion_from_row(row: dict[str, object]) -> Assertion | None:
     citations = [Citation.model_validate(c) for c in json.loads(str(row["citations"]))]
+    target = _valid_target_or_warn(row["target"])
+    if target is None:
+        return None
     return Assertion.model_validate(
         {
             "id": str(row["id"]),
-            "target": row["target"],
+            "target": target,
             "fit": row["fit"],
             "provenance": row["provenance"],
             "chunk": str(row["chunk"]),
@@ -122,11 +155,14 @@ def dimension_digest_to_row(digest: DimensionDigest) -> dict[str, object]:
     }
 
 
-def dimension_digest_from_row(row: dict[str, object]) -> DimensionDigest:
+def dimension_digest_from_row(row: dict[str, object]) -> DimensionDigest | None:
+    target = _valid_target_or_warn(row["target"])
+    if target is None:
+        return None
     return DimensionDigest.model_validate(
         {
             "opening_id": str(row["opening_id"]),
-            "target": row["target"],
+            "target": target,
             "digest": str(row["digest"]),
             "assertion_count": int(str(row["assertion_count"])),
             "computed_at": datetime.fromisoformat(str(row["computed_at"])),
@@ -148,13 +184,16 @@ def comparison_to_row(comparison: Comparison) -> dict[str, object]:
     }
 
 
-def comparison_from_row(row: dict[str, object]) -> Comparison:
+def comparison_from_row(row: dict[str, object]) -> Comparison | None:
+    target = _valid_target_or_warn(row["target"])
+    if target is None:
+        return None
     return Comparison.model_validate(
         {
             "id": str(row["id"]),
             "opening_a_id": str(row["opening_a_id"]),
             "opening_b_id": str(row["opening_b_id"]),
-            "target": row["target"],
+            "target": target,
             "outcome": row["outcome"],
             "predicted_a_beats_b": float(cast(Any, row["predicted_a_beats_b"])),
             "opening_a_digest_version": row["opening_a_digest_version"],

@@ -22,7 +22,7 @@ def _citation(**overrides: object) -> Citation:
 
 def _assertion(**overrides: object) -> Assertion:
     base = {
-        "target": "stretch",
+        "target": "craft_direction",
         "fit": "Strong",
         "provenance": "model_proposed",
         "chunk": "Staff Platform Engineer, 10+ years required.",

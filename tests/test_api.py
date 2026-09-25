@@ -88,7 +88,7 @@ def test_opening_score_reports_pool_rank_readouts(client: TestClient, db_path: P
     """`/openings/{id}/score` returns the same pool-scored rank readouts the queue uses.
     With only one opening in the pool it is unambiguously rank 1 and top-K."""
     assertion = Assertion(
-        target="stretch",
+        target="craft_direction",
         fit="Strong",
         provenance="ratified",
         chunk="verbatim source text",

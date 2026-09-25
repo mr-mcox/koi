@@ -51,7 +51,7 @@ An evidence container with identity. Company-level targets:
 **The scored, actioned, applied-to unit.** References a Company; a second opening at a
 known company inherits all company-level evidence free.
 
-- Role-level dimensions: stretch & frontier, compensation, location compatibility
+- Role-level dimensions: craft direction, compensation, location compatibility
   (covers both remote/distributed-work quality and physical workability on one ladder,
   decisions.md S13).
 - Non-scoring targets: obtainability / rise-above-the-noise (see the wall below).

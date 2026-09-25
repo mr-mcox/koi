@@ -27,7 +27,7 @@ def _citation() -> Citation:
     )
 
 
-def _assertion(target: str = "stretch") -> Assertion:
+def _assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,  # type: ignore[arg-type]
         fit="Strong",
@@ -56,24 +56,24 @@ def _seed_opening(conn) -> None:
 def test_get_dimension_digest_returns_none_when_absent(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     _seed_opening(conn)
-    assert get_dimension_digest(conn, "acme--eng-abc123", "stretch") is None
+    assert get_dimension_digest(conn, "acme--eng-abc123", "craft_direction") is None
 
 
 def test_upsert_then_get_dimension_digest_round_trips(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     _seed_opening(conn)
-    append_assertions(conn, [_assertion("stretch")], opening_id="acme--eng-abc123")
+    append_assertions(conn, [_assertion("craft_direction")], opening_id="acme--eng-abc123")
 
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng-abc123",
-        target="stretch",
+        target="craft_direction",
         digest="High-bar engineering culture.",
         assertion_count=1,
         computed_at=_NOW,
     )
 
-    record = get_dimension_digest(conn, "acme--eng-abc123", "stretch")
+    record = get_dimension_digest(conn, "acme--eng-abc123", "craft_direction")
     assert record is not None
     assert record.digest == "High-bar engineering culture."
     assert record.assertion_count == 1
@@ -85,7 +85,7 @@ def test_upsert_dimension_digest_overwrites_existing_row(tmp_path: Path) -> None
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng-abc123",
-        target="stretch",
+        target="craft_direction",
         digest="First draft.",
         assertion_count=1,
         computed_at=_NOW,
@@ -93,12 +93,12 @@ def test_upsert_dimension_digest_overwrites_existing_row(tmp_path: Path) -> None
     upsert_dimension_digest(
         conn,
         opening_id="acme--eng-abc123",
-        target="stretch",
+        target="craft_direction",
         digest="Second draft.",
         assertion_count=2,
         computed_at=_NOW,
     )
-    record = get_dimension_digest(conn, "acme--eng-abc123", "stretch")
+    record = get_dimension_digest(conn, "acme--eng-abc123", "craft_direction")
     assert record is not None
     assert record.digest == "Second draft."
     assert record.assertion_count == 2

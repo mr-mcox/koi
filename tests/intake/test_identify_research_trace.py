@@ -220,7 +220,7 @@ def test_identify_research_trace_writes_assertions_to_db(tmp_path: Path) -> None
     assert len(assertions) >= 1, "at least one assertion must be persisted"
     parsed = assertions[0]
     assert parsed.target in [
-        "stretch",
+        "craft_direction",
         "trajectory",
         "mission",
         "agentic",

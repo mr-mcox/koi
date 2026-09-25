@@ -31,7 +31,7 @@ def _citation() -> Citation:
     )
 
 
-def _assertion(target: str = "stretch") -> Assertion:
+def _assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,  # type: ignore[arg-type]
         fit="Strong",
@@ -88,13 +88,13 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
             created_at=_NOW,
         ),
     )
-    first = _assertion("stretch")
+    first = _assertion("craft_direction")
     second = _assertion("trajectory")
     append_assertions(conn, [first], opening_id="acme--eng-abc123")
     append_assertions(conn, [second], opening_id="acme--eng-abc123")
 
     result = assertions_for_opening(conn, "acme--eng-abc123")
-    assert [a.target for a in result] == ["stretch", "trajectory"]
+    assert [a.target for a in result] == ["craft_direction", "trajectory"]
 
 
 def test_assertions_for_opening_returns_empty_list_when_none_exist(tmp_path: Path) -> None:
@@ -235,7 +235,7 @@ def _seed_opening_with_assertion(conn) -> Assertion:  # type: ignore[no-untyped-
             created_at=_NOW,
         ),
     )
-    assertion = _assertion("stretch")
+    assertion = _assertion("craft_direction")
     append_assertions(conn, [assertion], opening_id="acme--eng-abc123")
     return assertion
 

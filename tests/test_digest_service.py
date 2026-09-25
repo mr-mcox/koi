@@ -30,7 +30,7 @@ def _citation() -> Citation:
     )
 
 
-def _assertion(target: str = "stretch") -> Assertion:
+def _assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,  # type: ignore[arg-type]
         fit="Strong",
@@ -60,13 +60,13 @@ def _seeded_conn(tmp_path: Path):
 
 def test_generates_a_digest_from_current_assertions(tmp_path: Path) -> None:
     conn = _seeded_conn(tmp_path)
-    append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
+    append_assertions(conn, [_assertion("craft_direction")], opening_id=_OPENING_ID)
     digester = FakeDigester(["High-bar engineering culture."])
 
     result = digest_for_target(
         conn,
         opening_id=_OPENING_ID,
-        target="stretch",
+        target="craft_direction",
         digester=digester,
         rubric_text="rubric",
         now=_NOW,
@@ -77,13 +77,13 @@ def test_generates_a_digest_from_current_assertions(tmp_path: Path) -> None:
 
 def test_second_call_with_unchanged_assertions_returns_cached_value(tmp_path: Path) -> None:
     conn = _seeded_conn(tmp_path)
-    append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
+    append_assertions(conn, [_assertion("craft_direction")], opening_id=_OPENING_ID)
     digester = FakeDigester(["first", "second"])
 
     first = digest_for_target(
         conn,
         opening_id=_OPENING_ID,
-        target="stretch",
+        target="craft_direction",
         digester=digester,
         rubric_text="rubric",
         now=_NOW,
@@ -91,7 +91,7 @@ def test_second_call_with_unchanged_assertions_returns_cached_value(tmp_path: Pa
     second = digest_for_target(
         conn,
         opening_id=_OPENING_ID,
-        target="stretch",
+        target="craft_direction",
         digester=digester,
         rubric_text="rubric",
         now=_NOW,
@@ -104,22 +104,22 @@ def test_second_call_with_unchanged_assertions_returns_cached_value(tmp_path: Pa
 
 def test_new_assertion_invalidates_the_cache(tmp_path: Path) -> None:
     conn = _seeded_conn(tmp_path)
-    append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
+    append_assertions(conn, [_assertion("craft_direction")], opening_id=_OPENING_ID)
     digester = FakeDigester(["first", "second"])
 
     first = digest_for_target(
         conn,
         opening_id=_OPENING_ID,
-        target="stretch",
+        target="craft_direction",
         digester=digester,
         rubric_text="rubric",
         now=_NOW,
     )
-    append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
+    append_assertions(conn, [_assertion("craft_direction")], opening_id=_OPENING_ID)
     second = digest_for_target(
         conn,
         opening_id=_OPENING_ID,
-        target="stretch",
+        target="craft_direction",
         digester=digester,
         rubric_text="rubric",
         now=_NOW,
@@ -136,7 +136,7 @@ def test_update_digests_for_opening_warms_every_target_with_assertions(tmp_path:
     conn = _seeded_conn(tmp_path)
     append_assertions(
         conn,
-        [_assertion("stretch"), _assertion("mission")],
+        [_assertion("craft_direction"), _assertion("mission")],
         opening_id=_OPENING_ID,
     )
     digester = FakeDigester(["stretch digest", "mission digest"])
@@ -150,7 +150,7 @@ def test_update_digests_for_opening_warms_every_target_with_assertions(tmp_path:
     )
 
     assert digester.calls == 2
-    assert get_dimension_digest(conn, _OPENING_ID, "stretch").digest == "stretch digest"
+    assert get_dimension_digest(conn, _OPENING_ID, "craft_direction").digest == "stretch digest"
     assert get_dimension_digest(conn, _OPENING_ID, "mission").digest == "mission digest"
 
 
@@ -161,7 +161,7 @@ def test_update_digests_for_opening_is_idempotent_when_assertions_unchanged(
     keyed on assertion count, and assertions are append-only (Wall 6), so an unchanged
     count is exact evidence that nothing needs recomputing — not a heuristic."""
     conn = _seeded_conn(tmp_path)
-    append_assertions(conn, [_assertion("stretch")], opening_id=_OPENING_ID)
+    append_assertions(conn, [_assertion("craft_direction")], opening_id=_OPENING_ID)
     digester = FakeDigester(["stretch digest"])
 
     update_digests_for_opening(

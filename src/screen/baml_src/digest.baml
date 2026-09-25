@@ -68,10 +68,10 @@ test DigestDimension_ConflictingEvidence {
   functions [DigestDimension]
   args {
     assertions_json #"
-[{"target": "stretch", "fit": "Strong", "chunk": "Engineers own features end to end with real autonomy.", "citations": [{"url": "https://example.com/jobs/1", "quote": "Engineers own features end to end.", "host": "example.com", "source_provenance": "official", "independent": true, "source_date": null}]}, {"target": "stretch", "fit": "Poor", "chunk": "Recent reviews describe heavy process and slow approvals.", "citations": [{"url": "https://example.com/reviews/2", "quote": "Heavy process, slow approvals.", "host": "example.com", "source_provenance": "third_party", "independent": true, "source_date": null}]}]
+[{"target": "craft_direction", "fit": "Strong", "chunk": "Engineers own features end to end with real autonomy.", "citations": [{"url": "https://example.com/jobs/1", "quote": "Engineers own features end to end.", "host": "example.com", "source_provenance": "official", "independent": true, "source_date": null}]}, {"target": "craft_direction", "fit": "Poor", "chunk": "Recent reviews describe heavy process and slow approvals.", "citations": [{"url": "https://example.com/reviews/2", "quote": "Heavy process, slow approvals.", "host": "example.com", "source_provenance": "third_party", "independent": true, "source_date": null}]}]
     "#
     rubric_text #"
-Constraint slug: stretch. Fit: Poor = negative evidence; Mixed = ambiguous; Strong = positive evidence.
+Constraint slug: craft_direction. Fit: Poor = negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
   }
   @@assert(non_empty, {{ this|length > 0 }})

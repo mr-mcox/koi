@@ -113,7 +113,7 @@ def select_primary_target(state: LoopState, config: ScoringConfig) -> str:
     ):
         return state.active_target
     ranked = rank_targets(state, config)
-    return ranked[0][0] if ranked else "stretch"
+    return ranked[0][0] if ranked else "craft_direction"
 
 
 class BAMLPlanner:
@@ -133,7 +133,7 @@ class BAMLPlanner:
         if primary_target is None and self._config is not None:
             primary_target = select_primary_target(state, self._config)
         if primary_target is None:
-            primary_target = "stretch"
+            primary_target = "craft_direction"
         generated = b.DecidePlan(
             company_name=state.company_name,
             opening_title=state.opening_title,

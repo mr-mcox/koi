@@ -91,7 +91,7 @@ def test_assertion_insert_and_select_round_trips_through_the_real_schema() -> No
         source_date=None,
     )
     assertion = Assertion(
-        target="stretch",
+        target="craft_direction",
         fit="Strong",
         provenance="model_proposed",
         chunk="10+ years in platform engineering.",
@@ -108,7 +108,9 @@ def test_assertion_insert_and_select_round_trips_through_the_real_schema() -> No
     fetched = conn.execute(
         "SELECT * FROM assertions WHERE id = :id", {"id": assertion.id}
     ).fetchone()
-    assert assertion_from_row(dict(fetched)) == assertion
+    fetched_assertion = assertion_from_row(dict(fetched))
+    assert fetched_assertion is not None
+    assert fetched_assertion == assertion
 
 
 def test_assertion_ruling_insert_and_select_round_trips_through_the_real_schema() -> None:

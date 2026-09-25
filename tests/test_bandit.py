@@ -49,7 +49,7 @@ def config() -> ScoringConfig:
 def test_wide_high_weight_targets_outrank_narrow_low_weight_targets(config: ScoringConfig) -> None:
     """An opening with only wide-half-width, high-weight targets examined should score
     higher aggregate uncertainty than one with narrow-half-width, low-weight targets."""
-    # "stretch" carries weight 3 in scoring.yaml; leaving it fully unexamined keeps its
+    # "craft_direction" carries weight 3 in scoring.yaml; leaving it fully unexamined keeps its
     # half-width at the Uniform(-1, 1) maximum (1.0).
     wide_high_weight = [_assertion("domain", "Strong")]
     # "domain" carries weight 1; many ratified (heavily-weighted) assertions collapse its

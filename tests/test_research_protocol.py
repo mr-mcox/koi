@@ -26,7 +26,7 @@ def _state() -> LoopState:
         source_date=None,
     )
     assertion = Assertion(
-        target="stretch",
+        target="craft_direction",
         fit="Strong",
         provenance="model_proposed",
         chunk="Build and own the platform every engineer deploys on.",
@@ -40,7 +40,7 @@ def _state() -> LoopState:
         opening_title="Staff Software Engineer",
         page_content="Some posting text.",
         url="https://example.com/jobs/1",
-        rubric_text="stretch: ...",
+        rubric_text="craft_direction: ...",
         assertions=[assertion],
         turn_budget=5,
         turns_used=0,

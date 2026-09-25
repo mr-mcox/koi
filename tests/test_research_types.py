@@ -33,7 +33,7 @@ def _citation() -> Citation:
 
 def _assertion() -> Assertion:
     return Assertion(
-        target="stretch",
+        target="craft_direction",
         fit="Strong",
         provenance="model_proposed",
         chunk="Build and own the platform every engineer deploys on.",
@@ -50,7 +50,7 @@ def _loop_state(**kwargs: object) -> LoopState:
         "opening_title": "Staff Software Engineer",
         "page_content": "Some posting text.",
         "url": "https://example.com/jobs/1",
-        "rubric_text": "stretch: ...",
+        "rubric_text": "craft_direction: ...",
         "assertions": [_assertion()],
         "turn_budget": 5,
         "turns_used": 0,
@@ -116,7 +116,7 @@ def test_loop_state_with_context_round_trips() -> None:
 
 def test_loop_state_model_copy_updates_context() -> None:
     state = _loop_state()
-    ctx = FetchContext(url="https://x.com", targets_added=["stretch"], snippet="excerpt")
+    ctx = FetchContext(url="https://x.com", targets_added=["craft_direction"], snippet="excerpt")
     updated = state.model_copy(update={"last_context": ctx})
     assert updated.last_context == ctx
     assert state.last_context is None  # original unchanged

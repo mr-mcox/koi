@@ -56,7 +56,7 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
     conn = sqlite3.connect(tmp_path / "screen.db")
     assert conn.execute("SELECT name FROM companies").fetchall() == [("Example Co",)]
     assert conn.execute("SELECT title FROM openings").fetchall() == [("Staff Engineer",)]
-    assert conn.execute("SELECT target FROM assertions").fetchall() == [("stretch",)]
+    assert conn.execute("SELECT target FROM assertions").fetchall() == [("craft_direction",)]
     assert list(tmp_path.rglob("company.json")) == []
     assert list(tmp_path.rglob("opening.json")) == []
     assert list(tmp_path.rglob("assertions.jsonl")) == []

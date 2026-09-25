@@ -43,7 +43,7 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
     """After `dispatch` returns, every target with assertions has a cached digest."""
     conn = connect(tmp_path / "screen.db")
     _seed_opening(conn)
-    assertions = [canned_assertion("stretch"), canned_assertion("mission")]
+    assertions = [canned_assertion("craft_direction"), canned_assertion("mission")]
     append_assertions(conn, assertions, opening_id="opening")
     digester = FakeDigester(["stretch digest", "mission digest"])
     planner = FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
@@ -61,5 +61,5 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
     )
 
     assert digester.calls == 2
-    assert get_dimension_digest(conn, "opening", "stretch") is not None
+    assert get_dimension_digest(conn, "opening", "craft_direction") is not None
     assert get_dimension_digest(conn, "opening", "mission") is not None

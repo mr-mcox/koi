@@ -269,9 +269,9 @@ def test_replay_does_not_flag_stall_when_counts_grew(tmp_path: Path) -> None:
     append_line(
         path,
         _plan_event(
-            "stretch",
-            ["compensation", "stretch"],
-            target_assertion_counts={"compensation": 2, "stretch": 1},
+            "craft_direction",
+            ["compensation", "craft_direction"],
+            target_assertion_counts={"compensation": 2, "craft_direction": 1},
         ).model_dump_json(),
     )
     replay = replay_research_trace(path)
@@ -282,7 +282,7 @@ def test_replay_counts_based_stall_accumulates_across_repicks(tmp_path: Path) ->
     """Three separate re-picks of a stuck-at-one-assertion target accumulate
     three stalls, matching the S-curve's near-floor suppression at s=3."""
     path = tmp_path / "trace.jsonl"
-    for other in ("domain", "extractive_business", "stretch"):
+    for other in ("domain", "extractive_business", "craft_direction"):
         append_line(
             path,
             _plan_event(

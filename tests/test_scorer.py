@@ -41,7 +41,7 @@ def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_propose
 # so every target has counted (non-unexamined) evidence with realistic variance —
 # a uniform-provenance fixture would understate the shrinkage the Scorer actually applies.
 PARTIALLY_RESEARCHED = [
-    _assertion("stretch", "Strong", "ratified"),
+    _assertion("craft_direction", "Strong", "ratified"),
     _assertion("schematic", "Strong", "ratified"),
     _assertion("trajectory", "Strong", "ratified"),
     _assertion("mission", "Strong", "ratified"),
@@ -132,7 +132,7 @@ def test_rank_pool_posterior_seam_reproduces_supplied_correlation(
     b = PoolInput(opening_id="b", assertions=[])
     correlation = 0.6
     posteriors = {
-        "stretch": DimensionPosterior(
+        "craft_direction": DimensionPosterior(
             opening_ids=["a", "b"],
             means=np.array([0.0, 0.0]),
             covariance=np.array([[1.0, correlation], [correlation, 1.0]]),
@@ -141,8 +141,8 @@ def test_rank_pool_posterior_seam_reproduces_supplied_correlation(
 
     result = rank_pool([a, b], config, top_k=1, posteriors=posteriors)
 
-    stretch_trace = result.dimension_trace["stretch"]
-    sampled_correlation = np.corrcoef(stretch_trace[0], stretch_trace[1])[0, 1]
+    craft_trace = result.dimension_trace["craft_direction"]
+    sampled_correlation = np.corrcoef(craft_trace[0], craft_trace[1])[0, 1]
     assert sampled_correlation == pytest.approx(correlation, abs=0.05)
 
 
@@ -154,7 +154,7 @@ def test_rank_pool_posterior_ignores_openings_outside_the_current_pool(
     a slot for it."""
     a = PoolInput(opening_id="a", assertions=[])
     posteriors = {
-        "stretch": DimensionPosterior(
+        "craft_direction": DimensionPosterior(
             opening_ids=["a", "departed"],
             means=np.array([0.0, 0.0]),
             covariance=np.array([[1.0, 0.0], [0.0, 1.0]]),
@@ -174,8 +174,8 @@ def test_rank_pool_default_posterior_is_diagonal(config: ScoringConfig) -> None:
 
     result = rank_pool([a, b], config, top_k=1)
 
-    stretch_trace = result.dimension_trace["stretch"]
-    sampled_correlation = np.corrcoef(stretch_trace[0], stretch_trace[1])[0, 1]
+    craft_trace = result.dimension_trace["craft_direction"]
+    sampled_correlation = np.corrcoef(craft_trace[0], craft_trace[1])[0, 1]
     assert abs(sampled_correlation) < 0.05
 
 
@@ -184,7 +184,7 @@ def test_rank_pool_posterior_mean_shift_moves_rank_order(config: ScoringConfig) 
     assertions (equal priors, so assertion evidence alone can't separate them) must swap
     rank order once a `DimensionPosterior` gives one a higher fitted mean on a
     heavily-weighted dimension."""
-    tied = [_assertion("stretch", "Strong", "ratified")]
+    tied = [_assertion("craft_direction", "Strong", "ratified")]
     a = PoolInput(opening_id="a", assertions=tied)
     b = PoolInput(opening_id="b", assertions=tied)
 
@@ -193,7 +193,7 @@ def test_rank_pool_posterior_mean_shift_moves_rank_order(config: ScoringConfig) 
     assert by_id["a"].expected_rank == pytest.approx(by_id["b"].expected_rank, abs=0.01)
 
     posteriors = {
-        "stretch": DimensionPosterior(
+        "craft_direction": DimensionPosterior(
             opening_ids=["a", "b"],
             means=np.array([-0.9, 0.9]),
             covariance=np.diag([0.05, 0.05]),

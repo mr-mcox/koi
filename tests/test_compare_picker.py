@@ -68,7 +68,12 @@ def _assertion(target: str, fit: Fit = "Strong") -> Assertion:
 def test_single_opening_returns_none(config: ScoringConfig) -> None:
     a = "acme--a"
     suggestion = select_comparison(
-        [a], {a: "acme"}, {a: [_assertion("stretch")]}, {}, _neutral_p_top_k([a]), config=config
+        [a],
+        {a: "acme"},
+        {a: [_assertion("craft_direction")]},
+        {},
+        _neutral_p_top_k([a]),
+        config=config,
     )
     assert suggestion is None
 
@@ -87,7 +92,7 @@ def test_picker_prefers_dimension_with_assertions_on_both_openings(
     config: ScoringConfig,
 ) -> None:
     a, b = "acme--a", "widgets--b"
-    assertions = {a: [_assertion("stretch")], b: [_assertion("stretch")]}
+    assertions = {a: [_assertion("craft_direction")], b: [_assertion("craft_direction")]}
     suggestion = select_comparison(
         [a, b],
         {a: "acme", b: "widgets"},
@@ -97,12 +102,14 @@ def test_picker_prefers_dimension_with_assertions_on_both_openings(
         config=_no_jitter(config),
         rng=_rng(),
     )
-    assert suggestion == ComparisonSuggestion(target="stretch", opening_a_id=a, opening_b_id=b)
+    assert suggestion == ComparisonSuggestion(
+        target="craft_direction", opening_a_id=a, opening_b_id=b
+    )
 
 
 def test_picker_skips_zero_assertion_dimensions_including_domain(config: ScoringConfig) -> None:
     a, b = "acme--a", "widgets--b"
-    assertions = {a: [_assertion("stretch")], b: []}
+    assertions = {a: [_assertion("craft_direction")], b: []}
     suggestion = select_comparison(
         [a, b],
         {a: "acme", b: "widgets"},
@@ -112,7 +119,7 @@ def test_picker_skips_zero_assertion_dimensions_including_domain(config: Scoring
         config=_no_jitter(config),
         rng=_rng(),
     )
-    # `stretch` is disqualified because `b` has no assertions; every other configured
+    # `craft_direction` is disqualified because `b` has no assertions; every other configured
     # dimension is unqualified too since neither side has evidence on it. `domain` is no
     # longer exempt — research already covers it like any other dimension.
     assert suggestion is None
@@ -137,8 +144,8 @@ def test_picker_skips_zero_assertion_dimensions_including_domain(config: Scoring
 def test_same_company_auto_tie_removes_company_level_pair(config: ScoringConfig) -> None:
     a, b = "acme--a", "acme--b"
     assertions = {
-        a: [_assertion("mission"), _assertion("stretch")],
-        b: [_assertion("mission"), _assertion("stretch")],
+        a: [_assertion("mission"), _assertion("craft_direction")],
+        b: [_assertion("mission"), _assertion("craft_direction")],
     }
     suggestion = select_comparison(
         [a, b],
@@ -149,21 +156,21 @@ def test_same_company_auto_tie_removes_company_level_pair(config: ScoringConfig)
         config=_no_jitter(config),
         rng=_rng(),
     )
-    # `mission` is auto-tied for same-company openings; `stretch` is role-level and still askable.
+    # `mission` is auto-tied for same-company openings; `craft_direction` is role-level and still askable.
     assert suggestion is not None
-    assert suggestion.target == "stretch"
+    assert suggestion.target == "craft_direction"
 
 
 def test_picker_prefers_more_ambiguous_pair(config: ScoringConfig) -> None:
     a, b, c = "a", "b", "c"
     assertions = {
-        a: [_assertion("stretch")],
-        b: [_assertion("stretch")],
-        c: [_assertion("stretch")],
+        a: [_assertion("craft_direction")],
+        b: [_assertion("craft_direction")],
+        c: [_assertion("craft_direction")],
     }
     # A has beaten B decisively, so A/C is more uncertain than A/B.
     comparisons_by_target = {
-        "stretch": [Comparison(winner=a, loser=b, tie=False) for _ in range(10)]
+        "craft_direction": [Comparison(winner=a, loser=b, tie=False) for _ in range(10)]
     }
     suggestion = select_comparison(
         [a, b, c],
@@ -175,7 +182,7 @@ def test_picker_prefers_more_ambiguous_pair(config: ScoringConfig) -> None:
         rng=_rng(),
     )
     assert suggestion is not None
-    assert suggestion.target == "stretch"
+    assert suggestion.target == "craft_direction"
     assert "c" in (suggestion.opening_a_id, suggestion.opening_b_id)
 
 
@@ -184,10 +191,10 @@ def test_domain_prior_variance_matches_any_other_dimension(config: ScoringConfig
     permanently-wide special case left over from the old exemption. Same assertion
     pattern, same resulting variance, regardless of which dimension it's for."""
     a = "acme--a"
-    assertions = {a: [_assertion("domain"), _assertion("stretch")]}
+    assertions = {a: [_assertion("domain"), _assertion("craft_direction")]}
     domain_var = _prior_variance("domain", a, assertions, None, config)
-    stretch_var = _prior_variance("stretch", a, assertions, None, config)
-    assert domain_var == stretch_var
+    craft_var = _prior_variance("craft_direction", a, assertions, None, config)
+    assert domain_var == craft_var
 
 
 def test_repeated_tie_drops_pair_below_a_fresh_pair(config: ScoringConfig) -> None:
@@ -197,11 +204,13 @@ def test_repeated_tie_drops_pair_below_a_fresh_pair(config: ScoringConfig) -> No
     its priority, not raise it."""
     a, b, c = "a", "b", "c"
     assertions = {
-        a: [_assertion("stretch")],
-        b: [_assertion("stretch")],
-        c: [_assertion("stretch")],
+        a: [_assertion("craft_direction")],
+        b: [_assertion("craft_direction")],
+        c: [_assertion("craft_direction")],
     }
-    comparisons_by_target = {"stretch": [Comparison(winner=a, loser=b, tie=True) for _ in range(6)]}
+    comparisons_by_target = {
+        "craft_direction": [Comparison(winner=a, loser=b, tie=True) for _ in range(6)]
+    }
     suggestion = select_comparison(
         [a, b, c],
         {a: "acme", b: "widgets", c: "gadgets"},
@@ -223,8 +232,8 @@ def test_variance_share_rebalances_after_location_shrinks(config: ScoringConfig)
     should stop winning on `location` and move to another dimension with real evidence."""
     a, b = "a", "b"
     assertions = {
-        a: [_assertion("location"), _assertion("stretch")],
-        b: [_assertion("location"), _assertion("stretch")],
+        a: [_assertion("location"), _assertion("craft_direction")],
+        b: [_assertion("location"), _assertion("craft_direction")],
     }
     comparisons_by_target = {
         "location": [Comparison(winner=a, loser=b, tie=True) for _ in range(20)]
@@ -239,7 +248,7 @@ def test_variance_share_rebalances_after_location_shrinks(config: ScoringConfig)
         rng=_rng(),
     )
     assert suggestion is not None
-    assert suggestion.target == "stretch"
+    assert suggestion.target == "craft_direction"
 
 
 def test_variance_share_prefers_uncertain_rank_contest(config: ScoringConfig) -> None:
@@ -253,12 +262,12 @@ def test_variance_share_prefers_uncertain_rank_contest(config: ScoringConfig) ->
         contested_a: [_assertion("location")],
         contested_b: [_assertion("location")],
         decisive_strong: [
-            _assertion("stretch"),
+            _assertion("craft_direction"),
             _assertion("schematic"),
             _assertion("location"),
         ],
         decisive_weak: [
-            _assertion("stretch", fit="Poor"),
+            _assertion("craft_direction", fit="Poor"),
             _assertion("schematic", fit="Poor"),
             _assertion("location"),
         ],
@@ -290,8 +299,8 @@ def test_boundary_weight_excludes_pairs_far_from_top_k(config: ScoringConfig) ->
     tail_a, tail_b = "tail-a", "tail-b"
     boundary_a, boundary_b = "boundary-a", "boundary-b"
     assertions = {
-        tail_a: [_assertion("stretch", fit="Poor")],
-        tail_b: [_assertion("stretch", fit="Poor")],
+        tail_a: [_assertion("craft_direction", fit="Poor")],
+        tail_b: [_assertion("craft_direction", fit="Poor")],
         boundary_a: [_assertion("schematic")],
         boundary_b: [_assertion("schematic")],
     }
@@ -331,8 +340,8 @@ def test_boundary_weight_favors_pair_over_tied_alternative_far_from_top_k(
     near_a, near_b = "near-a", "near-b"
     far_a, far_b = "far-a", "far-b"
     assertions = {
-        near_a: [_assertion("stretch")],
-        near_b: [_assertion("stretch")],
+        near_a: [_assertion("craft_direction")],
+        near_b: [_assertion("craft_direction")],
         far_a: [_assertion("schematic")],
         far_b: [_assertion("schematic")],
     }
@@ -358,7 +367,7 @@ def test_boundary_gate_skipped_when_pool_fits_within_top_k(config: ScoringConfig
     1.0 and `boundary_weight` would zero out every candidate — the picker must skip that
     factor rather than returning `None` for a pool that's still worth ordering."""
     a, b = "a", "b"
-    assertions = {a: [_assertion("stretch")], b: [_assertion("stretch")]}
+    assertions = {a: [_assertion("craft_direction")], b: [_assertion("craft_direction")]}
     trivial_p_top_k = {a: 1.0, b: 1.0}
     assert config.top_k >= 2
     suggestion = select_comparison(
@@ -370,20 +379,22 @@ def test_boundary_gate_skipped_when_pool_fits_within_top_k(config: ScoringConfig
         config=_no_jitter(config),
         rng=_rng(),
     )
-    assert suggestion == ComparisonSuggestion(target="stretch", opening_a_id=a, opening_b_id=b)
+    assert suggestion == ComparisonSuggestion(
+        target="craft_direction", opening_a_id=a, opening_b_id=b
+    )
 
 
 def test_dimension_weight_uses_sqrt_not_square(config: ScoringConfig) -> None:
     """A high-weight dimension (`location`, weight 6) with modest evidence-driven variance
-    should not automatically beat a lower-weight dimension (`stretch`) whose variance is
+    should not automatically beat a lower-weight dimension (`craft_direction`) whose variance is
     substantially larger — `weight**2` would let location win here purely on weight;
     `sqrt(weight)` should not."""
     a, b = "a", "b"
     # Both dimensions get one assertion each side, so their raw prior variance is
-    # identical; only the rubric weight differs (location=6, stretch=3 per rubric.yaml).
+    # identical; only the rubric weight differs (location=6, craft_direction=3 per rubric.yaml).
     assertions = {
-        a: [_assertion("location"), _assertion("stretch")],
-        b: [_assertion("location"), _assertion("stretch")],
+        a: [_assertion("location"), _assertion("craft_direction")],
+        b: [_assertion("location"), _assertion("craft_direction")],
     }
     suggestion = select_comparison(
         [a, b],
@@ -407,9 +418,9 @@ def test_jitter_changes_the_pick_across_seeds(config: ScoringConfig) -> None:
     something, not a no-op wired in and forgotten."""
     a, b, c = "a", "b", "c"
     assertions = {
-        a: [_assertion("stretch")],
-        b: [_assertion("stretch")],
-        c: [_assertion("stretch")],
+        a: [_assertion("craft_direction")],
+        b: [_assertion("craft_direction")],
+        c: [_assertion("craft_direction")],
     }
     p_top_k = _neutral_p_top_k([a, b, c])
     picks = {
@@ -432,9 +443,9 @@ def test_jitter_is_deterministic_given_a_seeded_rng(config: ScoringConfig) -> No
     once a caller supplies its own generator."""
     a, b, c = "a", "b", "c"
     assertions = {
-        a: [_assertion("stretch")],
-        b: [_assertion("stretch")],
-        c: [_assertion("stretch")],
+        a: [_assertion("craft_direction")],
+        b: [_assertion("craft_direction")],
+        c: [_assertion("craft_direction")],
     }
     p_top_k = _neutral_p_top_k([a, b, c])
     first = select_comparison(

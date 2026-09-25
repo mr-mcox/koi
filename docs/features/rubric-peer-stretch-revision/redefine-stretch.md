@@ -4,7 +4,7 @@ type: bearing
 date: 2026-09-24
 commit: 531ee63
 branch: main
-status: orienting
+status: done
 parent: ./bearing.md
 scouting: ./scouting.md
 ---
@@ -20,15 +20,15 @@ frontend/embedded = Poor (→ scouting F8).
 
 ## Done When
 
-- [ ] `rubric.yaml` replaces the `stretch` dimension with a renamed slug whose definition,
+- [x] `rubric.yaml` replaces the `stretch` dimension with a renamed slug whose definition,
       `fit_anchors`, `look_for`, and `notes` encode the operator's three-tier discipline ladder.
-- [ ] `src/screen/types.py` `_SCORING_TARGETS` and `Target` Literal use the new slug instead of
+- [x] `src/screen/types.py` `_SCORING_TARGETS` and `Target` Literal use the new slug instead of
       `stretch`.
-- [ ] BAML `Assertion` schema target enum uses the new slug instead of `stretch`.
-- [ ] `uv run python scripts/check.py` passes; no `stretch` reference remains in
+- [x] BAML `Assertion` schema target enum uses the new slug instead of `stretch`.
+- [x] `uv run python scripts/check.py` passes; no `stretch` reference remains in
       `rubric.yaml`, `src/screen/types.py`, or `src/screen/baml_src/extract.baml` as a scoring
       dimension.
-- [ ] `docs/architecture/decisions.md` carries a new R-entry: rename/redefine the dimension,
+- [x] `docs/architecture/decisions.md` carries a new R-entry: rename/redefine the dimension,
       superseding R1, because ability-distance isn't the signal in this corpus.
 
 ## Approach

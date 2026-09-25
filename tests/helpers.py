@@ -55,7 +55,7 @@ def canned_citation() -> Citation:
     )
 
 
-def canned_assertion(target: str = "stretch") -> Assertion:
+def canned_assertion(target: str = "craft_direction") -> Assertion:
     return Assertion(
         target=target,  # type: ignore[arg-type]
         fit="Strong",
@@ -73,7 +73,7 @@ def fake_identifier(company: str = "Example Co", title: str = "Staff Engineer") 
 
 
 def fake_extractor() -> FakeExtractor:
-    """Single-call FakeExtractor returning one canned stretch assertion."""
+    """Single-call FakeExtractor returning one canned craft_direction assertion."""
     return FakeExtractor([[canned_assertion()]])
 
 
