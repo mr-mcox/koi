@@ -50,7 +50,6 @@ PARTIALLY_RESEARCHED = [
     _assertion("domain", "Strong", "ratified"),
     _assertion("location", "Strong"),
     _assertion("internal_culture", "Strong"),
-    _assertion("extractive_business", "Strong"),
 ]
 
 

@@ -22,9 +22,9 @@
 # Unexamined dimensions are Uniform(−1, +1) — same mean as confirmed Mixed,
 # far wider spread. They are not dropped from the denominator (D5, D6).
 #
-# `location`, `internal_culture`, and `extractive_business` carry no special
-# scoring path — a rank-based queue only needs a sufficiently-weighted additive
-# dimension to sink a bad case out of top K; there is no separate multiplicative
+# `location` and `internal_culture` carry no special scoring path — a
+# rank-based queue only needs a sufficiently-weighted additive dimension to
+# sink a bad case out of top K; there is no separate multiplicative
 # "constraint" mechanism to maintain. Their weights are unmeasured placeholders,
 # same status as `top_k` (open-questions.md OQ9) — expect them to move once real
 # ranking runs.
@@ -126,28 +126,41 @@ dimensions:
         stated strategy.
     look_for: >
       Funding recency/stage; headcount direction; layoff framing (strategic
-      vs. distress); whether the role sits on a stated strategic critical path.
+      vs. distress); whether the role sits on a stated strategic critical path;
+      whether the company's stated strategy (including but not limited to
+      'AI-powered' claims) reads as a defensible plan or as hype riding a
+      narrative without product/technical substance behind it — a hype-driven
+      strategy is itself a trajectory risk, not just a values question.
 
   - slug: mission
     label: "Mission fit"
     weight: 2
     definition: >
       Does the business win when the customer wins, or by extracting from
-      them — plus whether any 'AI-powered' claim is real product leverage
-      or investor decoration. Internal culture is NOT part of this dimension;
-      that is the separate `internal_culture` dimension below.
+      them. Covers the full range from clear-cut anchor cases to nuanced
+      middle ground at one confidence-agnostic band — no separate dimension
+      for the obvious cases. Internal culture is NOT part of this dimension;
+      that is the separate `internal_culture` dimension below. AI-narrative
+      authenticity is not part of this dimension either; that is a
+      `trajectory` signal (is the stated strategy defensible or hype), not a
+      values question.
     fit_anchors:
       Poor: >
-        Wins by extracting from the customer, or AI claims read as decoration.
+        Wins by extracting from the customer, at any confidence from a
+        clear-cut anchor case to a subtler pattern — the mechanism, not the
+        obviousness, is what matters.
       Mixed: >
         Ambiguous, or props up a systemic problem rather than disrupting it —
         non-predatory but not clearly value-creating either.
       Strong: >
-        Demonstrably wins when the customer wins; AI usage, if any, is
-        instrumental.
+        No signal of extraction, having looked — the outcome of looking, not
+        the starting state. Reasoning from the company's mission that it is
+        generative rather than extractive is what earns this, not the
+        absence of evidence.
     look_for: >
-      Revenue mechanics; business model description; company statements about
-      AI usage; comparison against anchor companies.
+      Revenue mechanics; business model description; user complaints framed
+      around exploitation (dark patterns, addictive design, predatory
+      pricing); comparison against anchor companies.
 
   - slug: agentic
     label: "Agentic/AI Engineering Culture"
@@ -253,30 +266,6 @@ dimensions:
       Layoff framing and cadence; stated performance-management practices
       (forced ranking, stack ranking); leadership tenure/turnover; employee
       review sites, weighted for recency and corroboration.
-
-  - slug: extractive_business
-    label: "Extractive core business model"
-    weight: 4
-    definition: >
-      Extreme or obvious cases where the core business model extracts value
-      from users rather than creating it. Anything less obvious flows into
-      `mission`, which is built for nuanced middle ground; this dimension is
-      for clear-cut anchor cases only.
-    fit_anchors:
-      Poor: >
-        A clear-cut anchor case of value extraction at Medium/High
-        confidence — near-certain, not a borderline call.
-      Mixed: >
-        Ambiguous, or no clear signal either way after looking.
-      Strong: >
-        No signal of extraction, having looked — the outcome of looking,
-        not the starting state. Reasoning from the company's mission that
-        it is generative rather than extractive is what earns this, not
-        the absence of evidence.
-    look_for: >
-      Revenue mechanics; user complaints framed around exploitation
-      (dark patterns, addictive design, predatory pricing); comparison
-      against anchor cases.
 
 # ---------------------------------------------------------------------------
 # Non-scoring targets

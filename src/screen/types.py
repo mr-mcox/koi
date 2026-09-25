@@ -84,7 +84,6 @@ _SCORING_TARGETS = [
     "domain",
     "location",
     "internal_culture",
-    "extractive_business",
 ]
 
 # Non-scoring targets carry the `non_scoring:` namespace prefix so the
@@ -105,7 +104,6 @@ Target = Literal[
     "domain",
     "location",
     "internal_culture",
-    "extractive_business",
     "non_scoring:obtainability",
 ]
 

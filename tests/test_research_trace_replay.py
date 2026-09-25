@@ -282,7 +282,7 @@ def test_replay_counts_based_stall_accumulates_across_repicks(tmp_path: Path) ->
     """Three separate re-picks of a stuck-at-one-assertion target accumulate
     three stalls, matching the S-curve's near-floor suppression at s=3."""
     path = tmp_path / "trace.jsonl"
-    for other in ("domain", "extractive_business", "craft_direction"):
+    for other in ("domain", "internal_culture", "craft_direction"):
         append_line(
             path,
             _plan_event(

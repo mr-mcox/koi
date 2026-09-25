@@ -198,10 +198,15 @@ def test_assertion_accepts_all_scoring_dimension_slugs() -> None:
         "domain",
         "location",
         "internal_culture",
-        "extractive_business",
     ]:
         a = Assertion.model_validate(_assertion(target=slug))
         assert a.target == slug
+
+
+def test_assertion_rejects_retired_extractive_business_target() -> None:
+    """`extractive_business` retired — merged into `mission` (R10)."""
+    with pytest.raises(ValidationError):
+        Assertion.model_validate(_assertion(target="extractive_business"))
 
 
 def test_assertion_accepts_non_scoring_obtainability() -> None:

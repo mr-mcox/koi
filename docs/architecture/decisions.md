@@ -347,6 +347,39 @@ preserve the evidence, but it directly conflicts with the rename intent for `str
 craft-direction claims. Dropping them is the conservative default; migration only makes sense
 after the operator confirms which rows are worth re-fetching.
 
+### R10 · `extractive_business` retired; `mission` carries the full extraction question at one band · `demonstrated`
+
+`extractive_business` (weight 4) was the same customer-extraction question `mission`
+(weight 2) already asked, split by confidence tier: `extractive_business` anchored
+clear-cut/obvious cases, `mission` anchored the nuanced middle ground. The operator's mental
+model doesn't segment by confidence — `mission` answers "would I want to be part of this if
+it succeeds" (values), `trajectory` answers "will it succeed" (health/strategy), and
+extraction is wholly a `mission` question regardless of how obvious the evidence is.
+`extractive_business` is dropped outright, not folded elsewhere as a separate mechanism;
+`mission`'s definition/fit_anchors now span the full range from clear-cut to ambiguous
+extraction at one band. `mission`'s weight stays 2 — no reweighting to absorb the merged
+range. D19's shape (Strong is the outcome of looking and finding no extraction, not the
+default of not looking) carries over unchanged into the merged anchors.
+
+`mission`'s prior text also asked whether an 'AI-powered' claim was real product leverage
+or investor decoration, blended into the same Poor/Mixed/Strong anchors as the extraction
+question. The operator's segmentation puts AI-narrative authenticity under `trajectory`
+("will it succeed" — a hype-driven strategy is a trajectory risk) rather than under
+`mission` (values) or `agentic` (a distinct question: tooling quality, not narrative
+honesty). `trajectory`'s `look_for` now names hype-vs-defensible-strategy generally, with
+AI framing as one instance rather than a dedicated callout — it wasn't judged to carry
+enough independent weight to need its own fit_anchor language.
+
+Retired at the SQLite read boundary per R9's generic mechanism (`Target` Literal shrinks;
+`src/screen/store/mappers.py`'s existing validate-and-drop path requires no new code).
+
+**Rejected:** keeping `extractive_business` as a confidence-tiered sub-case of `mission`
+instead of dropping it — the confidence split was the redundancy being named, not a
+distinction worth preserving. Also rejected: giving AI-narrative-authenticity its own
+dimension or fit_anchor — too minor a signal to warrant a dedicated callout; if `mission`
+scores poorly while an opening still ranks high in practice, that's deferred as a future
+problem, not solved by adding structure now.
+
 ---
 
 ## Workflow

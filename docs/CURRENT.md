@@ -1,1 +1,1 @@
-docs/features/rubric-peer-stretch-revision/redefine-stretch.md
+docs/features/rubric-mission-trajectory-split/bearing.md

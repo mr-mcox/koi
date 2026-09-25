@@ -113,7 +113,7 @@ test DecidePlan_FetchesWhenContextRevealedUrl {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -135,7 +135,7 @@ test DecidePlan_FetchesOneWhenMultipleUrlsAvailable {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -159,7 +159,7 @@ test DecidePlan_FetchesRelevantUrlAmongNoise {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -182,7 +182,7 @@ test DecidePlan_AvoidsFetchWhenOnlyLowValueUrlsAvailable {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -203,7 +203,7 @@ test DecidePlan_SearchContextWithUncoveredTarget {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -228,11 +228,11 @@ test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
     opening_title "Staff Software Engineer - Platform Identity"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
-    primary_target "extractive_business"
+    primary_target "mission"
     prior_queries "Acme Logistics Systems business model revenue model logistics software, Acme Logistics Systems business model SaaS freight brokerage revenue how they make money"
     last_context_text "Last action: search for 'Acme Logistics Systems freight brokerage model criticism predatory extractive practices'. Results:\n1. Industry insurer — https://example.com/industry/freight-broker-risks\n   A new business model in the freight broker industry brings new risks as well as opportunities, discussing broker-carrier conflicts of interest.\n2. Trade publication — https://example.com/news/founders-logistics-tms\n   Acme Logistics Systems promises to reduce waste across the entire freight logistics industry.\n3. Trade publication — https://example.com/news/future-freight-broker\n   Discusses brokers extracting yield from the market via automated rate-setting."
   }
@@ -250,7 +250,7 @@ test DecidePlan_StopsWhenPrimaryTargetLeadIsMinedOut {
     opening_title "Staff Software Engineer"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
@@ -273,7 +273,7 @@ test DecidePlan_SearchQueryGroundedInCompanyName {
     opening_title "Staff Software Engineer, Backend Platform"
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
-Constraint slugs: location, internal_culture, extractive_business.
+Constraint slugs: location, internal_culture.
 Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
