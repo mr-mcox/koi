@@ -208,12 +208,14 @@ class DimensionDigest(BaseModel):
 
 
 ComparisonOutcome = Literal["a", "b", "tie"]
+ComparisonProvenance = Literal["operator", "provisional"]
 
 
 class Comparison(BaseModel):
     """One operator judgment between two openings on a single dimension. Append-only: every
     judgment is kept, not just the latest — the batch fit reads the latest per (unordered
     pair, dimension), the calibration log keeps them all regardless.
+    `provenance` distinguishes operator-ratified rows from provisional similarity ties.
     `opening_a_digest_version`/`opening_b_digest_version` identify the digest versions shown
     at judgment time once `dimension_digests` becomes append-only; until then both are `None`."""
 
@@ -224,6 +226,7 @@ class Comparison(BaseModel):
     opening_b_id: Annotated[str, Field(min_length=1)]
     target: Target
     outcome: ComparisonOutcome
+    provenance: ComparisonProvenance = "operator"
     predicted_a_beats_b: Annotated[float, Field(ge=0.0, le=1.0)]
     opening_a_digest_version: str | None = None
     opening_b_digest_version: str | None = None

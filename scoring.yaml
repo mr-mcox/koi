@@ -49,11 +49,21 @@ top_k: 5
 # assertion about another target. Unmeasured placeholder, same status as top_k above.
 research_target_action_cap: 3
 
-# Pairwise comparisons. `beta` scales the
-# Thurstone/probit comparison likelihood: how decisively a win separates two latent
-# values. Unmeasured placeholder, same status as top_k above — later fit from the
-# calibration log.
-comparison_beta: 0.5
+# Pairwise comparisons. `beta` scales the Thurstone/probit comparison likelihood: how
+# decisively a win/tie separates two latent values. Provisional (similarity) ties carry a
+# wider beta than operator rulings so they weigh less until overridden (the S8
+# precedent_matched-vs-ratified analog for comparisons). Unmeasured placeholders, same
+# status as top_k above — later fit from the calibration log.
+comparison_beta:
+  operator: 0.5
+  provisional: 1.0
+
+# Similarity kernel gates. `tau` is the cosine threshold above which two openings' digest
+# embeddings count as near-duplicates worth a provisional tie; `s0` is the grading floor where
+# the tie's weight starts ramping toward 1.0 at cosine=1.0 (w(s) = clamp((s-s0)/(1-s0), 0, 1)).
+# Unmeasured placeholders, same status as the other dials — the operator owns them.
+similarity_tau: 0.85
+similarity_s0: 0.75
 
 # Compare picker jitter. Log-normal multiplicative noise (score *= exp(N(0, sigma)))
 # applied to each (pair, dimension) candidate's score before argmax, so one comparison

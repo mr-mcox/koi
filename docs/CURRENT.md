@@ -1,1 +1,1 @@
-docs/features/rubric-mission-trajectory-split/bearing.md
+docs/features/comparison-similarity-kernel/bearing.md

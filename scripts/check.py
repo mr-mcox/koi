@@ -30,6 +30,9 @@ OMIT_FROM_COVERAGE: list[str] = [
     # Symmetric with pyproject.toml [tool.coverage.run] omit.
     "src/screen/extract/baml_extractor.py",
     "src/screen/digest/baml_digester.py",
+    # Live embedding adapter: calls a local ONNX model runtime, no unit test coverage
+    # by design — tests inject a fake embedder via the Embedder Protocol.
+    "src/screen/embed/fastembed_embedder.py",
 ]
 
 EXEMPT_FILES: dict[str, str] = {

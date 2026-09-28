@@ -38,13 +38,30 @@ def _comparison(outcome: str) -> Comparison:
 
 def test_to_score_comparison_maps_a_b_and_tie() -> None:
     a_wins = _to_score_comparison(_comparison("a"))
-    assert (a_wins.winner, a_wins.loser, a_wins.tie) == ("a", "b", False)
+    assert (a_wins.winner, a_wins.loser, a_wins.tie, a_wins.provenance) == (
+        "a",
+        "b",
+        False,
+        "operator",
+    )
 
     b_wins = _to_score_comparison(_comparison("b"))
-    assert (b_wins.winner, b_wins.loser, b_wins.tie) == ("b", "a", False)
+    assert (b_wins.winner, b_wins.loser, b_wins.tie, b_wins.provenance) == (
+        "b",
+        "a",
+        False,
+        "operator",
+    )
 
     tie = _to_score_comparison(_comparison("tie"))
-    assert (tie.winner, tie.loser, tie.tie) == ("a", "b", True)
+    assert (tie.winner, tie.loser, tie.tie, tie.provenance) == ("a", "b", True, "operator")
+
+
+def test_to_score_comparison_carries_provisional_provenance() -> None:
+    """A stored provisional-tie row maps to a score-side `Comparison` that still says
+    provisional — the fit's per-provenance beta lookup depends on this surviving the hop."""
+    provisional = _comparison("a").model_copy(update={"provenance": "provisional"})
+    assert _to_score_comparison(provisional).provenance == "provisional"
 
 
 def test_rank_screening_pool_defaults_to_live_screening_stage(

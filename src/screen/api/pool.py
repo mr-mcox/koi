@@ -25,14 +25,26 @@ from screen.types import Comparison as StoredComparison
 
 def _to_score_comparison(comparison: StoredComparison) -> ScoreComparison:
     """Map a stored `screen.types.Comparison` (opening_a/opening_b/outcome) onto the pure
-    fit's `winner`/`loser`/`tie` shape — the fit only ever needs the resolved judgment."""
+    fit's `winner`/`loser`/`tie` shape — the fit only ever needs the resolved judgment, and
+    `provenance` rides along so the fit can pick this comparison's beta."""
     if comparison.outcome == "tie":
         return ScoreComparison(
-            winner=comparison.opening_a_id, loser=comparison.opening_b_id, tie=True
+            winner=comparison.opening_a_id,
+            loser=comparison.opening_b_id,
+            tie=True,
+            provenance=comparison.provenance,
         )
     if comparison.outcome == "a":
-        return ScoreComparison(winner=comparison.opening_a_id, loser=comparison.opening_b_id)
-    return ScoreComparison(winner=comparison.opening_b_id, loser=comparison.opening_a_id)
+        return ScoreComparison(
+            winner=comparison.opening_a_id,
+            loser=comparison.opening_b_id,
+            provenance=comparison.provenance,
+        )
+    return ScoreComparison(
+        winner=comparison.opening_b_id,
+        loser=comparison.opening_a_id,
+        provenance=comparison.provenance,
+    )
 
 
 def _screening_pool_inputs(

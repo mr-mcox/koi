@@ -15,6 +15,17 @@ FIT_VALUES: dict[Fit, float] = {"Poor": -1.0, "Mixed": 0.0, "Strong": 1.0}
 
 
 @dataclass(frozen=True)
+class ComparisonBetaParams:
+    """Thurstone/probit `beta` per comparison provenance — how decisively a win/tie
+    separates two latent values. Provisional (similarity) ties carry a wider beta than
+    operator rulings so they weigh less until overridden (the S8 precedent_matched-vs-
+    ratified analog for comparisons). Operator-owned config, unmeasured placeholders."""
+
+    operator: float
+    provisional: float
+
+
+@dataclass(frozen=True)
 class ScoringConfig:
     """Everything the Scorer needs, pre-loaded. No I/O happens past this point —
     `screen.score.loader` is where `rubric.yaml`/`scoring.yaml` get read."""
@@ -25,7 +36,9 @@ class ScoringConfig:
     dimension_weights: dict[str, int]
     top_k: int
     research_target_action_cap: int
-    comparison_beta: float
+    comparison_beta: ComparisonBetaParams
+    similarity_tau: float
+    similarity_s0: float
     comparison_jitter_sigma: float
 
     @property

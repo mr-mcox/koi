@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from screen.score.types import ScoringConfig
+from screen.score.types import ComparisonBetaParams, ScoringConfig
 from screen.types import Provenance
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -34,6 +34,11 @@ def load_scoring_config(
         dimension_weights=dimension_weights,
         top_k=int(scoring["top_k"]),
         research_target_action_cap=int(scoring["research_target_action_cap"]),
-        comparison_beta=float(scoring["comparison_beta"]),
+        comparison_beta=ComparisonBetaParams(
+            operator=float(scoring["comparison_beta"]["operator"]),
+            provisional=float(scoring["comparison_beta"]["provisional"]),
+        ),
+        similarity_tau=float(scoring["similarity_tau"]),
+        similarity_s0=float(scoring["similarity_s0"]),
         comparison_jitter_sigma=float(scoring["comparison_jitter_sigma"]),
     )

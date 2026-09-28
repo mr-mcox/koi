@@ -191,10 +191,10 @@ def append_comparison(conn: sqlite3.Connection, comparison: Comparison) -> None:
     new row, it doesn't overwrite the old one."""
     conn.execute(
         """INSERT INTO comparisons
-           (id, opening_a_id, opening_b_id, target, outcome, predicted_a_beats_b,
+           (id, opening_a_id, opening_b_id, target, outcome, provenance, predicted_a_beats_b,
             opening_a_digest_version, opening_b_digest_version, created_at)
            VALUES
-           (:id, :opening_a_id, :opening_b_id, :target, :outcome, :predicted_a_beats_b,
+           (:id, :opening_a_id, :opening_b_id, :target, :outcome, :provenance, :predicted_a_beats_b,
             :opening_a_digest_version, :opening_b_digest_version, :created_at)""",
         comparison_to_row(comparison),
     )

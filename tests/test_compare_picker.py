@@ -251,6 +251,16 @@ def test_variance_share_rebalances_after_location_shrinks(config: ScoringConfig)
     assert suggestion.target == "craft_direction"
 
 
+class _FakeEmbedder:
+    """Returns a fixed unit vector per digest text, so the test controls cosine directly."""
+
+    def __init__(self, vectors_by_text: dict[str, np.ndarray]) -> None:
+        self._map = vectors_by_text
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        return np.array([self._map[t] for t in texts])
+
+
 def test_variance_share_prefers_uncertain_rank_contest(config: ScoringConfig) -> None:
     """A pair whose overall rank is genuinely contested wins over a pair that's already
     decisively separated overall, even though the decisive pair's only ambiguous dimension
