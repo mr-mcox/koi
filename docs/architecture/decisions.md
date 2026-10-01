@@ -190,6 +190,42 @@ have orphaned every existing assertion under the old slug.
 description puts hybrid-with-mandated-office-days in Mixed, not Poor, which only the merged
 ladder expresses; keeping them separate would still special-case that severity call.
 
+### S14 · Provisional similarity verdicts widen a rung below `model_proposed`; a confidence gate, never a blind one · `provisional`
+
+The operator's comparison attention was going to near-duplicate pairs on one dimension
+(`location`) instead of novel ones. A two-stage pipeline answers it: a coarse cosine filter
+over per-dimension digest embeddings finds candidate pairs (cheap, local, same-dimension
+only — similarity on one dimension is never evidence for another); a fine-stage verdict
+provider rules each candidate `a`/`b`/`tie` with its own calibrated confidence. Below a
+confidence threshold, nothing is emitted — the pair surfaces to the operator exactly as if
+the pipeline didn't exist; there is no default verdict for a pair the provider itself isn't
+sure about. At or above threshold, the verdict becomes a `Comparison` with
+`provenance=provisional` and a per-provenance Thurstone beta wider than an operator
+ruling's — S8's rung ladder, extended: operator-ratified narrowest, a confident provisional
+verdict at the `precedent_matched` rung (narrower than `model_proposed`, never as narrow as
+`ratified`), gated like a rung rather than built as a separate mechanism.
+
+**Why this isn't W5's auto-close:** the batch fit's dedup-to-latest reduction makes "until I
+override" literal — a later operator ruling on the same pair always displaces an earlier
+provisional verdict, regardless of how confident the provider was. A provisional verdict
+never overwrites an existing operator ruling; it only fills a gap no operator has looked at
+yet, exactly as reversible as any other unreviewed assertion.
+
+A provisional verdict can be directional (`a` or `b` wins), not only a tie — in scope by the
+operator's explicit choice, to avoid relitigating "A beats B, C looks like B" as a fresh
+judgment every time a similar pair surfaces. Scoped to pairs with no existing operator
+ruling; an existing ruling is never challenged by a provisional verdict on the same pair.
+
+**Rejected:** a single-stage cosine-only kernel (emit a tie whenever digest cosine clears a
+threshold, weighted by how far above). Measured against the live pool: near-duplicate
+*digests* are rare, and the ones that exist don't carry enough weight to move a
+high-rubric-weight dimension. The real signal worth suppressing is rubric-semantic
+similarity, not digest-text similarity — cosine is a crude proxy for it and misses cases a
+human would call obviously similar (two "largely remote, no twin-cities-office" postings can
+have very different digest text). **Rejected:** emitting a provisional verdict regardless of
+the provider's own confidence — unconditional application is exactly W5's auto-close failure
+mode; the confidence gate is load-bearing, not an implementation detail.
+
 ---
 
 ## Evidence model

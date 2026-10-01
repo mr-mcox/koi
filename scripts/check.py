@@ -33,6 +33,9 @@ OMIT_FROM_COVERAGE: list[str] = [
     # Live embedding adapter: calls a local ONNX model runtime, no unit test coverage
     # by design — tests inject a fake embedder via the Embedder Protocol.
     "src/screen/embed/fastembed_embedder.py",
+    # Live verdict adapter: calls the paid TypeSafe (Jev) API, no unit test coverage by
+    # design — tests inject a fake VerdictProvider via the Protocol.
+    "src/screen/verdict/jev_verdict_provider.py",
 ]
 
 EXEMPT_FILES: dict[str, str] = {

@@ -15,13 +15,16 @@ import pytest
 from screen.score.compare import Comparison
 from screen.score.compare_picker import (
     ComparisonSuggestion,
+    _dimension_posterior,
     _p_a_gt_b,
     _prior_variance,
     select_comparison,
 )
 from screen.score.loader import load_scoring_config
+from screen.score.provisional_verdicts import provisional_verdicts
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, Fit
+from screen.verdict.protocol import RubricVerdict
 
 _CITATION = Citation(
     url="https://example.com/note",
@@ -259,6 +262,67 @@ class _FakeEmbedder:
 
     def embed(self, texts: list[str]) -> np.ndarray:
         return np.array([self._map[t] for t in texts])
+
+
+class _FullyConfidentTie:
+    """A fake verdict provider that rules every candidate a tie at maximum confidence —
+    isolates what a single best-case Jev verdict can move, independent of calibration."""
+
+    def rule(
+        self, rubric_text: str, digest_a: str, digest_b: str, few_shot_examples: list
+    ) -> RubricVerdict:
+        return RubricVerdict(outcome="tie", confidence=1.0)
+
+
+def test_confident_provisional_tie_narrows_the_pair_it_names(config: ScoringConfig) -> None:
+    """A confident Jev verdict on `location` for (a, b) strictly lowers `location`'s
+    `dim_var_diff` for that pair versus no provisional comparison at all — the mechanism
+    (provisional verdict raises `cov[a][b]`, lowering `dim_var_diff`) moves in the correct
+    direction. It does not claim this flips the picker's overall choice against a
+    higher-rubric-weight dimension with a real quality gap — two openings and one
+    maximally-confident tie are not enough to overcome `location`'s weight (6) against
+    `craft_direction`'s Strong/Poor split (weight 3); that needs either several
+    near-duplicate pairs accumulating over the live pool or a lower-weight dimension, not
+    a defect in this mechanism."""
+    a, b = "a", "b"
+    assertions = {
+        a: [_assertion("location")],
+        b: [_assertion("location")],
+    }
+    same = np.array([1.0, 0.0, 0.0])
+    embedder = _FakeEmbedder({"da": same, "db": same})
+    comparisons_by_target = provisional_verdicts(
+        {"location": {"a": "da", "b": "db"}},
+        embedder,
+        tau=0.85,
+        rubric_text_by_target={"location": "rubric text"},
+        few_shot_examples_by_target={},
+        provider=_FullyConfidentTie(),
+        confidence_threshold=0.9,
+    )
+
+    _, cov_with_tie = _dimension_posterior(
+        "location",
+        [a, b],
+        assertions_by_opening=assertions,
+        rulings_by_opening=None,
+        comparisons=comparisons_by_target.get("location", []),
+        companies_by_opening={a: "acme", b: "widgets"},
+        config=config,
+    )
+    _, cov_without_tie = _dimension_posterior(
+        "location",
+        [a, b],
+        assertions_by_opening=assertions,
+        rulings_by_opening=None,
+        comparisons=[],
+        companies_by_opening={a: "acme", b: "widgets"},
+        config=config,
+    )
+
+    var_diff_with_tie = cov_with_tie[a][a] + cov_with_tie[b][b] - 2 * cov_with_tie[a][b]
+    var_diff_without_tie = cov_without_tie[a][a] + cov_without_tie[b][b] - 2 * cov_without_tie[a][b]
+    assert var_diff_with_tie < var_diff_without_tie
 
 
 def test_variance_share_prefers_uncertain_rank_contest(config: ScoringConfig) -> None:

@@ -38,7 +38,7 @@ class ScoringConfig:
     research_target_action_cap: int
     comparison_beta: ComparisonBetaParams
     similarity_tau: float
-    similarity_s0: float
+    jev_confidence_threshold: float
     comparison_jitter_sigma: float
 
     @property

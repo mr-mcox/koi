@@ -11,3 +11,4 @@ def test_loads_real_rubric_and_scoring_yaml() -> None:
     assert config.provenance_weight["unexamined"] == 0.0
     assert config.provenance_weight["ratified"] > config.provenance_weight["model_proposed"]
     assert config.top_k == 5
+    assert 0.0 < config.jev_confidence_threshold <= 1.0

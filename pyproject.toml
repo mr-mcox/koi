@@ -14,6 +14,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
     "tavily-python>=0.7.0",
+    "typesafe-sdk>=0.7.2",
     "uvicorn>=0.34.0",
 ]
 
@@ -41,6 +42,9 @@ omit = [
     # Live embedding adapter: calls a local ONNX model runtime, no unit test coverage
     # by design — tests inject a fake embedder via the Embedder Protocol.
     "src/screen/embed/fastembed_embedder.py",
+    # Live verdict adapter: calls the paid TypeSafe (Jev) API, no unit test coverage by
+    # design — tests inject a fake VerdictProvider via the Protocol.
+    "src/screen/verdict/jev_verdict_provider.py",
 ]
 
 [tool.coverage.report]

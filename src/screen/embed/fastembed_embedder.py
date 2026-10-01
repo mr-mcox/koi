@@ -5,7 +5,7 @@ calls a local model runtime that downloads a ~90MB ONNX model on first use. Unit
 inject a fake `Embedder` via the Protocol instead, mirroring `baml_digester` /
 `baml_extractor`. The model is the same one the operator attests worked in
 logseq-navigator, run through ONNX Runtime rather than `sentence-transformers` so torch
-(hundreds of MB) never enters this feather-light project (→ scouting F14, F17).
+(hundreds of MB) never enters this feather-light project.
 """
 
 from __future__ import annotations

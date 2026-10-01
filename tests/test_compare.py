@@ -100,7 +100,7 @@ def test_dimension_posteriors_reduces_to_latest_per_pair() -> None:
     """Two recorded judgments on the same (pair, dimension) collapse to the latest — the
     fit must equal the single-latest-judgment fit, not the sum of both. `comparisons_for_target`
     returns oldest-first, so the later ruling displaces the earlier one on that pair
-    ("until I override" is literal, not a weight competition). Closes F18."""
+    ("until I override" is literal, not a weight competition)."""
     prior_means = {"location": {"a": 0.0, "b": 0.0}}
     prior_variances = {"location": {"a": 0.25, "b": 0.25}}
     companies_by_opening = {"a": "acme", "b": "widgets"}
@@ -133,7 +133,7 @@ def test_explicit_comparison_displaces_same_company_auto_tie() -> None:
     """An explicit operator comparison on a company-level dimension (`mission`) between two
     same-company openings displaces the auto-tie for that pair — the fit equals the
     different-company fit (no implicit tie term summed in), not a blend of win and tie. The
-    auto-tie is the default absent an explicit judgment, not a coexisting term (F18)."""
+    auto-tie is the default absent an explicit judgment, not a coexisting term."""
     prior_means = {"mission": {"a": 0.0, "b": 0.0}}
     prior_variances = {"mission": {"a": 0.25, "b": 0.25}}
     win = {"mission": [Comparison(winner="a", loser="b", tie=False)]}
@@ -155,7 +155,7 @@ def test_explicit_comparison_displaces_same_company_auto_tie() -> None:
 def test_provisional_tie_weighs_less_than_operator_tie() -> None:
     """A provisional similarity tie uses a wider beta than an operator tie, so it tightens
     the posterior less — the same judgment at provisional provenance moves the fit less than
-    the identical judgment at operator provenance (Done When: provisional weighs less, via
+    the identical judgment at operator provenance (provisional weighs less, via
     per-provenance beta)."""
     prior_means = {"a": 0.0, "b": 1.0}
     prior_variances = {"a": 0.25, "b": 0.25}

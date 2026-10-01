@@ -25,8 +25,7 @@ class Comparison:
     """One judgment on a single dimension between two openings, identified by the same
     keys used in `prior_means`/`prior_variances`. `tie=True` ignores which side is
     `winner`/`loser` — the likelihood term is symmetric either way. `provenance` picks the
-    fit's beta: operator rulings weigh more than provisional similarity ties (S8
-    precedent_matched-vs-ratified analog for comparisons)."""
+    fit's beta: operator rulings weigh more than provisional similarity ties."""
 
     winner: str
     loser: str
@@ -164,7 +163,7 @@ def _latest_per_pair(comparisons: list[Comparison]) -> list[Comparison]:
     occurrence of each. Callers establish oldest-first order — `comparisons_for_target` by
     `created_at`, and `dimension_posteriors` by prepending same-company auto-ties (the implicit
     default) before any explicit comparison — so a later ruling displaces an earlier one on the
-    same pair/dimension rather than summing with it (closes F18). The fit itself stays
+    same pair/dimension rather than summing with it. The fit itself stays
     order-independent; this reduction runs once."""
     latest: dict[frozenset[str], Comparison] = {}
     for c in comparisons:
@@ -197,7 +196,7 @@ def dimension_posteriors(
         if target in COMPANY_LEVEL_TARGETS:
             # Auto-ties are the implicit default (no explicit judgment yet) — prepend them
             # as oldest so _latest_per_pair keeps an explicit comparison over the auto-tie
-            # for that pair (closes F18: "absent an explicit comparison").
+            # for that pair — the auto-tie is a default, not a coexisting term.
             comparisons = _auto_tie_comparisons(opening_ids, companies_by_opening) + comparisons
         comparisons = _latest_per_pair(comparisons)
         if not comparisons:
