@@ -63,6 +63,14 @@ dimensions:
       aspirational. Absence of corroboration under a JD that aspirationally claims
       AI/ML work is itself a negative signal — often marks immature data or
       infrastructure underneath the claim.
+      
+      Whether the seat owns an evaluable improvement loop: a measurement harness
+      (evals, tuning runs, experiment tracking, or an agent self-improvement cycle)
+      whose results feed the next design decision, built in layers so each round of
+      experiments is cheaper than the last. Corroboration: JD or engineering-blog
+      language showing the team owns this infrastructure rather than inheriting it.
+      A JD claiming ML work where the seat is upkeep of a fixed model or pipeline
+      is a negative signal.
 
   - slug: schematic
     label: "Schematic"
