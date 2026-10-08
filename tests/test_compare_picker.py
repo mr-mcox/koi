@@ -21,10 +21,8 @@ from screen.score.compare_picker import (
     select_comparison,
 )
 from screen.score.loader import load_scoring_config
-from screen.score.provisional_verdicts import provisional_verdicts
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, Fit
-from screen.verdict.protocol import RubricVerdict
 
 _CITATION = Citation(
     url="https://example.com/note",
@@ -254,26 +252,6 @@ def test_variance_share_rebalances_after_location_shrinks(config: ScoringConfig)
     assert suggestion.target == "craft_direction"
 
 
-class _FakeEmbedder:
-    """Returns a fixed unit vector per digest text, so the test controls cosine directly."""
-
-    def __init__(self, vectors_by_text: dict[str, np.ndarray]) -> None:
-        self._map = vectors_by_text
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        return np.array([self._map[t] for t in texts])
-
-
-class _FullyConfidentTie:
-    """A fake verdict provider that rules every candidate a tie at maximum confidence —
-    isolates what a single best-case Jev verdict can move, independent of calibration."""
-
-    def rule(
-        self, rubric_text: str, digest_a: str, digest_b: str, few_shot_examples: list
-    ) -> RubricVerdict:
-        return RubricVerdict(outcome="tie", confidence=1.0)
-
-
 def test_confident_provisional_tie_narrows_the_pair_it_names(config: ScoringConfig) -> None:
     """A confident Jev verdict on `location` for (a, b) strictly lowers `location`'s
     `dim_var_diff` for that pair versus no provisional comparison at all — the mechanism
@@ -289,17 +267,11 @@ def test_confident_provisional_tie_narrows_the_pair_it_names(config: ScoringConf
         a: [_assertion("location")],
         b: [_assertion("location")],
     }
-    same = np.array([1.0, 0.0, 0.0])
-    embedder = _FakeEmbedder({"da": same, "db": same})
-    comparisons_by_target = provisional_verdicts(
-        {"location": {"a": "da", "b": "db"}},
-        embedder,
-        tau=0.85,
-        rubric_text_by_target={"location": "rubric text"},
-        few_shot_examples_by_target={},
-        provider=_FullyConfidentTie(),
-        confidence_threshold=0.9,
-    )
+    comparisons_by_target = {
+        "location": [
+            Comparison(winner=a, loser=b, tie=True, provenance="provisional"),
+        ]
+    }
 
     _, cov_with_tie = _dimension_posterior(
         "location",
@@ -364,6 +336,67 @@ def test_variance_share_prefers_uncertain_rank_contest(config: ScoringConfig) ->
     )
     assert suggestion is not None
     assert {suggestion.opening_a_id, suggestion.opening_b_id} == {contested_a, contested_b}
+
+
+def test_a_provisional_only_pair_is_never_resuggested_on_that_dimension(
+    config: ScoringConfig,
+) -> None:
+    """Once the latest comparison on a (pair, dimension) is provisional, that triple is
+    permanently off the picker's menu — unlike an operator ruling, which stays askable
+    (variance-decayed) for future re-judgment. The variance nudge alone can't suppress a
+    high-weight dimension (measured in tests/test_api_pool.py and this file's
+    `test_confident_provisional_tie_narrows_the_pair_it_names`); hard exclusion is what
+    actually stops the operator from seeing it again, matching the operator's stated
+    requirement over the `comparison-similarity-kernel` bearing's criterion 4."""
+    a, b = "a", "b"
+    assertions = {
+        a: [_assertion("location"), _assertion("craft_direction", "Strong")],
+        b: [_assertion("location"), _assertion("craft_direction", "Poor")],
+    }
+    comparisons_by_target = {
+        "location": [Comparison(winner=a, loser=b, tie=True, provenance="provisional")]
+    }
+    suggestion = select_comparison(
+        [a, b],
+        {a: "acme", b: "widgets"},
+        assertions,
+        comparisons_by_target,
+        _neutral_p_top_k([a, b]),
+        config=_no_jitter(config),
+        rng=_rng(),
+    )
+    assert suggestion is not None
+    assert suggestion.target == "craft_direction"
+
+
+def test_an_operator_ruling_stays_askable_unlike_a_provisional_one(
+    config: ScoringConfig,
+) -> None:
+    """An operator-ruled pair keeps the existing variance-decay behavior — it is not
+    hard-excluded the way a provisional-only pair is. Guards against conflating the two
+    provenances when adding the provisional exclusion."""
+    a, b, c = "a", "b", "c"
+    assertions = {
+        a: [_assertion("craft_direction")],
+        b: [_assertion("craft_direction")],
+        c: [_assertion("craft_direction")],
+    }
+    comparisons_by_target = {
+        "craft_direction": [
+            Comparison(winner=a, loser=b, tie=True, provenance="operator") for _ in range(6)
+        ]
+    }
+    suggestion = select_comparison(
+        [a, b, c],
+        {a: "acme", b: "widgets", c: "gadgets"},
+        assertions,
+        comparisons_by_target,
+        _neutral_p_top_k([a, b, c]),
+        config=_no_jitter(config),
+        rng=_rng(),
+    )
+    assert suggestion is not None
+    assert {suggestion.opening_a_id, suggestion.opening_b_id} == {a, c}
 
 
 def test_boundary_weight_excludes_pairs_far_from_top_k(config: ScoringConfig) -> None:

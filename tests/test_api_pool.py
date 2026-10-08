@@ -1,7 +1,8 @@
 """Unit coverage for `rank_screening_pool`'s DB assembly and the stored-comparison
 outcome mapping — `tests/test_web.py::test_index_queue_reorders_after_comparison`
 covers the end-to-end HTTP path; this covers the branches that path alone doesn't
-reach (tie/b outcomes, the explicit `openings` override)."""
+reach (tie/b outcomes, the explicit `openings` override). The comparison pre-screen
+orchestration itself (`run_prescreen`) lives in `tests/test_prescreen_engine.py`."""
 
 from __future__ import annotations
 
@@ -10,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from screen.api.pool import _to_score_comparison, rank_screening_pool
+from screen.api.pool import _outcome_for_pair, _to_score_comparison, rank_screening_pool
+from screen.score.compare import Comparison as ScoreComparison
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
 from screen.store.db import connect
@@ -86,3 +88,14 @@ def test_rank_screening_pool_defaults_to_live_screening_stage(
     result = rank_screening_pool(conn, config)
 
     assert [r.opening_id for r in result.opening_ranks] == ["acme--a"]
+
+
+def test_outcome_for_pair_maps_tie_and_each_winner() -> None:
+    tie = ScoreComparison(winner="a", loser="b", tie=True, provenance="provisional")
+    assert _outcome_for_pair(tie, "a", "b") == "tie"
+
+    a_wins = ScoreComparison(winner="a", loser="b", provenance="provisional")
+    assert _outcome_for_pair(a_wins, "a", "b") == "a"
+
+    b_wins = ScoreComparison(winner="b", loser="a", provenance="provisional")
+    assert _outcome_for_pair(b_wins, "a", "b") == "b"

@@ -14,16 +14,21 @@ def _load() -> dict[str, Any]:
     return yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
 
 
+def _render_one_dimension(dim: dict[str, Any]) -> list[str]:
+    lines: list[str] = [f"\n### {dim['label']} (slug: {dim['slug']}, weight: {dim['weight']})"]
+    lines.append(dim["definition"].strip())
+    lines.append("Fit anchors:")
+    for label, text in dim.get("fit_anchors", {}).items():
+        lines.append(f"  {label}: {str(text).strip()}")
+    if dim.get("look_for"):
+        lines.append(f"Look for: {dim['look_for'].strip()}")
+    return lines
+
+
 def _render_dimensions(data: dict[str, Any]) -> list[str]:
     lines: list[str] = ["\n## Scored dimensions"]
     for dim in data.get("dimensions", []):
-        lines.append(f"\n### {dim['label']} (slug: {dim['slug']}, weight: {dim['weight']})")
-        lines.append(dim["definition"].strip())
-        lines.append("Fit anchors:")
-        for label, text in dim.get("fit_anchors", {}).items():
-            lines.append(f"  {label}: {str(text).strip()}")
-        if dim.get("look_for"):
-            lines.append(f"Look for: {dim['look_for'].strip()}")
+        lines.extend(_render_one_dimension(dim))
     return lines
 
 
@@ -54,3 +59,11 @@ def all_dimension_slugs() -> list[str]:
 
 def all_non_scoring_slugs() -> list[str]:
     return [n["slug"] for n in _load().get("non_scoring", [])]
+
+
+def rubric_text_for_dimension(target: str) -> str:
+    """One dimension's rubric text, verbatim — the fine-stage similarity gate (Jev) is
+    scored against this dimension alone, never the full rubric, so it can't be swayed by
+    unrelated dimensions' anchors. Raises `KeyError` for an unknown slug."""
+    by_slug = {dim["slug"]: dim for dim in _load().get("dimensions", [])}
+    return "\n".join(_render_one_dimension(by_slug[target]))

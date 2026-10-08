@@ -226,6 +226,79 @@ have very different digest text). **Rejected:** emitting a provisional verdict r
 the provider's own confidence — unconditional application is exactly W5's auto-close failure
 mode; the confidence gate is load-bearing, not an implementation detail.
 
+**Addendum (picker suppression is exclusion, not a covariance nudge):** the rung-widened
+beta above was measured, twice (pre- and post-Jev-pivot), not to move the picker's choice at
+all against a real quality gap on a high-weight dimension — `sqrt(weight_a)/sqrt(weight_b)`
+can exceed what one widened tie's `dim_var_diff` reduction can overcome, so "the operator
+never sees the near-duplicate pair again" cannot be delivered by weight alone. The operator's
+actual bar is stronger than "down-weighted": "what I really care about is whether *I* do not
+see that near duplicate" (2026-10-01). The picker now hard-excludes any (pair, dimension)
+whose latest comparison is `provenance=provisional` — not scored, not in the running — while
+an operator ruling on the same pair stays askable exactly as before (variance-decayed, never
+excluded). This reads as auto-close unless paired with retrieve-and-show: `/compare/review`
+lists every excluded pair the operator hasn't ratified, and opening one routes into the
+ordinary compare form for that exact pair — submitting a ruling there is the override, via
+the same dedup-to-latest reduction that already displaces a provisional row with a later
+operator one. No new override mechanism; the beta/rung language above still describes the fit
+weighting, the exclusion is a separate, additional picker-level decision.
+
+**Addendum (the coarse cosine gate was removed, not kept as a pre-filter):** the first real
+`/compare` session surfaced a `location` pair Jev should have unanimously ruled on, but Jev
+was never called — `candidate_pairs`'s cosine gate (τ=0.85) rejected it first. This is the
+same failure mode measured during the pivot (scouting F-SC3: only 1 of 63 `location`-digested
+openings in the live pool ever clears τ=0.85) landing in the live flow, not a new one. The
+coarse gate's justification was bulk cost control ahead of an O(n²) scan across the whole
+pool; the live flow never does that scan — `_provisional_comparison_for_suggestion` checks
+exactly one picker-suggested pair at a time, so there was no fan-out to economize on, and Jev
+is cheap enough that pre-filtering a single pair bought nothing while actively blocking the
+case Jev exists to catch (rubric-similar, textually-different digests). Jev is now called
+directly on every suggested pair with cached digests on both sides; `fastembed`,
+`src/screen/embed/`, `similarity_tau`, and the unwired bulk `provisional_verdicts()` composer
+were removed, not retained as dead code.
+
+### S15 · The prior's shape is Gaussian; D6's Uniform survives as moments only · `demonstrated` (measured below) · amends S1/S3
+
+D6 and S3 specify an unexamined dimension as `Uniform(-1, +1)`, and `stats_for_target` still
+computes exactly D6's moments (`mean = n·m/(n+1)`, `half_width = 1/sqrt(n+1)`, generalized to
+provenance weights per S8). The **sampler** does not draw a Uniform. `_sample_dimension_gaussian`
+draws `Normal(mean, half_width/sqrt(3))` — same mean, same variance, different tails.
+
+The reason is the posterior seam, not convenience. S9 scores the pool jointly, and S14's
+pairwise fit returns a multivariate Gaussian (`compare.py`'s Laplace approximation); openings
+a comparison has touched *must* draw from it. If uncovered openings drew Uniform while covered
+openings drew Gaussian, the two groups' samples would not be draws from one comparable family,
+and a rank computed across them would depend on which seam an opening happened to arrive
+through. One family, variance-matched, keeps the rank meaningful.
+
+**Worked check (7 equal dimensions, 400k samples): the shape is invisible where it is read.**
+Opening A fully examined and mediocre (every dimension mean 0.45, hw 0.40); opening B stronger
+where known (mean 0.50, hw 0.40) but unexamined on three dimensions (mean 0, hw 1.0):
+
+| Draw | mean A | mean B | sd A | sd B | P(B outranks A) |
+|---|---|---|---|---|---|
+| Uniform (D6 literal) | +0.4499 | +0.2855 | 0.0871 | 0.1576 | **0.1846** |
+| Gaussian (implemented) | +0.4498 | +0.2855 | 0.0873 | 0.1577 | **0.1811** |
+
+The sort key is a weighted sum across dimensions, so the central limit theorem has already
+made the two nearly identical — 0.35pp on the only quantity the queue reads. D6's four
+required properties all survive, because each depends on the first two moments, which match
+exactly.
+
+**Measured cost, accepted:** a Gaussian puts 8.35% of a single unexamined dimension's mass
+outside `[-1, +1]`, the rubric's own range, where a Uniform puts none. This is invisible at
+the dimension level (no per-dimension draw is ever displayed; bands come from the rank axis,
+S10) and vanishes at the rollup: `P(|overall| > 1)` is 0.001%. Clipping draws to `[-1, +1]`
+was **rejected** — it would shrink variance below the stated `half_width` and break the
+variance match that makes the two seams comparable, trading an invisible tail for a silent
+inconsistency in the number that does get read.
+
+**Rejected:** sampling Uniform for uncovered openings and Gaussian for covered ones — the
+mixed-family problem above. **Rejected:** restating S3's prior as a Gaussian everywhere and
+retiring the Uniform language — the Uniform is still the honest statement of what the prior
+*means* (no reason to prefer any value in the rubric's range), and `half_width` is a more
+readable parameter than a standard deviation of `1/sqrt(3)`. The Uniform defines the prior;
+the Gaussian samples it.
+
 ---
 
 ## Evidence model

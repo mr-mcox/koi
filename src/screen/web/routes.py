@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import get_db
-from screen.api.pool import rank_screening_pool, suggest_next_comparison
+from screen.api.pool import CompareProgress, rank_screening_pool, run_prescreen_in_background
 from screen.api.scoring import latest_ruling_by_assertion
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
@@ -35,6 +35,7 @@ from screen.score.loader import load_scoring_config
 from screen.score.scorer import stats_for_target
 from screen.score.types import FIT_VALUES, OpeningRank, ScoringConfig
 from screen.store.repo import (
+    active_provisional_comparisons,
     append_comparison,
     assertion_rulings_for_opening,
     assertions_for_opening,
@@ -58,6 +59,7 @@ from screen.types import (
     Stage,
     Target,
 )
+from screen.verdict.protocol import RubricVerdict
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -461,10 +463,51 @@ def _compare_target_context(
     }
 
 
+def _jev_read_label(verdict: RubricVerdict, context: dict[str, object]) -> str:
+    """Human-readable gloss on Jev's raw verdict, in the same left/right display order
+    the comparison buttons use — so the operator can tell whether Jev leaned the same
+    way they're about to, or the other way, without having to decode `a`/`b`."""
+    if verdict.outcome == "tie":
+        return "tie"
+    return "left wins" if verdict.outcome == context["outcome_left"] else "right wins"
+
+
+def _resume_or_start_prescreen(
+    request: Request, config: ScoringConfig, background_tasks: BackgroundTasks
+) -> tuple[str | None, str | None, str | None, RubricVerdict | None, HTMLResponse | None]:
+    """Triggers (or polls) the background pre-screen pass. Returns the picker's resolved
+    pair/dimension plus Jev's raw read on it if Jev was consulted but wasn't confident,
+    or — while the pass is still running — an early `HTMLResponse` (the polling page)
+    the caller should return as-is."""
+    progress = request.app.state.compare_progress
+    if not progress.running and not progress.completed:
+        progress = CompareProgress(running=True)
+        request.app.state.compare_progress = progress
+        background_tasks.add_task(
+            run_prescreen_in_background,
+            request.app.state.database.db_path,
+            config,
+            verdict_provider=request.app.state.verdict_provider,
+            progress=progress,
+        )
+    if progress.running:
+        early = templates.TemplateResponse(
+            request, "compare_prescreening.html", {"progress": progress}
+        )
+        return None, None, None, None, early
+    suggestion = progress.final_suggestion
+    jev_read = progress.final_suggestion_jev_read if suggestion is not None else None
+    request.app.state.compare_progress = CompareProgress()
+    if suggestion is None:
+        return None, None, None, None, None
+    return suggestion.opening_a_id, suggestion.opening_b_id, suggestion.target, jev_read, None
+
+
 @router.get("/compare", response_class=HTMLResponse)
 def compare(
     request: Request,
     conn: Conn,
+    background_tasks: BackgroundTasks,
     opening_a_id: str | None = None,
     opening_b_id: str | None = None,
     target: str | None = None,
@@ -474,16 +517,21 @@ def compare(
     operator-facing selection UI. The three query parameters are not linked from anywhere
     in the UI; they exist only so a specific pair can be reached directly (fixtures,
     debugging, a bookmarked link), and when given they still render through the same
-    preview/redirect path the picker uses."""
+    preview/redirect path the picker uses.
+
+    Given no parameters, a pre-screen pass runs first: Jev rules every confidently-gated
+    pair before the operator sees anything, so attention never lands on a pair the
+    pipeline already settled. The pass runs in the background and this route renders a
+    polling status page while it's in flight (`_compare_status.html`, same pattern as
+    `/batch`/`/batch-status`); once it finishes, the normal picker suggestion renders."""
     config = load_scoring_config()
+    jev_read: RubricVerdict | None = None
     if not (opening_a_id and opening_b_id and target):
-        suggestion = suggest_next_comparison(conn, config)
-        if suggestion is None:
-            opening_a_id = opening_b_id = target = None
-        else:
-            opening_a_id = suggestion.opening_a_id
-            opening_b_id = suggestion.opening_b_id
-            target = suggestion.target
+        opening_a_id, opening_b_id, target, jev_read, early = _resume_or_start_prescreen(
+            request, config, background_tasks
+        )
+        if early is not None:
+            return early
     context: dict[str, object] = {
         "opening_a_id": opening_a_id,
         "opening_b_id": opening_b_id,
@@ -510,6 +558,9 @@ def compare(
                 redirect_url=redirect_url,
             )
         )
+        if jev_read is not None:
+            context["jev_read"] = jev_read
+            context["jev_read_label"] = _jev_read_label(jev_read, context)
     return templates.TemplateResponse(request, "compare.html", context)
 
 
@@ -573,6 +624,53 @@ def submit_comparison(
         ),
     )
     return RedirectResponse("/compare", status_code=303)
+
+
+@router.get("/compare-status", response_class=HTMLResponse)
+def compare_status(request: Request) -> HTMLResponse:
+    """Polling endpoint for the running (or just-finished) comparison pre-screen pass.
+    Rendered as a small partial `/compare` swaps in via HTMX; once the pass finishes, it
+    tells the browser to reload `/compare` (`HX-Redirect`) so the normal picker-suggestion
+    flow takes over — the status partial itself never renders a comparison."""
+    progress = request.app.state.compare_progress
+    response = templates.TemplateResponse(request, "_compare_status.html", {"progress": progress})
+    if not progress.running:
+        response.headers["HX-Redirect"] = "/compare"
+    return response
+
+
+@router.get("/compare/review", response_class=HTMLResponse)
+def compare_review(request: Request, conn: Conn) -> HTMLResponse:
+    """Every provisional comparison Jev has ruled and the operator hasn't overridden,
+    newest first. Overriding is the normal compare form for that exact pair/target — a
+    later operator-provenance row on the same (pair, target) displaces the provisional
+    one (the existing dedup-to-latest reduction), so there is no separate override
+    mechanism to maintain here."""
+    provisional = sorted(
+        active_provisional_comparisons(conn), key=lambda c: c.created_at, reverse=True
+    )
+    companies_by_opening_id: dict[str, str] = {}
+    titles_by_opening_id: dict[str, str] = {}
+    for comparison in provisional:
+        for opening_id in (comparison.opening_a_id, comparison.opening_b_id):
+            if opening_id in companies_by_opening_id:
+                continue
+            opening = get_opening(conn, opening_id)
+            if opening is not None:
+                titles_by_opening_id[opening_id] = opening.title
+                company = get_company(conn, opening.company_id)
+                companies_by_opening_id[opening_id] = (
+                    company.name if company else opening.company_id
+                )
+    return templates.TemplateResponse(
+        request,
+        "compare_review.html",
+        {
+            "comparisons": provisional,
+            "companies_by_opening_id": companies_by_opening_id,
+            "titles_by_opening_id": titles_by_opening_id,
+        },
+    )
 
 
 STAGES: tuple[Stage, ...] = ("screening", "pursuing", "applied", "closed")

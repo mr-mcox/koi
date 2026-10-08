@@ -58,19 +58,24 @@ comparison_beta:
   operator: 0.5
   provisional: 1.0
 
-# Coarse similarity gate. `tau` is the cosine threshold above which two openings' digest
-# embeddings are a candidate pair worth asking Jev about; the direction and weight of the
-# resulting provisional comparison come from Jev's verdict, not from cosine. Unmeasured
-# placeholder, same status as the other dials — the operator owns it.
-similarity_tau: 0.85
-
-# Fine-stage confidence gate. Jev rules a candidate pair (win/tie) with its own calibrated
-# confidence (0-1, a margin from uncertainty, not a probability); at or above this threshold
-# the verdict becomes a provisional Comparison automatically, below it the pair surfaces to
-# the operator unchanged — there is no default verdict for an uncertain pair. Unmeasured
-# placeholder, same status as the other dials — the operator owns it and tunes it against
+# Fine-stage confidence gate. Every suggested pair goes straight to Jev — it's cheap
+# enough that there's no pair to pre-filter it away from (a cosine pre-filter on digest
+# text was tried and rejected: it blocked exactly the rubric-similar-but-differently-
+# worded pairs Jev exists to catch; see decisions.md S14 addendum). Jev rules a pair
+# (win/tie) with its own calibrated confidence (0-1, a margin from uncertainty, not a
+# probability); at or above this threshold the verdict becomes a provisional Comparison
+# automatically, below it the pair surfaces to the operator unchanged — there is no
+# default verdict for an uncertain pair. Speed beats perfection here: the operator can
+# always override, so we're biased toward surfacing more Jev reads. Unmeasured placeholder,
+# same status as the other dials — the operator owns it and tunes it against
 # few-shot-calibrated Jev output, not a guess made now.
-jev_confidence_threshold: 0.9
+jev_confidence_threshold: 0.75
+
+# Few-shot cap for Jev's rubric calibration. Examples are sampled randomly from the
+# operator's own past rulings on the target dimension, so Jev sees a different subset
+# each time rather than a fixed, possibly-biased set. 12 is still cheap enough to try and
+# gives Jev a little more context than 6 without changing the latency profile in practice.
+jev_few_shot_examples: 12
 
 # Compare picker jitter. Log-normal multiplicative noise (score *= exp(N(0, sigma)))
 # applied to each (pair, dimension) candidate's score before argmax, so one comparison

@@ -1,0 +1,18 @@
+<div id="compare-status"
+  {% if progress.running %}
+    hx-get="/compare-status"
+    hx-trigger="every 1s"
+    hx-swap="outerHTML"
+  {% endif %}>
+  {% if progress.running %}
+    <p class="compare-prescreening">Jev is pre-screening near-duplicate pairs…</p>
+  {% endif %}
+  <ul class="compare-prescreen-ruled">
+    {% for comparison in progress.ruled %}
+    <li>
+      <strong>{{ comparison.target }}</strong>:
+      {{ comparison.opening_a_id }} vs {{ comparison.opening_b_id }} — {{ comparison.outcome }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>

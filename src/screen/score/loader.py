@@ -38,7 +38,7 @@ def load_scoring_config(
             operator=float(scoring["comparison_beta"]["operator"]),
             provisional=float(scoring["comparison_beta"]["provisional"]),
         ),
-        similarity_tau=float(scoring["similarity_tau"]),
         jev_confidence_threshold=float(scoring["jev_confidence_threshold"]),
+        jev_few_shot_examples=int(scoring["jev_few_shot_examples"]),
         comparison_jitter_sigma=float(scoring["comparison_jitter_sigma"]),
     )

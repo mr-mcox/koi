@@ -210,6 +210,21 @@ def comparisons_for_target(conn: sqlite3.Connection, target: str) -> list[Compar
     return [c for c in (comparison_from_row(dict(row)) for row in rows) if c is not None]
 
 
+def active_provisional_comparisons(conn: sqlite3.Connection) -> list[Comparison]:
+    """Every (pair, target) across all dimensions whose *latest* comparison is
+    provisional — the review surface's input. An operator ruling made after a
+    provisional row on the same (pair, target) is that provisional row's override: it
+    does not appear here once overridden, mirroring the picker's own exclusion rule
+    (`compare_picker._provisionally_settled_pairs`) and the fit's dedup-to-latest
+    (`compare._latest_per_pair`)."""
+    rows = conn.execute("SELECT * FROM comparisons ORDER BY created_at").fetchall()
+    comparisons = [c for c in (comparison_from_row(dict(row)) for row in rows) if c is not None]
+    latest: dict[tuple[frozenset[str], str], Comparison] = {}
+    for c in comparisons:
+        latest[(frozenset({c.opening_a_id, c.opening_b_id}), c.target)] = c
+    return [c for c in latest.values() if c.provenance == "provisional"]
+
+
 def enqueue_intake_url(conn: sqlite3.Connection, url: str) -> IntakeQueueItem:
     """Insert one pending row and commit before returning — the web submit
     handler relies on this being durable (row survives a crash) before it

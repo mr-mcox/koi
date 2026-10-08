@@ -3,7 +3,7 @@ pair `a`/`b`/`tie` against the rubric text, returning its own calibrated confide
 
 Exempt from unit-test coverage (see `pyproject.toml` / `scripts/check.py` OMIT lists):
 calls the paid TypeSafe API. Unit tests inject a fake `VerdictProvider` via the Protocol
-instead, mirroring `baml_digester` / `baml_extractor` / `fastembed_embedder`.
+instead, mirroring `baml_digester` / `baml_extractor`.
 """
 
 from __future__ import annotations
@@ -33,10 +33,13 @@ def _narrow_outcome(choice: str) -> VerdictOutcome:
 
 class JevVerdictProvider:
     """Satisfies `VerdictProvider`. Calls `system_one` with a single `Choice` question
-    among {a, b, tie}; few-shot examples ride along in `state` for Jev to calibrate on."""
+    among {a, b, tie}; few-shot examples ride along in `state` for Jev to calibrate on.
+    Lazily constructs the client on first use, mirroring the other live adapters —
+    importing this module (e.g. at app startup) must not require an API key to be present."""
 
     def __init__(self, client: TypeSafeClient | None = None) -> None:
-        self._client = client or TypeSafeClient()
+        self._explicit_client = client
+        self._client: TypeSafeClient | None = None
 
     def rule(
         self,
@@ -45,6 +48,8 @@ class JevVerdictProvider:
         digest_b: str,
         few_shot_examples: list[FewShotExample],
     ) -> RubricVerdict:
+        if self._client is None:
+            self._client = self._explicit_client or TypeSafeClient()
         state = {
             "rubric": rubric_text,
             "digest_a": digest_a,

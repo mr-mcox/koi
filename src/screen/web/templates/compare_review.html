@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Review Jev's rulings{% endblock %}
+{% block content %}
+  <h1>Review Jev's rulings</h1>
+  <p class="compare-review-note">
+    Every provisional comparison below was ruled by Jev, not you — these are off the
+    picker's menu until you override one. Click a pair to open it in the normal compare
+    form; submitting a ruling there replaces Jev's row for that pair.
+  </p>
+  <ol class="compare-review-list">
+    {% for comparison in comparisons %}
+    <li>
+      <a href="/compare?opening_a_id={{ comparison.opening_a_id }}&opening_b_id={{ comparison.opening_b_id }}&target={{ comparison.target }}">
+        <strong>{{ comparison.target }}</strong>:
+        {{ titles_by_opening_id.get(comparison.opening_a_id, comparison.opening_a_id) }}
+        ({{ companies_by_opening_id.get(comparison.opening_a_id, "") }})
+        vs
+        {{ titles_by_opening_id.get(comparison.opening_b_id, comparison.opening_b_id) }}
+        ({{ companies_by_opening_id.get(comparison.opening_b_id, "") }})
+        — {{ comparison.outcome }}
+      </a>
+    </li>
+    {% else %}
+    <li class="compare-review-empty">Jev hasn't ruled on anything yet.</li>
+    {% endfor %}
+  </ol>
+  <p><a href="/compare">Back to compare</a></p>
+  <p><a href="/">Back to queue</a></p>
+{% endblock %}

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from screen.store.db import connect
 from screen.store.repo import (
+    active_provisional_comparisons,
     append_comparison,
     comparisons_for_target,
     upsert_company,
@@ -108,3 +109,86 @@ def test_comparisons_for_target_excludes_other_targets(tmp_path: Path) -> None:
     )
 
     assert comparisons_for_target(conn, "craft_direction") == []
+
+
+def test_active_provisional_comparisons_excludes_operator_rows(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed_openings(conn)
+    append_comparison(
+        conn,
+        Comparison(
+            opening_a_id="acme--eng-a",
+            opening_b_id="acme--eng-b",
+            target="craft_direction",
+            outcome="a",
+            provenance="operator",
+            predicted_a_beats_b=0.75,
+            created_at=_NOW,
+        ),
+    )
+
+    assert active_provisional_comparisons(conn) == []
+
+
+def test_active_provisional_comparisons_returns_provisional_rows_across_targets(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed_openings(conn)
+    location_tie = Comparison(
+        opening_a_id="acme--eng-a",
+        opening_b_id="acme--eng-b",
+        target="location",
+        outcome="tie",
+        provenance="provisional",
+        predicted_a_beats_b=0.5,
+        created_at=_NOW,
+    )
+    domain_win = Comparison(
+        opening_a_id="acme--eng-a",
+        opening_b_id="acme--eng-b",
+        target="domain",
+        outcome="a",
+        provenance="provisional",
+        predicted_a_beats_b=0.6,
+        created_at=_NOW,
+    )
+    append_comparison(conn, location_tie)
+    append_comparison(conn, domain_win)
+
+    assert set(active_provisional_comparisons(conn)) == {location_tie, domain_win}
+
+
+def test_active_provisional_comparisons_excludes_a_pair_the_operator_later_overrode(
+    tmp_path: Path,
+) -> None:
+    """A later operator ruling on the same (pair, target) is the override — it must not
+    coexist in the review list alongside the provisional row it displaces."""
+    conn = connect(tmp_path / "screen.db")
+    _seed_openings(conn)
+    append_comparison(
+        conn,
+        Comparison(
+            opening_a_id="acme--eng-a",
+            opening_b_id="acme--eng-b",
+            target="location",
+            outcome="tie",
+            provenance="provisional",
+            predicted_a_beats_b=0.5,
+            created_at=_NOW,
+        ),
+    )
+    append_comparison(
+        conn,
+        Comparison(
+            opening_a_id="acme--eng-a",
+            opening_b_id="acme--eng-b",
+            target="location",
+            outcome="a",
+            provenance="operator",
+            predicted_a_beats_b=0.9,
+            created_at=_NOW,
+        ),
+    )
+
+    assert active_provisional_comparisons(conn) == []

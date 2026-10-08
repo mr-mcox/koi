@@ -48,6 +48,7 @@ from screen.types import (
     Opening,
     Target,
 )
+from screen.verdict.protocol import FewShotExample, RubricVerdict
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -61,6 +62,22 @@ _CITATION = Citation(
 )
 
 
+class _NeverConfidentVerdictProvider:
+    """Always returns a verdict below any sane confidence threshold, so the comparison
+    pre-screen pass is always a no-op. The default for `client`/`db_path`-based tests,
+    which exercise the `/compare` flow without caring about the pre-screen kernel at all;
+    never calls the real (networked, paid) Jev API."""
+
+    def rule(
+        self,
+        rubric_text: str,
+        digest_a: str,
+        digest_b: str,
+        few_shot_examples: list[FewShotExample],
+    ) -> RubricVerdict:
+        return RubricVerdict(outcome="tie", confidence=0.0)
+
+
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "screen.db"
@@ -68,10 +85,31 @@ def db_path(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(db_path: Path) -> Iterator[TestClient]:
-    """A TestClient backed by a fresh database at a temporary path."""
-    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
+    """A TestClient backed by a fresh database at a temporary path. The verdict-provider
+    fake guarantees the comparison pre-screen pass is always a no-op, so these tests
+    exercise `/compare` exactly as before the pre-screen kernel existed;
+    `tests/test_api_pool.py` and `tests/test_prescreen_engine.py` cover the kernel
+    itself."""
+    app = create_app(
+        db_path,
+        digester=FakeDigester(["Synthetic digest."]),
+        verdict_provider=_NeverConfidentVerdictProvider(),
+    )
     with TestClient(app) as test_client:
         yield test_client
+
+
+def _get_settled_compare_page(client: TestClient) -> httpx.Response:
+    """`GET /compare` triggers a pre-screen pass in a `BackgroundTasks` callback; under
+    `TestClient` the task finishes before this call returns, but the first response was
+    already rendered from the pre-task state and shows the polling page. A second GET
+    sees the finished `CompareProgress` and renders the real suggestion — the shape every
+    `/compare`-reading test wants, not the transient status page."""
+    first = client.get("/compare")
+    assert first.status_code == 200
+    if "compare-prescreening" not in first.text:
+        return first
+    return client.get("/compare")
 
 
 def _seed_opening(
@@ -315,7 +353,7 @@ def test_compare_page_reachable_from_queue_and_submits_winner(
     assert queue.status_code == 200
     assert 'href="/compare"' in queue.text
 
-    get_response = client.get("/compare")
+    get_response = _get_settled_compare_page(client)
     assert get_response.status_code == 200
     assert "craft_direction" in get_response.text
     assert 'class="compare-column-title"' not in get_response.text
@@ -452,7 +490,7 @@ def test_compare_form_uses_get_show_and_post_outcome_buttons(
         opening_id="widgets--b",
         assertions=[_assertion("craft_direction", "Strong")],
     )
-    auto = client.get("/compare")
+    auto = _get_settled_compare_page(client)
     assert auto.status_code == 200
     assert '<form class="compare-form"' not in auto.text
     assert "Suggested comparison" not in auto.text
@@ -484,12 +522,165 @@ def test_compare_blank_form_when_no_suggestion(client: TestClient, db_path: Path
         opening_id="acme--a",
         assertions=[_assertion("craft_direction", "Strong")],
     )
-    response = client.get("/compare")
+    response = _get_settled_compare_page(client)
     assert response.status_code == 200
     assert '<form class="compare-form"' not in response.text
     assert "Nothing to compare right now." in response.text
     assert "Left wins" not in response.text
     assert "Right wins" not in response.text
+
+
+def test_compare_status_shows_prescreen_progress_then_redirects_when_done(
+    client: TestClient, db_path: Path
+) -> None:
+    """`/compare-status` renders the live `ruled` list while a pre-screen pass is in
+    flight, and once it finishes it tells HTMX to reload `/compare` (`HX-Redirect`) rather
+    than rendering a comparison itself."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("craft_direction", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("craft_direction", "Strong")],
+    )
+
+    triggering = client.get("/compare")
+    assert triggering.status_code == 200
+
+    status = client.get("/compare-status")
+    assert status.status_code == 200
+    assert "HX-Redirect" in status.headers
+    assert status.headers["HX-Redirect"] == "/compare"
+
+
+def test_compare_status_omits_redirect_while_still_running(
+    client: TestClient, db_path: Path
+) -> None:
+    """While a pre-screen pass is genuinely still running, `/compare-status` must not
+    tell HTMX to redirect — that would bounce the operator back to `/compare` before
+    Jev's pass has a result to show."""
+    client.app.state.compare_progress.running = True  # type: ignore[attr-defined]
+
+    status = client.get("/compare-status")
+
+    assert status.status_code == 200
+    assert "HX-Redirect" not in status.headers
+    assert "compare-prescreening" in status.text
+
+
+def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
+    """When Jev was consulted but wasn't confident enough to auto-rule, the operator
+    still sees what Jev actually read on that exact pair — outcome and confidence — so
+    they can tell the pair really was uncertain, not silently un-consulted."""
+    db_path = tmp_path / "screen.db"
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("location", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("location", "Strong")],
+    )
+    conn = connect(db_path)
+    upsert_dimension_digest(
+        conn,
+        opening_id="acme--a",
+        target="location",
+        digest="US remote, no twin-cities office",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    upsert_dimension_digest(
+        conn,
+        opening_id="widgets--b",
+        target="location",
+        digest="US remote, occasional travel",
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+    conn.close()
+
+    class _UncertainTie:
+        def rule(
+            self,
+            rubric_text: str,
+            digest_a: str,
+            digest_b: str,
+            few_shot_examples: list[FewShotExample],
+        ) -> RubricVerdict:
+            return RubricVerdict(outcome="tie", confidence=0.62)
+
+    app = create_app(
+        db_path,
+        digester=FakeDigester(["Synthetic digest."]),
+        verdict_provider=_UncertainTie(),
+    )
+    with TestClient(app) as test_client:
+        page = _get_settled_compare_page(test_client)
+
+    assert page.status_code == 200
+    assert "Jev:" in page.text
+    assert "0.62" in page.text
+    assert "tie" in page.text
+
+
+def test_compare_review_lists_provisional_comparisons_and_links_to_override(
+    client: TestClient, db_path: Path
+) -> None:
+    """The review surface shows every un-overridden provisional comparison with a link
+    back into the normal compare form for that exact pair/target."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("location", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("location", "Strong")],
+    )
+    conn = connect(db_path)
+    append_comparison(
+        conn,
+        Comparison(
+            opening_a_id="acme--a",
+            opening_b_id="widgets--b",
+            target="location",
+            outcome="tie",
+            provenance="provisional",
+            predicted_a_beats_b=0.5,
+            created_at=_NOW,
+        ),
+    )
+    conn.close()
+
+    response = client.get("/compare/review")
+
+    assert response.status_code == 200
+    assert "location" in response.text
+    assert "acme--a title" in response.text
+    assert "widgets--b title" in response.text
+    assert "/compare?opening_a_id=acme--a&opening_b_id=widgets--b&target=location" in response.text
+
+
+def test_compare_review_shows_empty_state_when_nothing_ruled(
+    client: TestClient, db_path: Path
+) -> None:
+    response = client.get("/compare/review")
+
+    assert response.status_code == 200
+    assert "Jev hasn't ruled on anything yet." in response.text
 
 
 def test_compare_page_display_order_is_not_always_a_on_the_left(

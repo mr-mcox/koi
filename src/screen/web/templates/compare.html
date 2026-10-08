@@ -3,6 +3,9 @@
 {% block title %}Compare{% endblock %}
 {% block content %}
   <h1>Compare</h1>
+  {% if jev_read %}
+  <p class="jev-read">Jev: <strong>{{ jev_read_label }}</strong> · confidence {{ "%.2f"|format(jev_read.confidence) }}</p>
+  {% endif %}
   {% if group_left and group_right %}
   <div class="compare-preview">
     <section class="dimension-group compare-column">

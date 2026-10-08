@@ -16,13 +16,17 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from screen.api.pool import CompareProgress
 from screen.api.routes import router as api_router
 from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
+from screen.env import load_env
 from screen.intake.worker import run_intake_worker
 from screen.paths import data_dir
 from screen.research.batch import BatchEngine
 from screen.store.db import connect as db_connect
+from screen.verdict.jev_verdict_provider import JevVerdictProvider
+from screen.verdict.protocol import VerdictProvider
 from screen.web.routes import router as web_router
 from screen.web.routes import static_files
 
@@ -47,11 +51,19 @@ class Database:
         return cls(data_dir() / "screen.db")
 
 
-def create_app(db_path: Path | None = None, digester: DigesterProtocol | None = None) -> FastAPI:
+def create_app(
+    db_path: Path | None = None,
+    digester: DigesterProtocol | None = None,
+    verdict_provider: VerdictProvider | None = None,
+) -> FastAPI:
     """Application factory. Tests pass a temp path; production uses the default.
     `app.state.database` is what `screen.api.deps.get_db` reads per request.
     `app.state.digester` is the `DigesterProtocol` the web rating view uses for
-    dimension digests; tests inject a fake, production gets the BAML adapter."""
+    dimension digests; tests inject a fake, production gets the BAML adapter.
+    `app.state.verdict_provider` is the comparison pre-screen's confidence gate; tests
+    inject a fake, production gets the live Jev adapter — without this seam, every test
+    hitting `/compare` would call the live (paid, networked) Jev API."""
+    load_env()
     database = Database(db_path) if db_path else Database.default()
 
     @contextlib.asynccontextmanager
@@ -81,6 +93,10 @@ def create_app(db_path: Path | None = None, digester: DigesterProtocol | None = 
         "current_opening_id": None,
         "touched": [],
     }
+    app.state.compare_progress = CompareProgress()
+    app.state.verdict_provider = (
+        verdict_provider if verdict_provider is not None else JevVerdictProvider()
+    )
     app.include_router(web_router)
     app.include_router(api_router)
     app.mount("/static", static_files, name="static")

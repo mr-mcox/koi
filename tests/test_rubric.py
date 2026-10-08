@@ -85,6 +85,24 @@ def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore
     assert set(all_non_scoring_slugs()) == {n["slug"] for n in rubric["non_scoring"]}
 
 
+def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  # type: ignore[type-arg]
+    """Jev's fine-stage gate needs one dimension's rubric text, not the whole rubric —
+    load-bearing text is sliced verbatim (AGENTS.md), the same discipline as the full-rubric
+    render, just narrower."""
+    first = rubric["dimensions"][0]
+    other = rubric["dimensions"][1]
+
+    text = prompt_module.rubric_text_for_dimension(first["slug"])
+
+    assert first["definition"].strip() in text
+    assert other["definition"].strip() not in text
+
+
+def test_rubric_text_for_dimension_unknown_slug_raises(rubric: dict) -> None:  # type: ignore[type-arg]
+    with pytest.raises(KeyError):
+        prompt_module.rubric_text_for_dimension("not-a-real-slug")
+
+
 def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignore[type-arg]
     """Every slug in the rubric must appear in the closed Target Literal,
     and vice versa — the two must stay in sync. This is the drift detector for

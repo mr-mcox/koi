@@ -2,7 +2,7 @@
 
 Any object satisfying `VerdictProvider` can be injected wherever a pairwise rubric
 verdict is needed. The live adapter (Jev, TypeSafe's System One model) and test fakes
-both satisfy it. Mirrors `screen.digest.protocol` / `screen.embed.protocol`.
+both satisfy it. Mirrors `screen.digest.protocol`.
 """
 
 from __future__ import annotations

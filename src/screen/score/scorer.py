@@ -33,8 +33,9 @@ from screen.types import Assertion, Fit
 class TargetStats:
     """Shrunk mean/half-width for one dimension, computed from its assertions'
     provenance-weighted fit values. `n = 0` (no counted weight) is the unexamined
-    case — `mean = 0`, `half_width = 1`, i.e. Uniform(-1, +1), from the formula itself rather
-    than a special-cased branch."""
+    case — `mean = 0`, `half_width = 1` — from the formula itself rather than a
+    special-cased branch. `half_width` names the prior's moments, not the sampled shape:
+    the sampler draws a variance-matched Gaussian, never a Uniform (S15)."""
 
     n: float
     mean: float
@@ -66,8 +67,10 @@ def stats_for_target(
 def _sample_dimension_gaussian(
     rng: np.random.Generator, means: np.ndarray, half_widths: np.ndarray, samples: int
 ) -> np.ndarray:
-    """Independent per-opening Gaussian draws, variance-matched to the Uniform(-hw, +hw) the
-    per-opening Scorer used: `Var[Uniform(-hw, hw)] = hw^2 / 3`, so `std = hw / sqrt(3)`.
+    """Independent per-opening Gaussian draws, variance-matched to the Uniform(-hw, +hw)
+    that D6 specified: `Var[Uniform(-hw, hw)] = hw^2 / 3`, so `std = hw / sqrt(3)`. Gaussian
+    rather than Uniform so this seam and `_sample_dimension_posterior` are the same
+    distribution family and stay comparable within one draw (S15).
     Shape (n_openings, samples)."""
     stds = half_widths / math.sqrt(3.0)
     return rng.normal(means[:, None], stds[:, None], size=(len(means), samples))

@@ -76,6 +76,19 @@ def _qualify_for_dimension(
     return qualified
 
 
+def _provisionally_settled_pairs(comparisons: list[Comparison]) -> set[frozenset[str]]:
+    """Pairs whose *latest* comparison on this dimension is provisional — hard-excluded
+    from the picker's menu. Callers pass comparisons in the same oldest-first order
+    `_latest_per_pair` assumes (`comparisons_for_target`'s `created_at` order), so the
+    last occurrence per pair is authoritative: a later operator ruling on a pair that was
+    once auto-tied removes it from this set, exactly as `_latest_per_pair` displaces the
+    provisional row in the fit itself."""
+    latest_provenance: dict[frozenset[str], str] = {}
+    for c in comparisons:
+        latest_provenance[frozenset({c.winner, c.loser})] = c.provenance
+    return {pair for pair, provenance in latest_provenance.items() if provenance == "provisional"}
+
+
 def _auto_ties(
     target: str,
     qualified_ids: list[str],
@@ -186,11 +199,17 @@ def _best_dimension_for_pair(
     companies_by_opening: dict[str, str],
     posteriors: dict[str, _DimensionPosterior],
     qualified_by_dimension: dict[str, set[str]],
+    provisionally_settled_by_dimension: dict[str, set[frozenset[str]]],
     config: ScoringConfig,
 ) -> tuple[float, str] | None:
     """The dimension contributing most variance to one pair's contest, scaled by
     `sqrt(weight)` (a gentler exponent than the pair-priority calculation uses — see
-    module docstring) and the pair's priority (overall closeness × boundary proximity)."""
+    module docstring) and the pair's priority (overall closeness × boundary proximity).
+    A (pair, dimension) whose latest comparison is provisional is hard-excluded, not just
+    down-weighted — unlike an operator ruling (which stays askable, variance-decayed),
+    the operator has never seen this triple, so there's nothing to re-judge until they
+    visit the review surface and override it (which records a later, operator-provenance
+    comparison on the same pair, naturally returning it here)."""
     best_score = -1.0
     best_target: str | None = None
     for target, weight in config.dimension_weights.items():
@@ -198,6 +217,8 @@ def _best_dimension_for_pair(
         if a not in qualified or b not in qualified:
             continue
         if target in COMPANY_LEVEL_TARGETS and companies_by_opening[a] == companies_by_opening[b]:
+            continue
+        if frozenset({a, b}) in provisionally_settled_by_dimension.get(target, set()):
             continue
         _, covariance = posteriors[target]
         dim_var_diff = covariance[a][a] + covariance[b][b] - 2.0 * covariance[a][b]
@@ -213,6 +234,7 @@ def _best_triple(
     companies_by_opening: dict[str, str],
     posteriors: dict[str, _DimensionPosterior],
     qualified_by_dimension: dict[str, set[str]],
+    provisionally_settled_by_dimension: dict[str, set[frozenset[str]]],
     p_top_k_by_opening: dict[str, float],
     *,
     config: ScoringConfig,
@@ -254,6 +276,7 @@ def _best_triple(
                 companies_by_opening=companies_by_opening,
                 posteriors=posteriors,
                 qualified_by_dimension=qualified_by_dimension,
+                provisionally_settled_by_dimension=provisionally_settled_by_dimension,
                 config=config,
             )
             if dimension_choice is None:
@@ -302,11 +325,15 @@ def select_comparison(
     rng = rng if rng is not None else np.random.default_rng()
     posteriors: dict[str, _DimensionPosterior] = {}
     qualified_by_dimension: dict[str, set[str]] = {}
+    provisionally_settled_by_dimension: dict[str, set[frozenset[str]]] = {}
     for target in config.dimension_weights:
         qualified_by_dimension[target] = set(
             _qualify_for_dimension(
                 target, opening_ids, assertions_by_opening, rulings_by_opening, config
             )
+        )
+        provisionally_settled_by_dimension[target] = _provisionally_settled_pairs(
+            comparisons_by_target.get(target, [])
         )
         posteriors[target] = _dimension_posterior(
             target,
@@ -322,6 +349,7 @@ def select_comparison(
         companies_by_opening,
         posteriors,
         qualified_by_dimension,
+        provisionally_settled_by_dimension,
         p_top_k_by_opening,
         config=config,
         rng=rng,

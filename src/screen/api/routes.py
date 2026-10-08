@@ -2,7 +2,7 @@
 
 Both compute at request time from stored assertions plus whatever `rubric.yaml`/
 `scoring.yaml` say *now* — no `ScoreResult` or queue row is ever persisted, so a
-`bar`/weight change can't leave a stale score behind.
+rubric or `scoring.yaml` change can't leave a stale score behind.
 """
 
 from __future__ import annotations
