@@ -49,12 +49,14 @@ dimensions:
         A genuine mixture of AI engineering / LLM solution design and standard ML
         (deep learning especially) work.
       Mixed: >
-        Data engineering, analytics engineering, dev ops, or backend engineering —
-        disciplines the operator has already done and can execute well, but is less
-        excited to keep deepening.
+        There is some agentic and/or ML work in the role, but it is not the primary
+        focus. Or data/analytics engineering that the operator can execute well but
+        is less excited to keep deepening.
       Poor: >
-        Front end engineering, embedded systems, or other disciplines where the
-        operator has little existing depth to draw from and ramp-up cost is high.
+        Standard backend, web, frontend, or CRUD engineering with no AI/ML or agentic
+        system design. Standard responsibilities like 'technical mentorship' or 'system
+        performance' without a tie to the desired craft direction. If a detailed JD
+        lacks any mention of AI/ML work, that is negative evidence (Poor).
     look_for: >
       JD-legible baseline: title and responsibilities describing the discipline mix
       (model work, LLM/agent systems, data pipelines, backend services, UI work,
@@ -189,7 +191,9 @@ dimensions:
     look_for: >
       Engineering blog posts on tooling/practice; posting language about
       AI-tooling expectations; whether tooling is single-vendor-locked or
-      genuinely experimental.
+      genuinely experimental. Company-wide AI rollout announcements 
+      (e.g., 'we gave everyone Copilot/Cursor') do not count as Strong 
+      evidence for a specific role's engineering culture.
 
   - slug: compensation
     label: "Compensation"
