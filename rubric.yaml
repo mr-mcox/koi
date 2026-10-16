@@ -37,17 +37,17 @@ dimensions:
     label: "Craft Direction"
     weight: 3
     definition: >
-      Whether this role's day-to-day discipline is a way the operator wants to keep
-      growing in — a discipline-preference ladder, not a distance-from-ability
-      judgment. Independent of `domain` (industry/product-area novelty) and of
-      `schematic` (shape of the work): a role can be domain-Strong and
-      craft_direction-Poor (deep in an exciting industry but the wrong discipline),
-      or craft_direction-Strong and domain-Mixed (the right discipline in a familiar
-      industry).
+      Whether this role's day-to-day discipline is focused on managing conditions
+      for self-improving loops that can be evaluated to emerge (agentic system 
+      design, eval-driven development, LLM solution design). This replaces the 
+      older, generic "discipline-preference ladder" with a strict test for AI/ML
+      and agentic architecture. Independent of `domain` (industry novelty) and
+      `schematic` (shape of the work).
     fit_anchors:
       Strong: >
-        A genuine mixture of AI engineering / LLM solution design and standard ML
-        (deep learning especially) work.
+        Role focuses on managing conditions for self-improving loops that can be
+        evaluated to emerge (agentic system design, eval-driven development, LLM
+        solution design).
       Mixed: >
         There is some agentic and/or ML work in the role, but it is not the primary
         focus. Or data/analytics engineering that the operator can execute well but
@@ -137,10 +137,10 @@ dimensions:
     look_for: >
       Funding recency/stage; headcount direction; layoff framing (strategic
       vs. distress); whether the role sits on a stated strategic critical path;
-      whether the company's stated strategy (including but not limited to
-      'AI-powered' claims) reads as a defensible plan or as hype riding a
-      narrative without product/technical substance behind it — a hype-driven
-      strategy is itself a trajectory risk, not just a values question.
+      whether the company's stated strategy reads as a defensible plan vs hype.
+      For AI-based roles, look for business cases strong enough to survive an
+      AI bubble burst or the requirement to pay non-subsidized rates for tokens.
+      A hype-driven strategy is a severe trajectory risk.
 
   - slug: mission
     label: "Mission fit"
@@ -176,24 +176,26 @@ dimensions:
     label: "Agentic/AI Engineering Culture"
     weight: 2
     definition: >
-      Does engineering actually work with agentic tooling and
-      provider-agnostic experimentation, or is 'AI-forward' a Copilot
-      license.
+      How the work gets done on a daily basis. Does the employer provide resources
+      and momentum for agentic coding (harnesses, provider-agnostic tools, 
+      evaluations), or are they fighting it?
     fit_anchors:
       Poor: >
-        Copilot-tier autocomplete is the ceiling, or visibly behind.
+        "We write all our code by hand," or actively resistant to agentic workflows.
+        Copilot-tier autocomplete is the ceiling.
       Mixed: >
-        Individual engineers can use agentic tools; no org-level culture
-        or investment around it.
+        "We just discovered Copilot and it's great." Individual engineers can use
+        tools, but there is no org-level momentum or investment providing leverage.
       Strong: >
-        Real investment — dedicated tooling, provider-agnostic
-        experimentation, discussed as genuine practice.
+        Real investment — employer provides resources and momentum for agentic
+        coding. Dedicated tooling, provider-agnostic experimentation, and
+        measuring outputs are discussed as genuine practice.
     look_for: >
       Engineering blog posts on tooling/practice; posting language about
       AI-tooling expectations; whether tooling is single-vendor-locked or
       genuinely experimental. Company-wide AI rollout announcements 
-      (e.g., 'we gave everyone Copilot/Cursor') do not count as Strong 
-      evidence for a specific role's engineering culture.
+      (e.g., 'we gave everyone Copilot/Cursor') usually point to Mixed, not Strong,
+      unless accompanied by infrastructure for agentic workflows.
 
   - slug: compensation
     label: "Compensation"
