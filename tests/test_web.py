@@ -1842,9 +1842,9 @@ def test_prune_stale_moves_only_stale_items_to_closed(client: TestClient, db_pat
     conn = connect(db_path)
     now = datetime.now(UTC)
     from datetime import timedelta
-    
+
     upsert_company(conn, Company(id="co", name="Co", created_at=now))
-    
+
     # rank 1: age 20 (not stale)
     o1 = Opening(
         id="o1", company_id="co", title="O1", url="http://o1",
@@ -1854,7 +1854,7 @@ def test_prune_stale_moves_only_stale_items_to_closed(client: TestClient, db_pat
     append_assertions(conn, [
         Assertion(id="a1", target="craft_direction", fit="Strong", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
     ], opening_id="o1")
-    
+
     # rank 2: age 30 (stale)
     o2 = Opening(
         id="o2", company_id="co", title="O2", url="http://o2",
@@ -1864,7 +1864,7 @@ def test_prune_stale_moves_only_stale_items_to_closed(client: TestClient, db_pat
     append_assertions(conn, [
         Assertion(id="a2", target="craft_direction", fit="Mixed", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
     ], opening_id="o2")
-    
+
     # rank 3: age 15 (not stale yet, threshold is 26)
     o3 = Opening(
         id="o3", company_id="co", title="O3", url="http://o3",
@@ -1877,7 +1877,7 @@ def test_prune_stale_moves_only_stale_items_to_closed(client: TestClient, db_pat
 
     response = client.post("/prune-stale", follow_redirects=False)
     assert response.status_code in (302, 303)
-    
+
     assert get_opening(conn, "o1").stage == "screening"
     assert get_opening(conn, "o2").stage == "closed"
     assert get_opening(conn, "o3").stage == "screening"

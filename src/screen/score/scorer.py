@@ -61,7 +61,27 @@ def stats_for_target(
         total_n += weight
         new_n += weight
     mean = weighted_sum / total_n
-    return TargetStats(n=new_n, mean=mean, half_width=1.0 / math.sqrt(total_n))
+    base_half_width = 1.0 / math.sqrt(total_n)
+    # Compute per-assertion variance multipliers, then average them.
+    confidence_sum = 0.0
+    assertion_count = 0
+    for a in assertions:
+        if a.target != target:
+            continue
+        # Use confidence if available; otherwise default to 1.0 (no widening)
+        # Floor at 0.3 to smooth toward a minimum and avoid pathological narrowing
+        conf = a.confidence if a.confidence is not None else 1.0
+        conf_floored = max(conf, 0.3)
+        # Higher confidence → smaller divisor → smaller scaling factor
+        confidence_sum += 1.0 / math.sqrt(conf_floored)
+        assertion_count += 1
+    # Average the scaling factors across all assertions for the target
+    if assertion_count > 0:
+        confidence_variance_scale = confidence_sum / assertion_count
+    else:
+        confidence_variance_scale = 1.0  # No assertions; no scaling
+    half_width = base_half_width * confidence_variance_scale
+    return TargetStats(n=new_n, mean=mean, half_width=half_width)
 
 
 def _sample_dimension_gaussian(

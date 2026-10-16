@@ -73,7 +73,7 @@ class AssertionAst:
     def __init__(self, tb: type_builder.TypeBuilder):
         _tb = tb._tb # type: ignore (we know how to use this private attribute)
         self._bldr = _tb.class_("Assertion")
-        self._properties: typing.Set[str] = set([  "target",  "fit",  "provenance",  "chunk",  "citations",  "created_at",  ])
+        self._properties: typing.Set[str] = set([  "target",  "chunk",  "citations",  "created_at",  ])
         self._props = AssertionProperties(self._bldr, self._properties)
 
     def type(self) -> baml_py.FieldType:
@@ -104,14 +104,6 @@ class AssertionProperties:
     @property
     def target(self) -> type_builder.ClassPropertyViewer:
         return type_builder.ClassPropertyViewer(self.__bldr.property("target"))
-    
-    @property
-    def fit(self) -> type_builder.ClassPropertyViewer:
-        return type_builder.ClassPropertyViewer(self.__bldr.property("fit"))
-    
-    @property
-    def provenance(self) -> type_builder.ClassPropertyViewer:
-        return type_builder.ClassPropertyViewer(self.__bldr.property("provenance"))
     
     @property
     def chunk(self) -> type_builder.ClassPropertyViewer:

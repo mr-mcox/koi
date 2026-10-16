@@ -36,6 +36,9 @@ OMIT_FROM_COVERAGE: list[str] = [
     # Live verdict adapter: calls the paid TypeSafe (Jev) API, no unit test coverage by
     # design — tests inject a fake VerdictProvider via the Protocol.
     "src/screen/verdict/jev_verdict_provider.py",
+    # Live assertion classifier: calls the paid TypeSafe (Jev) API, no unit test coverage
+    # by design — tests inject a fake AssertionClassifier via the Protocol.
+    "src/screen/verdict/jev_assertion_classifier.py",
 ]
 
 EXEMPT_FILES: dict[str, str] = {

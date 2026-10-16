@@ -1,35 +1,63 @@
-"""BAML adapter: bridges the generated `baml_client` types to `screen.types.Assertion`.
+"""BAML adapter: bridges generated `baml_client` extraction results to the domain.
 
-The generated types use the same field names as the hand-written domain types
-(verified in `tests/test_extract_baml_shape.py`). Rather than copying fields
-one by one, we dump the generated model and re-validate it as the domain type.
-That makes the boundary check real: the closed `Target`/`Fit`/`Provenance`
-Literals are validated here, not bypassed with a cast. The timestamp is owned
-by the caller, not the model.
+BAML now only extracts assertions (target, chunk, citations, created_at). Jev classifies
+those extracted assertions into the final `screen.types.Assertion` shape, and anything
+Jev confidently judges irrelevant to its target is dropped before persistence.
 """
+
+from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
 
 from screen.baml_client.sync_client import b
 from screen.baml_client.types import Assertion as BAMLAssertion
+from screen.extract.types import ExtractedAssertion, hydrate_assertion
 from screen.types import Assertion
+from screen.verdict.classification_protocol import AssertionClassifier
+from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
+
+# Threshold on Jev's `relevance_confidence` above which a "not relevant" verdict is trusted
+# enough to drop the assertion rather than keep it at a wide distribution. Unmeasured —
+# a placeholder until real-corpus confidence ranges are known (scouting F16).
+RELEVANCE_DROP_THRESHOLD = 0.5
 
 
-def _to_assertion(a: BAMLAssertion, now: datetime) -> Assertion:
-    """Re-validate the BAML output as the canonical domain type.
-
-    `created_at` is overwritten with the caller's clock so the model never
-    owns the timestamp. All other fields are validated by Pydantic, including
-    the closed `target`/`fit`/`provenance` vocabularies.
-    """
+def _to_extracted_assertion(a: BAMLAssertion, now: datetime) -> ExtractedAssertion:
+    """Validate the BAML output as the extraction-only domain shape."""
     dumped = a.model_dump()
     dumped["created_at"] = now
-    return Assertion.model_validate(dumped)
+    return ExtractedAssertion.model_validate(dumped)
+
+
+def classify_and_filter(
+    extracted: list[ExtractedAssertion],
+    rubric_text: str,
+    classifier: AssertionClassifier,
+) -> list[Assertion]:
+    """Classify each extracted assertion and drop anything Jev confidently judges
+    irrelevant to its target, before it ever reaches storage."""
+    hydrated: list[Assertion] = []
+    for extracted_assertion in extracted:
+        classification = classifier.classify(
+            rubric_text, extracted_assertion.chunk, extracted_assertion.target
+        )
+        if (
+            not classification.is_relevant
+            and classification.relevance_confidence >= RELEVANCE_DROP_THRESHOLD
+        ):
+            continue
+        hydrated.append(hydrate_assertion(extracted_assertion, classification))
+    return hydrated
 
 
 class BAMLExtractor:
-    """Satisfies `ExtractorProtocol`. Calls `ExtractAssertions` via the BAML sync client."""
+    """Satisfies `ExtractorProtocol`. Calls `ExtractAssertions` via the BAML sync client,
+    then runs Jev classification to hydrate the final assertion shape.
+    """
+
+    def __init__(self, classifier: AssertionClassifier | None = None) -> None:
+        self._classifier = classifier or JevAssertionClassifier()
 
     def extract_assertions(
         self,
@@ -37,14 +65,12 @@ class BAMLExtractor:
         rubric_text: str,
         existing: list[Assertion],
     ) -> list[Assertion]:
-        existing_json = json.dumps(
-            [a.model_dump(mode="json") for a in existing],
-            indent=None,
-        )
+        existing_json = json.dumps([a.model_dump(mode="json") for a in existing], indent=None)
         now = datetime.now(UTC)
         raw: list[BAMLAssertion] = b.ExtractAssertions(
             chunk=chunk,
             rubric_text=rubric_text,
             existing_assertions=existing_json,
         )
-        return [_to_assertion(a, now) for a in raw]
+        extracted = [_to_extracted_assertion(a, now) for a in raw]
+        return classify_and_filter(extracted, rubric_text, self._classifier)

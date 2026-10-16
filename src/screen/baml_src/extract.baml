@@ -1,9 +1,9 @@
 // Extract typed assertions from one page-content chunk.
 //
-// The output schema matches `screen.types.Assertion` field-for-field.
+// The output schema is extraction-only: target, chunk, citations,
+// created_at. Fit classification happens in a second pass.
 // `target` must be one of the closed vocabulary slugs listed in the
-// rubric_text argument; `fit` must be Poor, Mixed, or Strong.
-// `citations` is always non-empty — every assertion must be grounded.
+// rubric_text argument; `citations` is always non-empty — every assertion must be grounded.
 //
 // The function receives `existing_assertions` so it can avoid
 // duplicating claims already extracted in a prior pass.
@@ -19,8 +19,7 @@ class Citation {
 
 class Assertion {
   target string @description("The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or 'non_scoring:obtainability'. See the rubric text for the complete closed vocabulary.")
-  fit string @description("Poor, Mixed, or Strong — the claim's polarity in rubric vocabulary. Do not emit numeric scores.")
-  provenance string @description("Always 'model_proposed' for assertions produced by this function.")
+  
   chunk string @description("The verbatim span from the page content that grounded this claim. Must be non-empty.")
   citations Citation[] @description("One or more citations. Always non-empty. For a job posting the URL is the posting URL and the quote is the span supporting the claim.")
   created_at string @description("ISO 8601 UTC timestamp of extraction, e.g. '2026-08-26T12:00:00Z'.")
@@ -42,12 +41,9 @@ function ExtractAssertions(
     ## Rules
     - Each assertion must have a `target` from the rubric's closed slug vocabulary
       (dimension slugs, or `non_scoring:obtainability`).
-    - `fit` must be exactly one of: Poor, Mixed, Strong.
-    - `provenance` must be `model_proposed`.
     - `chunk` must be a verbatim span copied from the page content below.
     - `citations` must be non-empty. Use the page URL as the citation URL
       and a verbatim span as the quote.
-    - Do NOT emit numeric scores or confidence weights.
     - Do NOT duplicate claims already present in existing assertions.
     - Produce only claims that are directly supported by the text below.
       Do not infer or speculate.
@@ -97,12 +93,10 @@ About You
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Additional dimensions: location (weight 6), internal_culture (weight 4).
 Non-scoring slug: non_scoring:obtainability.
-Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     existing_assertions "[]"
   }
   @@assert({{ this|length > 0 }})
   @@assert({{ this[0].chunk|length > 0 }})
-  @@assert({{ this[0].fit in ["Poor", "Mixed", "Strong"] }})
   @@assert({{ this[0].citations|length > 0 }})
 }

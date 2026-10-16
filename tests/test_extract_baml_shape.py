@@ -11,19 +11,27 @@ from screen.types import Assertion, Citation
 # `id` is domain-only: assigned by `Assertion`'s default factory after BAML emits,
 # never part of what the model is asked to produce (assigned-after-emit, not
 # overwritten-after-emit like `created_at`). Excluded from the parity check.
-_ASSERTION_FIELDS = set(Assertion.model_fields.keys()) - {"id"}
+# BAML extraction is now extraction-only: target, chunk, citations, created_at.
+_ASSERTION_FIELDS_EXCL_CLASSIFICATION = set(Assertion.model_fields.keys()) - {
+    "id",
+    "fit",
+    "confidence",
+    "provenance",
+}
 _CITATION_FIELDS = set(Citation.model_fields.keys())
 
 
 def test_baml_assertion_fields_match_domain_type() -> None:
-    """Generated BAML Assertion must have exactly the same field names as
-    the hand-written screen.types.Assertion. Any divergence means
-    baml_extractor.py's field-by-field copy is silently wrong."""
+    """Generated BAML Assertion must have the extraction-only field set.
+
+    The extractor now only handles target, chunk, citations, created_at;
+    fit/confidence/provenance are added later in the pipeline.
+    """
     baml_fields = set(BAMLAssertion.model_fields.keys())
-    assert baml_fields == _ASSERTION_FIELDS, (
+    assert baml_fields == _ASSERTION_FIELDS_EXCL_CLASSIFICATION, (
         f"BAML Assertion fields diverged from domain type.\n"
-        f"In BAML only: {baml_fields - _ASSERTION_FIELDS}\n"
-        f"In domain only: {_ASSERTION_FIELDS - baml_fields}\n"
+        f"In BAML only: {baml_fields - _ASSERTION_FIELDS_EXCL_CLASSIFICATION}\n"
+        f"In domain only: {_ASSERTION_FIELDS_EXCL_CLASSIFICATION - baml_fields}\n"
         "Re-run `baml-cli generate` or update extract.baml to match."
     )
 

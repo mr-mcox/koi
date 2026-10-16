@@ -256,7 +256,7 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
         opening = openings_by_id[rank.opening_id]
         company = _company_for(conn, opening)
         company_hue, opening_hue = _accent_hues(company.id, opening.id)
-        
+
         age_days = (datetime.now(UTC) - opening.created_at).days
         threshold = max(14, 28 - i)
         is_stale = age_days > threshold
@@ -695,6 +695,11 @@ def submit_stage(
     Redirects to the queue rather than swapping a partial: the opening usually just left
     the page the operator was looking at."""
     opening = get_opening(conn, opening_id)
+    if opening is None:
+        raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
+    upsert_opening(conn, opening.model_copy(update={"stage": stage}))
+    return RedirectResponse("/", status_code=303)
+
 
 @router.post("/prune-stale", response_class=RedirectResponse)
 def prune_stale(conn: Conn) -> RedirectResponse:
@@ -704,10 +709,6 @@ def prune_stale(conn: Conn) -> RedirectResponse:
         conn.execute("UPDATE openings SET stage = ? WHERE id = ?", ("closed", item["opening_id"]))
     conn.commit()
     return RedirectResponse(url="/", status_code=303)
-    if opening is None:
-        raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
-    upsert_opening(conn, opening.model_copy(update={"stage": stage}))
-    return RedirectResponse("/", status_code=303)
 
 
 @router.get("/archive", response_class=HTMLResponse)

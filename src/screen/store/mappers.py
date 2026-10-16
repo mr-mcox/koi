@@ -104,6 +104,7 @@ def assertion_to_row(assertion: Assertion, *, opening_id: str) -> dict[str, obje
         "chunk": assertion.chunk,
         "citations": json.dumps([c.model_dump(mode="json") for c in assertion.citations]),
         "created_at": assertion.created_at.isoformat(),
+        "confidence": assertion.confidence,
     }
 
 
@@ -121,6 +122,7 @@ def assertion_from_row(row: dict[str, object]) -> Assertion | None:
             "chunk": str(row["chunk"]),
             "citations": citations,
             "created_at": datetime.fromisoformat(str(row["created_at"])),
+            "confidence": row.get("confidence"),
         }
     )
 

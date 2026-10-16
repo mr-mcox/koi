@@ -146,13 +146,14 @@ class Citation(BaseModel):
 
 class Assertion(BaseModel):
     """One typed, source-cited claim about a company or opening.
-
-    `target` is the rubric dimension, or non-scoring
     target the claim pertains to. `fit` is the claim's polarity in
     rubric vocabulary. `chunk` is the verbatim page span the extractor
     drew the claim from. `citations` is always non-empty — every
     assertion must be grounded.
-
+    `confidence` is Jev's calibrated probability (0-1) for the classification;
+    null for assertions from before the feature (backward compatible). The scorer
+    uses confidence to scale variance: higher confidence narrows the distribution,
+    lower widens it (floor at 0.3 via max(confidence, 0.3)).
     No scoring fields (Wall 1/2). `target` is a closed Literal (Wall 3).
     Assertions are append-only; this model is frozen (Wall 6 on the type).
     """
@@ -166,6 +167,7 @@ class Assertion(BaseModel):
     chunk: Annotated[str, Field(min_length=1)]
     citations: Annotated[list[Citation], Field(min_length=1)]
     created_at: Annotated[datetime, Field()]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
 
 
 class AssertionRuling(BaseModel):

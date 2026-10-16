@@ -41,9 +41,8 @@ def _render_non_scoring(data: dict[str, Any]) -> list[str]:
 
 def rubric_text_for_baml() -> str:
     """Render all rubric sections into a flat text block for BAML prompt injection.
-
     Dimensions and non-scoring targets are all included so the model has the
-    closed vocabulary and fit anchors without needing to see the YAML structure.
+    closed vocabulary without needing to see the YAML structure.
     """
     data = _load()
     parts: list[list[str]] = [
@@ -64,6 +63,34 @@ def all_non_scoring_slugs() -> list[str]:
 def rubric_text_for_dimension(target: str) -> str:
     """One dimension's rubric text, verbatim — the fine-stage similarity gate (Jev) is
     scored against this dimension alone, never the full rubric, so it can't be swayed by
-    unrelated dimensions' anchors. Raises `KeyError` for an unknown slug."""
-    by_slug = {dim["slug"]: dim for dim in _load().get("dimensions", [])}
-    return "\n".join(_render_one_dimension(by_slug[target]))
+    unrelated dimensions' anchors. Falls back to the non-scoring entry's definition for
+    `non_scoring:obtainability` and friends (no fit anchors — never scored, Wall 4).
+    Raises `KeyError` for a slug in neither vocabulary."""
+    data = _load()
+    by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
+    if target in by_slug:
+        return "\n".join(_render_one_dimension(by_slug[target]))
+    non_scoring_by_slug = {ns["slug"]: ns for ns in data.get("non_scoring", [])}
+    ns = non_scoring_by_slug[target]
+    return f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}"
+
+
+def fit_anchors_for_dimension(target: str) -> dict[str, str]:
+    """Return one dimension's fit anchor text keyed by the rubric's own labels. A
+    non-scoring target (e.g. `non_scoring:obtainability`) has no fit anchors in
+    `rubric.yaml` — its `fit` is recorded but never scored (Wall 4) — so this returns a
+    placeholder set rather than raising."""
+    data = _load()
+    by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
+    if target in by_slug:
+        return {
+            str(label): str(text).strip()
+            for label, text in by_slug[target].get("fit_anchors", {}).items()
+        }
+    non_scoring_slugs = {ns["slug"] for ns in data.get("non_scoring", [])}
+    if target in non_scoring_slugs:
+        placeholder = (
+            "Not applicable — this target is never scored (Wall 4); fit is recorded but unused."
+        )
+        return {"Poor": placeholder, "Mixed": placeholder, "Strong": placeholder}
+    raise KeyError(target)

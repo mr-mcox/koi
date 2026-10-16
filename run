@@ -21,8 +21,11 @@ case "$cmd" in
   backfill-digests)
     exec uv run python -c "from screen.intake.cli import backfill_digests; backfill_digests()" "$@"
     ;;
+  backfill-jev-classification)
+    exec uv run python -c "from screen.intake.cli import backfill_jev_classification; backfill_jev_classification()" "$@"
+    ;;
   *)
-    echo "usage: ./run [serve|backfill-digests]" >&2
+    echo "usage: ./run [serve|backfill-digests|backfill-jev-classification]" >&2
     exit 1
     ;;
 esac

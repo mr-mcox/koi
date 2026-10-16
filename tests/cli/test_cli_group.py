@@ -17,3 +17,4 @@ def test_cli_group_lists_all_scaffolding_commands() -> None:
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "backfill-digests" in result.output
+    assert "backfill-jev-classification" in result.output

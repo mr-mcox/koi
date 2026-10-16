@@ -343,6 +343,16 @@ a pass may **nominate a settled target for reopening** (routed, not auto-acted �
 anti-churn rule until a better one is earned). Run 1 had to smuggle two material facts out
 as mismatches; that channel is gone.
 
+### E6 · One-time backfill may UPDATE assertions in place, as a scoped exception to append-only · `adopted` (operator, 2026-10-16)
+
+The Jev classification migration (confidence field, relevance filtering) needs existing
+assertions to carry the same shape new ones do — not append corrected duplicates
+alongside stale originals, which would need a "supersedes" read-path concept that doesn't
+exist. The operator chose updating rows in place for this one maintenance pass (DB backed
+up first), over either inventing that read-path concept or leaving pre-migration data
+unfixed. This does not reopen append-only for ongoing operation — new assertions are still
+never updated or replaced after intake; only this bounded backfill touches old rows, once.
+
 ---
 
 ## Rubric
