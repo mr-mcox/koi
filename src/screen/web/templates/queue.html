@@ -14,10 +14,13 @@
     <a class="queue-action" href="/archive">Archive</a>
     <a class="queue-action" href="/intake-queue">Intake</a>
     <a class="queue-action" href="/compare">Compare</a>
+    <form class="queue-action-form" hx-post="/prune-stale">
+      <button type="submit" class="queue-action prune-action">Prune Stale</button>
+    </form>
   </nav>
   <ol class="queue">
     {% for item in items %}
-    <li>
+    <li class="queue-item{% if item.is_stale %} is-stale{% endif %}">
       <a class="title" href="/openings/{{ item.opening_id }}/rate">
         <span class="entity-company" style="--accent-hue: {{ item.company_hue }};">{{ item.company_name }}</span>
         <span class="entity-sep">—</span>

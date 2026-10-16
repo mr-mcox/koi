@@ -524,6 +524,10 @@ a:hover { color: var(--accent); }
 .queue-action:hover {
   border-color: var(--accent);
 }
+/* Stale items visualization */
+.queue-item.is-stale .boundary-glyph {
+  opacity: 0.3;
+}
 
 .archive-link {
   color: var(--ink-muted);

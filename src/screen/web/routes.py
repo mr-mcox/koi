@@ -252,10 +252,14 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
         key=lambda r: (-r.p_top_k, r.expected_rank, r.opening_id),
     )
     items = []
-    for rank in ordered:
+    for i, rank in enumerate(ordered):
         opening = openings_by_id[rank.opening_id]
         company = _company_for(conn, opening)
         company_hue, opening_hue = _accent_hues(company.id, opening.id)
+        
+        age_days = (datetime.now(UTC) - opening.created_at).days
+        threshold = max(14, 28 - i)
+        is_stale = age_days > threshold
         items.append(
             {
                 "opening_id": opening.id,
@@ -269,6 +273,8 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
                     total=len(result.opening_ids),
                 ),
                 "p_top_k": rank.p_top_k,
+                "is_stale": is_stale,
+                "age_days": age_days,
             }
         )
     return items
@@ -689,6 +695,15 @@ def submit_stage(
     Redirects to the queue rather than swapping a partial: the opening usually just left
     the page the operator was looking at."""
     opening = get_opening(conn, opening_id)
+
+@router.post("/prune-stale", response_class=RedirectResponse)
+def prune_stale(conn: Conn) -> RedirectResponse:
+    """Move all stale openings in the screening queue to 'closed' in one batch."""
+    stale_items = [item for item in _queue_items(conn) if item["is_stale"]]
+    for item in stale_items:
+        conn.execute("UPDATE openings SET stage = ? WHERE id = ?", ("closed", item["opening_id"]))
+    conn.commit()
+    return RedirectResponse(url="/", status_code=303)
     if opening is None:
         raise HTTPException(status_code=404, detail=f"no such opening: {opening_id}")
     upsert_opening(conn, opening.model_copy(update={"stage": stage}))
