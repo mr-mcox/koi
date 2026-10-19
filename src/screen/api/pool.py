@@ -5,7 +5,9 @@ and HTML routers call `rank_screening_pool` rather than each re-deriving
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +42,9 @@ from screen.verdict.protocol import FewShotExample, RubricVerdict, VerdictProvid
 # knob, just a guard against an unbounded chain if the entire remaining pool happens to
 # be confidently Jev-ruled.
 _MAX_SHORT_CIRCUIT_ITERATIONS = 20
+# Throughput instrumentation for the pre-screen pass: paired with `screen.compare` in
+# the web routes, these lines say where a live session's wall-clock time actually went.
+_prescreen_log = logging.getLogger("screen.prescreen")
 
 
 def _to_score_comparison(comparison: StoredComparison) -> ScoreComparison:
@@ -232,25 +237,224 @@ def _consult_jev_for_suggestion(
 
 
 @dataclass
+class CompareState:
+    """Monotonic compare-write state for the in-process cache: `version` bumps every time
+    a comparison row is appended, and `last_write` records the unordered pair + target of
+    the most recent write so a stale-by-one cached suggestion can still be rejected when it
+    is literally the pair just judged."""
+
+    version: int = 0
+    last_write: tuple[frozenset[str], str] | None = None
+
+
+@dataclass
+class CompareCache:
+    """The last compare suggestion a background prescreen produced. `version` is the
+    compare-write version the suggestion was computed against; callers may reuse it for the
+    current version or one write behind if the pair is still legal.
+
+    `speculative` is the suggestion computed *while the operator was still deciding* the
+    one in `suggestion`, with that triple excluded. It is deliberately one state behind by
+    construction — it does not know the outcome the operator chose — which is the
+    stale-by-one trade the whole cache rests on. On a write it is promoted into
+    `suggestion` so the next page can render without waiting for a fresh pool score."""
+
+    version: int = -1
+    suggestion: ComparisonSuggestion | None = None
+    jev_read: RubricVerdict | None = None
+    speculative: ComparisonSuggestion | None = None
+    speculative_jev_read: RubricVerdict | None = None
+    speculative_for: tuple[frozenset[str], str] | None = None
+
+
+@dataclass
 class CompareProgress:
     """Live status for the comparison pre-screen pass — the polling web route's view
     into what Jev has ruled so far. `ruled` grows in place as each confident verdict
     lands, so a concurrent poll sees partial progress; mirrors `BatchEngine`'s
     `MutableMapping` progress dict, but typed since this progress has one shape, not a
-    research batch's. `final_suggestion` is the pair/dimension Jev could not settle —
-    what the operator sees once the pass ends, `None` if the pool had nothing left to
-    suggest at all. `final_suggestion_jev_read` is Jev's raw verdict on that exact pair,
-    when Jev was consulted but wasn't confident — `None` both when there's no
-    `final_suggestion` and when Jev was never consulted at all (no cached digest), so a
-    caller must check `final_suggestion` is set before treating `None` here as
-    meaningful. `completed` disambiguates `final_suggestion is None` from "hasn't run
-    yet": the route only reruns the pass when `completed` is still `False`."""
+    research batch's. `version` is the compare-write version this run is based on. The
+    `final_suggestion*` fields remain as the current run's cached unresolved suggestion for
+    callers that still read them directly."""
 
     running: bool = False
     completed: bool = False
+    version: int | None = None
     ruled: list[StoredComparison] = field(default_factory=list)
     final_suggestion: ComparisonSuggestion | None = None
     final_suggestion_jev_read: RubricVerdict | None = None
+
+
+def _comparison_key(
+    opening_a_id: str, opening_b_id: str, target: str
+) -> tuple[frozenset[str], str]:
+    return frozenset({opening_a_id, opening_b_id}), target
+
+
+def _cache_operator_suggestion(
+    compare_cache: CompareCache,
+    progress: CompareProgress,
+    *,
+    version: int,
+    suggestion: ComparisonSuggestion | None,
+    jev_read: RubricVerdict | None,
+) -> None:
+    """Publish what the operator should see next. The cache and the progress object hold
+    the same answer: the cache survives this pass for the next request to reuse, the
+    progress object is what the in-flight polling page resolves to."""
+    compare_cache.version = version
+    compare_cache.suggestion = suggestion
+    compare_cache.jev_read = jev_read
+    compare_cache.speculative = None
+    compare_cache.speculative_jev_read = None
+    compare_cache.speculative_for = None
+    progress.final_suggestion = suggestion
+    progress.final_suggestion_jev_read = jev_read
+
+
+def _cache_speculative_suggestion(
+    compare_cache: CompareCache,
+    *,
+    excluded: tuple[frozenset[str], str],
+    version: int,
+    suggestion: ComparisonSuggestion | None,
+    jev_read: RubricVerdict | None,
+) -> None:
+    """Publish the speculative next comparison without touching the on-screen one."""
+    compare_cache.version = version
+    compare_cache.speculative = suggestion
+    compare_cache.speculative_jev_read = jev_read
+    compare_cache.speculative_for = excluded
+
+
+def _prescreen_step(
+    conn: sqlite3.Connection,
+    config: ScoringConfig,
+    *,
+    verdict_provider: VerdictProvider,
+    compare_state: CompareState,
+    compare_cache: CompareCache,
+    progress: CompareProgress,
+    rng: np.random.Generator,
+    speculating_for: tuple[frozenset[str], str] | None = None,
+) -> tuple[bool, bool]:
+    """One pick-and-maybe-rule cycle. Returns `(keep_going, committed_here)`: `keep_going`
+    says whether the loop should continue, and `committed_here` says whether this step
+    appended a comparison to the DB. `speculating_for`, when set, is the on-screen
+    (pair, dimension) excluded from the picker and the key any uncommitted result is
+    cached under as `compare_cache.speculative*` instead of the live `compare_cache.
+    suggestion` — the on-screen suggestion must survive this call either way."""
+    start_version = compare_state.version
+    progress.version = start_version
+    (
+        openings,
+        assertions_by_opening,
+        rulings_by_opening,
+        comparisons_by_target,
+        companies_by_opening,
+    ) = _screening_pool_inputs(conn, config)
+    pool_result = rank_screening_pool(conn, config, openings=openings)
+    p_top_k_by_opening = {r.opening_id: r.p_top_k for r in pool_result.opening_ranks}
+    picked_at = time.monotonic()
+    suggestion = select_comparison(
+        [o.id for o in openings],
+        companies_by_opening,
+        assertions_by_opening,
+        comparisons_by_target,
+        p_top_k_by_opening,
+        config=config,
+        rulings_by_opening=rulings_by_opening,
+        rng=rng,
+        excluded_triples={speculating_for} if speculating_for is not None else None,
+    )
+    _prescreen_log.info(
+        "picker took %.2fs (compare_version=%s)", time.monotonic() - picked_at, start_version
+    )
+    if suggestion is None:
+        if speculating_for is not None:
+            # Nothing beyond the excluded on-screen triple — leave the on-screen
+            # suggestion alone; there is simply no lookahead to offer this round.
+            _prescreen_log.debug("speculative found nothing beyond the on-screen pair")
+        else:
+            _cache_operator_suggestion(
+                compare_cache, progress, version=start_version, suggestion=None, jev_read=None
+            )
+            _prescreen_log.debug("prescreen done: nothing left to suggest")
+        return False, False
+
+    jev_started = time.monotonic()
+    comparison, jev_read = _consult_jev_for_suggestion(
+        conn,
+        suggestion,
+        assertions_by_opening,
+        rulings_by_opening,
+        config,
+        verdict_provider=verdict_provider,
+        rng=rng,
+    )
+    _prescreen_log.info(
+        "jev consult took %.2fs on %s (%s vs %s)",
+        time.monotonic() - jev_started,
+        suggestion.target,
+        suggestion.opening_a_id,
+        suggestion.opening_b_id,
+    )
+    if compare_state.version != start_version:
+        _prescreen_log.debug("prescreen dropping ruling: version moved during jev consult")
+        return True, False
+    if comparison is None:
+        if speculating_for is not None:
+            _cache_speculative_suggestion(
+                compare_cache,
+                excluded=speculating_for,
+                version=start_version,
+                suggestion=suggestion,
+                jev_read=jev_read,
+            )
+            _prescreen_log.debug(
+                "speculative cached suggestion for operator (compare_version=%s)", start_version
+            )
+        else:
+            _cache_operator_suggestion(
+                compare_cache,
+                progress,
+                version=start_version,
+                suggestion=suggestion,
+                jev_read=jev_read,
+            )
+            _prescreen_log.debug(
+                "prescreen cached suggestion for operator (compare_version=%s)", start_version
+            )
+        return False, False
+
+    append_comparison(conn, comparison)
+    compare_state.version += 1
+    compare_state.last_write = _comparison_key(
+        comparison.opening_a_id, comparison.opening_b_id, comparison.target
+    )
+    _prescreen_log.debug(
+        "%s auto-ruled %s (%s vs %s) -> compare_version=%s",
+        "speculative" if speculating_for is not None else "prescreen",
+        comparison.target,
+        comparison.opening_a_id,
+        comparison.opening_b_id,
+        compare_state.version,
+    )
+    if speculating_for is not None:
+        # The on-screen suggestion (`compare_cache.suggestion`/`.jev_read`) belongs to the
+        # operator's current page and must survive an auto-ruling that happens behind
+        # it — only the shared version/last_write above move, and only `.speculative*`
+        # is ever touched for this pass, on a later non-committing step.
+        return True, True
+    progress.ruled.append(comparison)
+    _cache_operator_suggestion(
+        compare_cache,
+        progress,
+        version=compare_state.version,
+        suggestion=None,
+        jev_read=None,
+    )
+    return True, True
 
 
 def run_prescreen(
@@ -258,58 +462,129 @@ def run_prescreen(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    compare_state: CompareState | None = None,
+    compare_cache: CompareCache | None = None,
     progress: CompareProgress,
     max_iterations: int = _MAX_SHORT_CIRCUIT_ITERATIONS,
 ) -> None:
     """Rules every confidently-gated (pair, dimension) ahead of the operator's first
     `/compare` view this pass, persisting each one and appending it to `progress.ruled`
     as it lands — the polling route renders this list live. Stops at the first
-    suggestion Jev isn't confident about, when nothing is left to suggest, or at
-    `max_iterations` (a safety bound, not a tuned behavior knob)."""
+    suggestion Jev isn't confident about, when nothing is left to suggest, when the live
+    compare-write version changes under it, or at `max_iterations` (a safety bound, not a
+    tuned behavior knob)."""
+    compare_state = compare_state if compare_state is not None else CompareState()
+    compare_cache = compare_cache if compare_cache is not None else CompareCache()
     progress.running = True
+    progress.completed = False
+    progress.version = compare_state.version
     rng = np.random.default_rng(config.seed)
+    started_at = time.monotonic()
+    _prescreen_log.debug("prescreen start (compare_version=%s)", compare_state.version)
     try:
         for _ in range(max_iterations):
-            (
-                openings,
-                assertions_by_opening,
-                rulings_by_opening,
-                comparisons_by_target,
-                companies_by_opening,
-            ) = _screening_pool_inputs(conn, config)
-            pool_result = rank_screening_pool(conn, config, openings=openings)
-            p_top_k_by_opening = {r.opening_id: r.p_top_k for r in pool_result.opening_ranks}
-            suggestion = select_comparison(
-                [o.id for o in openings],
-                companies_by_opening,
-                assertions_by_opening,
-                comparisons_by_target,
-                p_top_k_by_opening,
-                config=config,
-                rulings_by_opening=rulings_by_opening,
-                rng=rng,
-            )
-            if suggestion is None:
-                return
-
-            comparison, jev_read = _consult_jev_for_suggestion(
+            keep_going, _ = _prescreen_step(
                 conn,
-                suggestion,
-                assertions_by_opening,
-                rulings_by_opening,
                 config,
                 verdict_provider=verdict_provider,
+                compare_state=compare_state,
+                compare_cache=compare_cache,
+                progress=progress,
                 rng=rng,
             )
-            if comparison is None:
-                progress.final_suggestion = suggestion
-                progress.final_suggestion_jev_read = jev_read
+            if not keep_going:
                 return
-            append_comparison(conn, comparison)
-            progress.ruled.append(comparison)
     finally:
         progress.running = False
         progress.completed = True
+        _prescreen_log.debug(
+            "prescreen finished in %.2fs (auto_ruled=%s, cached_suggestion=%s)",
+            time.monotonic() - started_at,
+            len(progress.ruled),
+            progress.final_suggestion is not None,
+        )
+
+
+def run_speculative_prescreen(
+    conn: sqlite3.Connection,
+    config: ScoringConfig,
+    *,
+    verdict_provider: VerdictProvider,
+    compare_state: CompareState,
+    compare_cache: CompareCache,
+) -> None:
+    """Compute what the operator should see *after* the comparison currently on their
+    screen, while they are still deciding it. The on-screen triple is excluded from the
+    picker, so this answers "what's next" without knowing the outcome — the stale-by-one
+    trade. Unlike the authoritative prescreen, this may auto-rule later easy pairs before
+    it caches the next usable suggestion.
+
+    Silently returns when the state moved while it was working: the result describes a
+    pool that no longer exists, and a stale speculation is worse than none.
+    """
+    on_screen = compare_cache.suggestion
+    if on_screen is None:
+        return
+    start_version = compare_state.version
+    started_at = time.monotonic()
+    excluded = _comparison_key(on_screen.opening_a_id, on_screen.opening_b_id, on_screen.target)
+    _prescreen_log.debug("speculative start (compare_version=%s)", start_version)
+    compare_cache.speculative = None
+    compare_cache.speculative_jev_read = None
+    compare_cache.speculative_for = None
+    rng = np.random.default_rng(config.seed)
+    expected_version = start_version
+    try:
+        for _ in range(_MAX_SHORT_CIRCUIT_ITERATIONS):
+            keep_going, committed_here = _prescreen_step(
+                conn,
+                config,
+                verdict_provider=verdict_provider,
+                compare_state=compare_state,
+                compare_cache=compare_cache,
+                progress=CompareProgress(),
+                rng=rng,
+                speculating_for=excluded,
+            )
+            if committed_here:
+                # `_prescreen_step`'s commit path always signals keep_going=True — an
+                # auto-ruling is never itself a reason to stop the speculative walk.
+                expected_version = compare_state.version
+                continue
+            if compare_state.version != expected_version:
+                _prescreen_log.debug("speculative discarded: operator wrote while it was running")
+                return
+            if not keep_going:
+                return
+    finally:
+        _prescreen_log.debug(
+            "speculative finished in %.2fs (cached_suggestion=%s)",
+            time.monotonic() - started_at,
+            compare_cache.speculative is not None,
+        )
+
+
+def run_speculative_prescreen_in_background(
+    db_path: Path,
+    config: ScoringConfig,
+    *,
+    verdict_provider: VerdictProvider,
+    compare_state: CompareState,
+    compare_cache: CompareCache,
+) -> None:
+    """`run_speculative_prescreen` entry point for `fastapi.BackgroundTasks`, on its own
+    connection — same reason as `run_prescreen_in_background`."""
+    conn = connect(db_path)
+    try:
+        run_speculative_prescreen(
+            conn,
+            config,
+            verdict_provider=verdict_provider,
+            compare_state=compare_state,
+            compare_cache=compare_cache,
+        )
+    finally:
+        conn.close()
 
 
 def run_prescreen_in_background(
@@ -317,6 +592,8 @@ def run_prescreen_in_background(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    compare_state: CompareState,
+    compare_cache: CompareCache,
     progress: CompareProgress,
 ) -> None:
     """`run_prescreen` entry point for `fastapi.BackgroundTasks`: opens its own
@@ -324,6 +601,13 @@ def run_prescreen_in_background(
     `BatchEngine.run`)."""
     conn = connect(db_path)
     try:
-        run_prescreen(conn, config, verdict_provider=verdict_provider, progress=progress)
+        run_prescreen(
+            conn,
+            config,
+            verdict_provider=verdict_provider,
+            compare_state=compare_state,
+            compare_cache=compare_cache,
+            progress=progress,
+        )
     finally:
         conn.close()

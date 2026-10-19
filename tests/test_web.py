@@ -19,12 +19,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from screen.api.app import create_app
+from screen.api.pool import CompareCache
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake.research_trace_replay import replay_research_trace
 from screen.research.actions import SearchAction, StopAction
 from screen.research.batch import BatchEngine, RunDispatchDeps, research_trace_path_for
 from screen.research.fakes import FakeBrowser
+from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.mappers import assertion_ruling_to_row
@@ -631,6 +633,79 @@ def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
     assert "Jev:" in page.text
     assert "0.62" in page.text
     assert "tie" in page.text
+
+
+def test_compare_page_uses_stale_by_one_cache_when_pair_still_legal(
+    client: TestClient, db_path: Path
+) -> None:
+    """A cached compare suggestion from the previous compare-write version is still good
+    enough to render immediately as long as the pair is still legal; the fresh prescreen
+    can keep running behind it."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("location", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("location", "Strong")],
+    )
+    client.app.state.compare_cache = CompareCache(
+        version=0,
+        suggestion=ComparisonSuggestion(
+            target="location",
+            opening_a_id="acme--a",
+            opening_b_id="widgets--b",
+        ),
+        jev_read=RubricVerdict(outcome="tie", confidence=0.62),
+    )
+    client.app.state.compare_state.version = 1
+    client.app.state.compare_state.last_write = (frozenset({"other--a", "other--b"}), "location")
+
+    response = client.get("/compare")
+
+    assert response.status_code == 200
+    assert '<form class="compare-actions"' in response.text
+    assert "compare-prescreening" not in response.text
+    assert "Jev:" in response.text
+
+
+def test_compare_page_rejects_stale_cache_for_just_written_pair(
+    client: TestClient, db_path: Path
+) -> None:
+    """If the cached suggestion is exactly the pair that was just written, it must not
+    be reused; the next render should fall back to the prescreen flow instead."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("location", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("location", "Strong")],
+    )
+    client.app.state.compare_cache = CompareCache(
+        version=0,
+        suggestion=ComparisonSuggestion(
+            target="location",
+            opening_a_id="acme--a",
+            opening_b_id="widgets--b",
+        ),
+        jev_read=RubricVerdict(outcome="tie", confidence=0.62),
+    )
+    client.app.state.compare_state.version = 1
+    client.app.state.compare_state.last_write = (frozenset({"acme--a", "widgets--b"}), "location")
+
+    response = client.get("/compare")
+
+    assert response.status_code == 200
+    assert "compare-prescreening" in response.text
 
 
 def test_compare_review_lists_provisional_comparisons_and_links_to_override(
@@ -2041,3 +2116,227 @@ def test_retired_routes_return_404(client: TestClient) -> None:
         ).status_code
         == 404
     )
+
+
+@pytest.mark.parametrize(
+    ("cache_version", "suggestion", "last_write"),
+    [
+        pytest.param(
+            0,
+            ComparisonSuggestion(
+                target="not_a_dimension", opening_a_id="acme--a", opening_b_id="widgets--b"
+            ),
+            None,
+            id="target no longer in the rubric",
+        ),
+        pytest.param(
+            0,
+            ComparisonSuggestion(target="location", opening_a_id="acme--a", opening_b_id="acme--a"),
+            None,
+            id="pair collapsed onto one opening",
+        ),
+        pytest.param(
+            0,
+            ComparisonSuggestion(
+                target="location", opening_a_id="acme--a", opening_b_id="ghost--z"
+            ),
+            None,
+            id="opening no longer exists",
+        ),
+        pytest.param(
+            0,
+            ComparisonSuggestion(
+                target="location", opening_a_id="acme--a", opening_b_id="widgets--b"
+            ),
+            (frozenset({"other--a", "other--b"}), "location"),
+            id="two or more writes behind",
+        ),
+    ],
+)
+def test_compare_page_refuses_an_unusable_cached_suggestion(
+    client: TestClient,
+    db_path: Path,
+    cache_version: int,
+    suggestion: ComparisonSuggestion,
+    last_write: tuple[frozenset[str], str] | None,
+) -> None:
+    """Each of these cached suggestions is unservable for a different reason — the pair
+    is no longer legal, or it is too far behind the live compare state. Serving any of
+    them would hand the operator a comparison the current pool can't justify, so the
+    route must fall back to the pre-screen flow instead of rendering it."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("location", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("location", "Strong")],
+    )
+    client.app.state.compare_cache = CompareCache(
+        version=cache_version, suggestion=suggestion, jev_read=None
+    )
+    client.app.state.compare_state.version = cache_version + (1 if last_write is None else 2)
+    client.app.state.compare_state.last_write = last_write
+
+    response = client.get("/compare")
+
+    assert response.status_code == 200
+    assert "compare-prescreening" in response.text
+
+
+def test_submitting_a_comparison_serves_the_speculation_without_waiting(
+    client: TestClient, db_path: Path
+) -> None:
+    """The throughput claim, end to end: work done while the operator was reading is
+    promoted on submit, so the next page renders a comparison instead of the polling
+    page. Before speculation existed this GET always hit `just-written-pair` and the
+    operator waited out a fresh pool score."""
+    for company_id, opening_id in (
+        ("acme", "acme--a"),
+        ("widgets", "widgets--b"),
+        ("gizmo", "gizmo--c"),
+    ):
+        _seed_opening(
+            db_path,
+            company_id=company_id,
+            opening_id=opening_id,
+            assertions=[_assertion("location", "Strong"), _assertion("schematic", "Strong")],
+        )
+    judged = (frozenset({"acme--a", "widgets--b"}), "location")
+    # A pass is already in flight, so the POST schedules no second one. Under
+    # `TestClient` a scheduled task runs to completion before the POST returns, which
+    # would overwrite the promoted value and hide whether promotion happened at all.
+    client.app.state.compare_progress.running = True
+    client.app.state.compare_state.version = 7
+    client.app.state.compare_cache = CompareCache(
+        version=7,
+        suggestion=ComparisonSuggestion(
+            target="location", opening_a_id="acme--a", opening_b_id="widgets--b"
+        ),
+        speculative=ComparisonSuggestion(
+            target="schematic", opening_a_id="acme--a", opening_b_id="gizmo--c"
+        ),
+        speculative_for=judged,
+    )
+
+    submitted = client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "location",
+            "outcome": "tie",
+        },
+        follow_redirects=False,
+    )
+    assert submitted.status_code == 303
+
+    # Assert on the cache rather than the rendered page: under `TestClient` the POST's
+    # background pass runs to completion before this returns, so a fresh (slow) pass
+    # would also leave a renderable suggestion here. Only the promoted speculation
+    # carries the speculated pair at the stale-by-one version.
+    promoted = client.app.state.compare_cache
+    assert promoted.suggestion == ComparisonSuggestion(
+        target="schematic", opening_a_id="acme--a", opening_b_id="gizmo--c"
+    )
+    assert promoted.version == 7
+
+    nxt = client.get("/compare")
+
+    assert nxt.status_code == 200
+    assert "compare-prescreening" not in nxt.text
+    assert '<form class="compare-actions"' in nxt.text
+    assert "gizmo--c" in nxt.text
+
+
+def test_a_speculation_about_a_different_pair_is_not_promoted(
+    client: TestClient, db_path: Path
+) -> None:
+    """Speculation is computed for one specific on-screen triple. If the operator ends up
+    ruling on a different pair (a direct link, a review-surface override), that
+    speculation answers a question they were never asked and must not be served as
+    their next comparison."""
+    for company_id, opening_id in (
+        ("acme", "acme--a"),
+        ("widgets", "widgets--b"),
+        ("gizmo", "gizmo--c"),
+    ):
+        _seed_opening(
+            db_path,
+            company_id=company_id,
+            opening_id=opening_id,
+            assertions=[_assertion("location", "Strong"), _assertion("schematic", "Strong")],
+        )
+    client.app.state.compare_progress.running = True
+    client.app.state.compare_state.version = 7
+    client.app.state.compare_cache = CompareCache(
+        version=7,
+        suggestion=ComparisonSuggestion(
+            target="location", opening_a_id="acme--a", opening_b_id="widgets--b"
+        ),
+        speculative=ComparisonSuggestion(
+            target="schematic", opening_a_id="acme--a", opening_b_id="gizmo--c"
+        ),
+        speculative_for=(frozenset({"acme--a", "gizmo--c"}), "location"),
+    )
+
+    client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "location",
+            "outcome": "tie",
+        },
+        follow_redirects=False,
+    )
+
+    assert client.app.state.compare_cache.suggestion != ComparisonSuggestion(
+        target="schematic", opening_a_id="acme--a", opening_b_id="gizmo--c"
+    )
+
+
+def test_rerendering_the_same_comparison_does_not_queue_repeated_speculation(
+    client: TestClient, db_path: Path
+) -> None:
+    """Speculating costs a full pool score. The compare page is re-rendered whenever the
+    operator rules an assertion or reloads while deciding, and each render must not
+    queue another one for a triple already speculated or in flight."""
+    for company_id, opening_id in (
+        ("acme", "acme--a"),
+        ("widgets", "widgets--b"),
+        ("gizmo", "gizmo--c"),
+    ):
+        _seed_opening(
+            db_path,
+            company_id=company_id,
+            opening_id=opening_id,
+            assertions=[_assertion("location", "Strong"), _assertion("schematic", "Strong")],
+        )
+    on_screen = ComparisonSuggestion(
+        target="location", opening_a_id="acme--a", opening_b_id="widgets--b"
+    )
+    on_screen_key = (frozenset({"acme--a", "widgets--b"}), "location")
+    client.app.state.compare_state.version = 7
+    client.app.state.compare_progress.version = 7
+    client.app.state.compare_cache = CompareCache(
+        version=7,
+        suggestion=on_screen,
+        speculative=ComparisonSuggestion(
+            target="schematic", opening_a_id="acme--a", opening_b_id="gizmo--c"
+        ),
+        speculative_for=on_screen_key,
+    )
+
+    first = client.get("/compare")
+    second = client.get("/compare")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # Untouched: a queued speculation overwrites these on completion.
+    assert client.app.state.compare_cache.speculative_for == on_screen_key
+    assert client.app.state.speculation_in_flight_for is None

@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import sqlite3
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from fastapi import FastAPI
 
-from screen.api.pool import CompareProgress
+from screen.api.pool import CompareCache, CompareProgress, CompareState
 from screen.api.routes import router as api_router
 from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
@@ -49,6 +50,20 @@ class Database:
     @classmethod
     def default(cls) -> Database:
         return cls(data_dir() / "screen.db")
+
+
+def _enable_compare_instrumentation() -> None:
+    """Make the compare-throughput loggers visible under uvicorn, which configures only
+    its own loggers. Without a handler these records are swallowed, and the live session
+    this instrumentation exists to measure would show nothing."""
+    for name in ("screen.compare", "screen.prescreen"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
+            logger.addHandler(handler)
+        logger.propagate = False
 
 
 def create_app(
@@ -94,6 +109,10 @@ def create_app(
         "touched": [],
     }
     app.state.compare_progress = CompareProgress()
+    app.state.compare_state = CompareState()
+    app.state.compare_cache = CompareCache()
+    app.state.speculation_in_flight_for = None
+    _enable_compare_instrumentation()
     app.state.verdict_provider = (
         verdict_provider if verdict_provider is not None else JevVerdictProvider()
     )

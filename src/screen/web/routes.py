@@ -8,6 +8,7 @@ HTMX partial swap — the JSON routes stay read-only and untouched.
 from __future__ import annotations
 
 import hashlib
+import logging
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
@@ -23,13 +24,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import get_db
-from screen.api.pool import CompareProgress, rank_screening_pool, run_prescreen_in_background
+from screen.api.pool import (
+    CompareCache,
+    CompareProgress,
+    CompareState,
+    rank_screening_pool,
+    run_prescreen_in_background,
+    run_speculative_prescreen_in_background,
+)
 from screen.api.scoring import latest_ruling_by_assertion
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_for_target
 from screen.extract.prompt import rubric_text_for_baml
 from screen.research.batch import eta_text
+from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.compare_probability import pre_comparison_probability
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import stats_for_target
@@ -62,6 +71,9 @@ from screen.types import (
 from screen.verdict.protocol import RubricVerdict
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
+# Throughput instrumentation for the compare loop: every cache decision and pre-screen
+# transition is logged so a live session can be read back for where the operator waited.
+_compare_log = logging.getLogger("screen.compare")
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -478,35 +490,166 @@ def _jev_read_label(verdict: RubricVerdict, context: dict[str, object]) -> str:
     return "left wins" if verdict.outcome == context["outcome_left"] else "right wins"
 
 
-def _resume_or_start_prescreen(
+def _compare_pair_key(
+    opening_a_id: str, opening_b_id: str, target: str
+) -> tuple[frozenset[str], str]:
+    return frozenset({opening_a_id, opening_b_id}), target
+
+
+def _illegal_suggestion_reason(
+    conn: sqlite3.Connection,
+    config: ScoringConfig,
+    suggestion: ComparisonSuggestion,
+) -> str | None:
+    """Why this pair/dimension can no longer be rendered, or `None` if it still can."""
+    if suggestion.target not in config.dimension_weights:
+        return "invalid-target"
+    if suggestion.opening_a_id == suggestion.opening_b_id:
+        return "degenerate-pair"
+    missing = any(
+        get_opening(conn, opening_id) is None
+        for opening_id in (suggestion.opening_a_id, suggestion.opening_b_id)
+    )
+    return "missing-opening" if missing else None
+
+
+def _staleness_rejection(
+    compare_state: CompareState,
+    compare_cache: CompareCache,
+    suggestion: ComparisonSuggestion,
+) -> str | None:
+    """Stale-by-one is accepted; anything older, or a suggestion naming the pair the
+    operator just ruled on, is not."""
+    behind = compare_state.version - compare_cache.version
+    if behind <= 0:
+        return None
+    if behind > 1:
+        return "too-stale"
+    just_written = compare_state.last_write == _compare_pair_key(
+        suggestion.opening_a_id, suggestion.opening_b_id, suggestion.target
+    )
+    return "just-written-pair" if just_written else None
+
+
+def _compare_cache_rejection(
+    conn: sqlite3.Connection,
+    config: ScoringConfig,
+    compare_state: CompareState,
+    compare_cache: CompareCache,
+) -> str | None:
+    """Why the cached suggestion can't be served, or `None` when it can. The reason
+    string is the instrumentation surface: a live session's log says whether a wait was a
+    cache miss, a staleness rejection, or the pre-screen simply not being done yet."""
+    suggestion = compare_cache.suggestion
+    if suggestion is None:
+        return "empty"
+    illegal = _illegal_suggestion_reason(conn, config, suggestion)
+    if illegal is not None:
+        return illegal
+    return _staleness_rejection(compare_state, compare_cache, suggestion)
+
+
+def _start_compare_prescreen(
     request: Request, config: ScoringConfig, background_tasks: BackgroundTasks
+) -> CompareProgress:
+    compare_state = request.app.state.compare_state
+    progress = CompareProgress(running=True, version=compare_state.version)
+    request.app.state.compare_progress = progress
+    _compare_log.info("prescreen scheduled (compare_version=%s)", compare_state.version)
+    background_tasks.add_task(
+        run_prescreen_in_background,
+        request.app.state.database.db_path,
+        config,
+        verdict_provider=request.app.state.verdict_provider,
+        compare_state=compare_state,
+        compare_cache=request.app.state.compare_cache,
+        progress=progress,
+    )
+    return progress
+
+
+def _start_speculation(
+    request: Request,
+    config: ScoringConfig,
+    background_tasks: BackgroundTasks,
+    on_screen: ComparisonSuggestion,
+) -> None:
+    """Use the operator's thinking time: while they decide the comparison being rendered,
+    work out what comes after it. Skipped when a speculation for this exact triple is
+    already cached or in flight, so repeated renders of the same page (a reload, an
+    assertion-ruling redirect) don't each queue another pool score."""
+    compare_cache = request.app.state.compare_cache
+    on_screen_key = _compare_pair_key(
+        on_screen.opening_a_id, on_screen.opening_b_id, on_screen.target
+    )
+    if compare_cache.speculative_for == on_screen_key:
+        return
+    if request.app.state.speculation_in_flight_for == on_screen_key:
+        return
+    request.app.state.speculation_in_flight_for = on_screen_key
+    _compare_log.info("speculation scheduled for what follows %s", on_screen.target)
+    background_tasks.add_task(
+        run_speculative_prescreen_in_background,
+        request.app.state.database.db_path,
+        config,
+        verdict_provider=request.app.state.verdict_provider,
+        compare_state=request.app.state.compare_state,
+        compare_cache=compare_cache,
+    )
+
+
+def _resume_or_start_prescreen(
+    request: Request,
+    conn: sqlite3.Connection,
+    config: ScoringConfig,
+    background_tasks: BackgroundTasks,
 ) -> tuple[str | None, str | None, str | None, RubricVerdict | None, HTMLResponse | None]:
     """Triggers (or polls) the background pre-screen pass. Returns the picker's resolved
     pair/dimension plus Jev's raw read on it if Jev was consulted but wasn't confident,
     or — while the pass is still running — an early `HTMLResponse` (the polling page)
     the caller should return as-is."""
+    compare_state = request.app.state.compare_state
     progress = request.app.state.compare_progress
-    if not progress.running and not progress.completed:
-        progress = CompareProgress(running=True)
-        request.app.state.compare_progress = progress
-        background_tasks.add_task(
-            run_prescreen_in_background,
-            request.app.state.database.db_path,
-            config,
-            verdict_provider=request.app.state.verdict_provider,
-            progress=progress,
+    compare_cache = request.app.state.compare_cache
+    rejection = _compare_cache_rejection(conn, config, compare_state, compare_cache)
+    if rejection is None:
+        suggestion = compare_cache.suggestion
+        assert suggestion is not None
+        _compare_log.info(
+            "compare cache hit (%s, cache_version=%s, compare_version=%s)",
+            "exact" if compare_cache.version == compare_state.version else "stale-by-one",
+            compare_cache.version,
+            compare_state.version,
         )
+        if not progress.running and progress.version != compare_state.version:
+            _start_compare_prescreen(request, config, background_tasks)
+        else:
+            _start_speculation(request, config, background_tasks, suggestion)
+        return (
+            suggestion.opening_a_id,
+            suggestion.opening_b_id,
+            suggestion.target,
+            compare_cache.jev_read,
+            None,
+        )
+    _compare_log.info(
+        "compare cache miss: %s (cache_version=%s, compare_version=%s)",
+        rejection,
+        compare_cache.version,
+        compare_state.version,
+    )
+    if not progress.running and progress.version != compare_state.version:
+        progress = _start_compare_prescreen(request, config, background_tasks)
     if progress.running:
+        _compare_log.info(
+            "compare waiting on prescreen (compare_version=%s)", compare_state.version
+        )
         early = templates.TemplateResponse(
             request, "compare_prescreening.html", {"progress": progress}
         )
         return None, None, None, None, early
-    suggestion = progress.final_suggestion
-    jev_read = progress.final_suggestion_jev_read if suggestion is not None else None
-    request.app.state.compare_progress = CompareProgress()
-    if suggestion is None:
-        return None, None, None, None, None
-    return suggestion.opening_a_id, suggestion.opening_b_id, suggestion.target, jev_read, None
+    _compare_log.debug("compare has nothing to suggest (compare_version=%s)", compare_state.version)
+    return None, None, None, None, None
 
 
 @router.get("/compare", response_class=HTMLResponse)
@@ -534,7 +677,7 @@ def compare(
     jev_read: RubricVerdict | None = None
     if not (opening_a_id and opening_b_id and target):
         opening_a_id, opening_b_id, target, jev_read, early = _resume_or_start_prescreen(
-            request, config, background_tasks
+            request, conn, config, background_tasks
         )
         if early is not None:
             return early
@@ -572,6 +715,8 @@ def compare(
 
 @router.post("/compare")
 def submit_comparison(
+    request: Request,
+    background_tasks: BackgroundTasks,
     conn: Conn,
     opening_a_id: Annotated[str, Form()],
     opening_b_id: Annotated[str, Form()],
@@ -616,7 +761,6 @@ def submit_comparison(
     predicted_a_beats_b = pre_comparison_probability(
         stats_a.mean, stats_a.half_width, stats_b.mean, stats_b.half_width
     )
-
     append_comparison(
         conn,
         Comparison(
@@ -629,7 +773,40 @@ def submit_comparison(
             created_at=datetime.now(UTC),
         ),
     )
+    compare_state = request.app.state.compare_state
+    compare_state.version += 1
+    compare_state.last_write = _compare_pair_key(opening_a_id, opening_b_id, target)
+    _promote_speculation(request, judged=compare_state.last_write, version=compare_state.version)
+    if not request.app.state.compare_progress.running:
+        _start_compare_prescreen(request, config, background_tasks)
     return RedirectResponse("/compare", status_code=303)
+
+
+def _promote_speculation(
+    request: Request,
+    *,
+    judged: tuple[frozenset[str], str],
+    version: int,
+) -> None:
+    """Turn the speculation computed during the operator's thinking time into the live
+    suggestion. It was computed with `judged` excluded but without knowing its outcome, so
+    it is stale-by-one by construction and is published at the *previous* version to say
+    so — `_staleness_rejection` then vets it on the ordinary path rather than it being
+    waved through as fresh.
+
+    A speculation computed against a different on-screen pair is not promoted: it answers
+    a question the operator didn't end up being asked."""
+    compare_cache = request.app.state.compare_cache
+    request.app.state.speculation_in_flight_for = None
+    if compare_cache.speculative is None or compare_cache.speculative_for != judged:
+        return
+    _compare_log.info("promoting speculation to live suggestion (compare_version=%s)", version)
+    compare_cache.version = version - 1
+    compare_cache.suggestion = compare_cache.speculative
+    compare_cache.jev_read = compare_cache.speculative_jev_read
+    compare_cache.speculative = None
+    compare_cache.speculative_jev_read = None
+    compare_cache.speculative_for = None
 
 
 @router.get("/compare-status", response_class=HTMLResponse)

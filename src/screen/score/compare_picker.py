@@ -299,6 +299,7 @@ def select_comparison(
     config: ScoringConfig,
     rulings_by_opening: dict[str, dict[str, Fit]] | None = None,
     rng: np.random.Generator | None = None,
+    excluded_triples: set[tuple[frozenset[str], str]] | None = None,
 ) -> ComparisonSuggestion | None:
     """Return the most useful comparison opportunity, or `None` if none qualifies.
     Every dimension is fit over the whole pool (unexamined openings enter at their
@@ -318,7 +319,10 @@ def select_comparison(
     each candidate's final score so a single judgment can't permanently sink a pair's
     priority; `rng` defaults to a fresh unseeded generator (the picker doesn't need
     run-to-run reproducibility the way `rank_pool` does), but callers wanting determinism
-    (tests, calibration replay) can pass their own.
+    (tests, calibration replay) can pass their own. `excluded_triples` removes specific
+    (unordered pair, dimension) triples from the menu for this call only, without
+    recording anything — the speculative pre-screen uses it to answer "what would come
+    next" while the operator is still deciding the triple in front of them.
     """
     if len(opening_ids) < _MIN_PAIR:
         return None
@@ -334,7 +338,11 @@ def select_comparison(
         )
         provisionally_settled_by_dimension[target] = _provisionally_settled_pairs(
             comparisons_by_target.get(target, [])
-        )
+        ) | {
+            pair
+            for pair, excluded_target in (excluded_triples or set())
+            if excluded_target == target
+        }
         posteriors[target] = _dimension_posterior(
             target,
             opening_ids,
