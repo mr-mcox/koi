@@ -47,7 +47,8 @@ function ExtractAssertions(
     - Do NOT duplicate claims already present in existing assertions.
     - Produce only claims that are directly supported by the text below.
       Do not infer or speculate.
-    - Aim for 3–8 assertions per chunk. More than 10 is a sign of over-extraction.
+    - Produce ONLY claims that provide concrete evidence for the rubric dimensions.
+      Do not extract assertions just for the sake of it; if there is no concrete evidence in the chunk, return 0 assertions.
 
     ## Existing assertions (do not duplicate)
     {{ existing_assertions }}

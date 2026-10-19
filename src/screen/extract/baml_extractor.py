@@ -8,6 +8,7 @@ Jev confidently judges irrelevant to its target is dropped before persistence.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from screen.baml_client.sync_client import b
@@ -37,8 +38,8 @@ def classify_and_filter(
 ) -> list[Assertion]:
     """Classify each extracted assertion and drop anything Jev confidently judges
     irrelevant to its target, before it ever reaches storage."""
-    hydrated: list[Assertion] = []
-    for extracted_assertion in extracted:
+
+    def _classify_one(extracted_assertion: ExtractedAssertion) -> Assertion | None:
         classification = classifier.classify(
             rubric_text, extracted_assertion.chunk, extracted_assertion.target
         )
@@ -46,9 +47,13 @@ def classify_and_filter(
             not classification.is_relevant
             and classification.relevance_confidence >= RELEVANCE_DROP_THRESHOLD
         ):
-            continue
-        hydrated.append(hydrate_assertion(extracted_assertion, classification))
-    return hydrated
+            return None
+        return hydrate_assertion(extracted_assertion, classification)
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(_classify_one, extracted)
+
+    return [r for r in results if r is not None]
 
 
 class BAMLExtractor:

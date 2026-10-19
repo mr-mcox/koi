@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -1805,75 +1805,220 @@ def test_index_links_to_archive(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert 'href="/archive"' in response.text
+
+
 def test_index_queue_identifies_stale_items(client: TestClient, db_path: Path) -> None:
     conn = connect(db_path)
     now = datetime.now(UTC)
-    from datetime import timedelta
     upsert_company(conn, Company(id="co", name="Co", created_at=now))
     o1 = Opening(
-        id="o1", company_id="co", title="O1", url="http://o1",
-        research_trace_id="t1", created_at=now - timedelta(days=20)
+        id="o1",
+        company_id="co",
+        title="O1",
+        url="http://o1",
+        research_trace_id="t1",
+        created_at=now - timedelta(days=20),
     )
     upsert_opening(conn, o1)
-    append_assertions(conn, [
-        Assertion(id="a1", target="craft_direction", fit="Strong", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o1")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a1",
+                target="craft_direction",
+                fit="Strong",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o1",
+    )
     o2 = Opening(
-        id="o2", company_id="co", title="O2", url="http://o2",
-        research_trace_id="t2", created_at=now - timedelta(days=30)
+        id="o2",
+        company_id="co",
+        title="O2",
+        url="http://o2",
+        research_trace_id="t2",
+        created_at=now - timedelta(days=30),
     )
     upsert_opening(conn, o2)
-    append_assertions(conn, [
-        Assertion(id="a2", target="craft_direction", fit="Mixed", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o2")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a2",
+                target="craft_direction",
+                fit="Mixed",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o2",
+    )
     o3 = Opening(
-        id="o3", company_id="co", title="O3", url="http://o3",
-        research_trace_id="t3", created_at=now - timedelta(days=15)
+        id="o3",
+        company_id="co",
+        title="O3",
+        url="http://o3",
+        research_trace_id="t3",
+        created_at=now - timedelta(days=15),
     )
     upsert_opening(conn, o3)
-    append_assertions(conn, [
-        Assertion(id="a3", target="craft_direction", fit="Poor", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o3")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a3",
+                target="craft_direction",
+                fit="Poor",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o3",
+    )
     response = client.get("/")
     assert response.status_code == 200
     assert "is-stale" in response.text
 
+
 def test_prune_stale_moves_only_stale_items_to_closed(client: TestClient, db_path: Path) -> None:
     conn = connect(db_path)
     now = datetime.now(UTC)
-    from datetime import timedelta
 
     upsert_company(conn, Company(id="co", name="Co", created_at=now))
 
     # rank 1: age 20 (not stale)
     o1 = Opening(
-        id="o1", company_id="co", title="O1", url="http://o1",
-        research_trace_id="t1", created_at=now - timedelta(days=20)
+        id="o1",
+        company_id="co",
+        title="O1",
+        url="http://o1",
+        research_trace_id="t1",
+        created_at=now - timedelta(days=20),
     )
     upsert_opening(conn, o1)
-    append_assertions(conn, [
-        Assertion(id="a1", target="craft_direction", fit="Strong", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o1")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a1",
+                target="craft_direction",
+                fit="Strong",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o1",
+    )
 
     # rank 2: age 30 (stale)
     o2 = Opening(
-        id="o2", company_id="co", title="O2", url="http://o2",
-        research_trace_id="t2", created_at=now - timedelta(days=30)
+        id="o2",
+        company_id="co",
+        title="O2",
+        url="http://o2",
+        research_trace_id="t2",
+        created_at=now - timedelta(days=30),
     )
     upsert_opening(conn, o2)
-    append_assertions(conn, [
-        Assertion(id="a2", target="craft_direction", fit="Mixed", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o2")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a2",
+                target="craft_direction",
+                fit="Mixed",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o2",
+    )
 
     # rank 3: age 15 (not stale yet, threshold is 26)
     o3 = Opening(
-        id="o3", company_id="co", title="O3", url="http://o3",
-        research_trace_id="t3", created_at=now - timedelta(days=15)
+        id="o3",
+        company_id="co",
+        title="O3",
+        url="http://o3",
+        research_trace_id="t3",
+        created_at=now - timedelta(days=15),
     )
     upsert_opening(conn, o3)
-    append_assertions(conn, [
-        Assertion(id="a3", target="craft_direction", fit="Poor", provenance="ratified", chunk="test chunk", citations=[Citation(url="http://test", host="test", source_provenance="company-owned", independent=True, quote="test quote")], created_at=now)
-    ], opening_id="o3")
+    append_assertions(
+        conn,
+        [
+            Assertion(
+                id="a3",
+                target="craft_direction",
+                fit="Poor",
+                provenance="ratified",
+                chunk="test chunk",
+                citations=[
+                    Citation(
+                        url="http://test",
+                        host="test",
+                        source_provenance="company-owned",
+                        independent=True,
+                        quote="test quote",
+                    )
+                ],
+                created_at=now,
+            )
+        ],
+        opening_id="o3",
+    )
 
     response = client.post("/prune-stale", follow_redirects=False)
     assert response.status_code in (302, 303)
