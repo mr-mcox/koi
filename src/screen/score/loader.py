@@ -41,4 +41,6 @@ def load_scoring_config(
         jev_confidence_threshold=float(scoring["jev_confidence_threshold"]),
         jev_few_shot_examples=int(scoring["jev_few_shot_examples"]),
         comparison_jitter_sigma=float(scoring["comparison_jitter_sigma"]),
+        tie_commit_threshold=float(scoring["tie_commit_threshold"]),
+        winner_commit_threshold=float(scoring["winner_commit_threshold"]),
     )

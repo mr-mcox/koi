@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typesafe_sdk import Noul, NoulAnswer, NoulCriteria, TypeSafeClient
 
+from screen.score.types import ScoringConfig
 from screen.verdict.protocol import FewShotExample, JevRuling, NoulJudgment, RubricVerdict
 from screen.verdict.routing import route_verdict
 
@@ -36,9 +37,13 @@ class JevVerdictProvider:
     this module (e.g. at app startup) must not require an API key to be present.
 
     Returns a `RubricVerdict` routed by `route_verdict` logic: auto-commits high-confidence
-    pairs and surfaces uncertain ones to the operator."""
+    pairs and surfaces uncertain ones to the operator.
 
-    def __init__(self, client: TypeSafeClient | None = None) -> None:
+    `config` supplies the routing thresholds — `tie_commit_threshold` and
+    `winner_commit_threshold` — so they are operator-owned rather than hardcoded."""
+
+    def __init__(self, config: ScoringConfig, client: TypeSafeClient | None = None) -> None:
+        self._config = config
         self._explicit_client = client
         self._client: TypeSafeClient | None = None
 
@@ -50,7 +55,11 @@ class JevVerdictProvider:
         few_shot_examples: list[FewShotExample],
     ) -> RubricVerdict:
         ruling = self.get_ruling(rubric_text, digest_a, digest_b, few_shot_examples)
-        decision = route_verdict(ruling)
+        decision = route_verdict(
+            ruling,
+            tie_commit_threshold=self._config.tie_commit_threshold,
+            winner_commit_threshold=self._config.winner_commit_threshold,
+        )
         return decision.verdict
 
     def get_ruling(

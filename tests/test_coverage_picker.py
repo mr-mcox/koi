@@ -46,6 +46,8 @@ def test_pair_priority_zero_skips_pair():
         jev_confidence_threshold=0.75,
         jev_few_shot_examples=12,
         comparison_jitter_sigma=0.3,
+        tie_commit_threshold=0.90,
+        winner_commit_threshold=0.75,
     )
     res = select_comparison(
         ["a", "b"],

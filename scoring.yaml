@@ -71,6 +71,15 @@ comparison_beta:
 # few-shot-calibrated Jev output, not a guess made now.
 jev_confidence_threshold: 0.75
 
+# Routing thresholds for Jev's raw probability answers → commit/surface decision.
+# `tie_commit_threshold` is applied to the confidence that there is *no* clear winner
+# (1 - p_true of the clear_winner question): at or above this, the pair auto-commits as
+# a tie. `winner_commit_threshold` governs both the clear-winner signal and the
+# directional (A-vs-B) confidence: both must clear it for a win to auto-commit.
+# Unmeasured placeholders, same status as jev_confidence_threshold above.
+tie_commit_threshold: 0.90
+winner_commit_threshold: 0.75
+
 # Few-shot cap for Jev's rubric calibration. Examples are sampled randomly from the
 # operator's own past rulings on the target dimension, so Jev sees a different subset
 # each time rather than a fixed, possibly-biased set. 12 is still cheap enough to try and

@@ -40,6 +40,8 @@ class ScoringConfig:
     jev_confidence_threshold: float
     jev_few_shot_examples: int
     comparison_jitter_sigma: float
+    tie_commit_threshold: float
+    winner_commit_threshold: float
 
     @property
     def total_weight(self) -> int:

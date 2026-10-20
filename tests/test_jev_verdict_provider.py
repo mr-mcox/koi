@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from typesafe_sdk import ChoiceAnswer, NoulAnswer, SystemOneResponse, Usage
 
+from screen.score.loader import load_scoring_config
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import FewShotExample, JevRuling
+
+_CONFIG = load_scoring_config()
 
 
 class FakeTypeSafeClient:
@@ -41,7 +44,7 @@ class TestJevVerdictProviderGetRuling:
 
     def test_converts_noul_answers_to_ruling(self) -> None:
         client = FakeTypeSafeClient(_response(0.81, 0.72))
-        provider = JevVerdictProvider(client)
+        provider = JevVerdictProvider(_CONFIG, client)
 
         ruling = provider.get_ruling("rubric", "digest a", "digest b", _few_shot())
 
@@ -51,7 +54,7 @@ class TestJevVerdictProviderGetRuling:
 
     def test_keeps_raw_p_true_on_false_answers(self) -> None:
         client = FakeTypeSafeClient(_response(0.3, 0.4))
-        provider = JevVerdictProvider(client)
+        provider = JevVerdictProvider(_CONFIG, client)
 
         ruling = provider.get_ruling("rubric", "digest a", "digest b", _few_shot())
 
@@ -60,7 +63,7 @@ class TestJevVerdictProviderGetRuling:
 
     def test_false_at_exactly_0_5_stays_raw(self) -> None:
         client = FakeTypeSafeClient(_response(0.5, 0.5))
-        provider = JevVerdictProvider(client)
+        provider = JevVerdictProvider(_CONFIG, client)
 
         ruling = provider.get_ruling("rubric", "digest a", "digest b", _few_shot())
 
@@ -69,7 +72,7 @@ class TestJevVerdictProviderGetRuling:
 
     def test_passed_state_to_jev(self) -> None:
         client = FakeTypeSafeClient(_response(0.9, 0.9))
-        provider = JevVerdictProvider(client)
+        provider = JevVerdictProvider(_CONFIG, client)
 
         provider.get_ruling("my rubric", "digest a", "digest b", _few_shot())
 
@@ -90,7 +93,7 @@ class TestJevVerdictProviderGetRuling:
                 "a_is_better": NoulAnswer(noul=0.9),
             },
         )
-        provider = JevVerdictProvider(FakeTypeSafeClient(response))
+        provider = JevVerdictProvider(_CONFIG, FakeTypeSafeClient(response))
 
         try:
             provider.get_ruling("rubric", "digest a", "digest b", _few_shot())

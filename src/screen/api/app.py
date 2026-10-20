@@ -25,6 +25,7 @@ from screen.env import load_env
 from screen.intake.worker import run_intake_worker
 from screen.paths import data_dir
 from screen.research.batch import BatchEngine
+from screen.score.loader import load_scoring_config
 from screen.store.db import connect as db_connect
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import VerdictProvider
@@ -114,7 +115,9 @@ def create_app(
     app.state.speculation_in_flight_for = None
     _enable_compare_instrumentation()
     app.state.verdict_provider = (
-        verdict_provider if verdict_provider is not None else JevVerdictProvider()
+        verdict_provider
+        if verdict_provider is not None
+        else JevVerdictProvider(load_scoring_config())
     )
     app.include_router(web_router)
     app.include_router(api_router)
