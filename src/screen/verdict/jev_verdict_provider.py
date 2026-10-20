@@ -1,41 +1,42 @@
-"""Live `VerdictProvider` adapter: Jev (TypeSafe's System One model) rules a candidate
-pair `a`/`b`/`tie` against the rubric text, returning its own calibrated confidence.
+"""Live `VerdictProvider` adapter: Jev (TypeSafe's System One model) answers two
+Noul questions about a candidate pair against the rubric text, returning raw answers
+that are then routed by pure logic to a verdict.
 
 Exempt from unit-test coverage (see `pyproject.toml` / `scripts/check.py` OMIT lists):
-calls the paid TypeSafe API. Unit tests inject a fake `VerdictProvider` via the Protocol
+calls the paid TypeSafe API. Unit tests inject a fake provider via the Protocol
 instead, mirroring `baml_digester` / `baml_extractor`.
 """
 
 from __future__ import annotations
 
-from typesafe_sdk import Choice, ChoiceAnswer, TypeSafeClient
+from typesafe_sdk import Noul, NoulAnswer, NoulCriteria, TypeSafeClient
 
-from screen.verdict.protocol import FewShotExample, RubricVerdict, VerdictOutcome
+from screen.verdict.protocol import FewShotExample, JevRuling, NoulJudgment, RubricVerdict
+from screen.verdict.routing import route_verdict
 
-_CRITERIA = {
-    "a": "digest_a scores higher than digest_b on this rubric dimension",
-    "b": "digest_b scores higher than digest_a on this rubric dimension",
-    "tie": "the rubric would score digest_a and digest_b the same on this dimension",
-}
+_CLEAR_WINNER_CRITERIA = NoulCriteria(
+    true="One digest is clearly and materially better than the other on this rubric dimension.",
+    false="Neither digest is clearly better; differences are immaterial, tradeoffs balance out, or there is insufficient evidence to distinguish them.",
+)
+
+_WINNER_CRITERIA = NoulCriteria(
+    true="digest_a scores higher than digest_b on this rubric dimension",
+    false="digest_b scores higher than digest_a on this rubric dimension, or the digests are tied",
+)
 
 
-def _narrow_outcome(choice: str) -> VerdictOutcome:
-    """Jev's `Choice.choice` is typed `str` — the SDK can't statically guarantee it's
-    one of our criteria keys. Validate at this trust boundary rather than trust it."""
-    if choice == "a":
-        return "a"
-    if choice == "b":
-        return "b"
-    if choice == "tie":
-        return "tie"
-    raise ValueError(f"Jev returned a choice outside {{a, b, tie}}: {choice!r}")
+def _judgment(answer: NoulAnswer) -> NoulJudgment:
+    return NoulJudgment(p_true=answer.noul)
 
 
 class JevVerdictProvider:
-    """Satisfies `VerdictProvider`. Calls `system_one` with a single `Choice` question
-    among {a, b, tie}; few-shot examples ride along in `state` for Jev to calibrate on.
-    Lazily constructs the client on first use, mirroring the other live adapters —
-    importing this module (e.g. at app startup) must not require an API key to be present."""
+    """Calls Jev's `system_one` with two parallel Noul questions about a rubric dimension.
+
+    Lazily constructs the client on first use, mirroring the other live adapters — importing
+    this module (e.g. at app startup) must not require an API key to be present.
+
+    Returns a `RubricVerdict` routed by `route_verdict` logic: auto-commits high-confidence
+    pairs and surfaces uncertain ones to the operator."""
 
     def __init__(self, client: TypeSafeClient | None = None) -> None:
         self._explicit_client = client
@@ -48,8 +49,21 @@ class JevVerdictProvider:
         digest_b: str,
         few_shot_examples: list[FewShotExample],
     ) -> RubricVerdict:
+        ruling = self.get_ruling(rubric_text, digest_a, digest_b, few_shot_examples)
+        decision = route_verdict(ruling)
+        return decision.verdict
+
+    def get_ruling(
+        self,
+        rubric_text: str,
+        digest_a: str,
+        digest_b: str,
+        few_shot_examples: list[FewShotExample],
+    ) -> JevRuling:
+        """Call Jev and return raw answers without routing logic."""
         if self._client is None:
             self._client = self._explicit_client or TypeSafeClient()
+
         state = {
             "rubric": rubric_text,
             "digest_a": digest_a,
@@ -62,16 +76,26 @@ class JevVerdictProvider:
         response = self._client.system_one(
             state,
             {
-                "verdict": Choice(
-                    instructions=(
-                        "Rule which digest the rubric would score higher on this "
-                        "dimension, or tie if the rubric would score them the same."
-                    ),
-                    criteria=_CRITERIA,
-                )
+                "clear_winner": Noul(
+                    instructions="Is there a clear, material winner between digest_a and digest_b according to the rubric?",
+                    criteria=_CLEAR_WINNER_CRITERIA,
+                ),
+                "a_is_better": Noul(
+                    instructions="Is digest_a the winner according to the rubric?",
+                    criteria=_WINNER_CRITERIA,
+                ),
             },
         )
-        answer = response.answers["verdict"]
-        if not isinstance(answer, ChoiceAnswer):
-            raise ValueError(f"Jev returned a non-Choice answer for a Choice question: {answer!r}")
-        return RubricVerdict(outcome=_narrow_outcome(answer.choice), confidence=answer.confidence)
+
+        clear_winner = response.answers["clear_winner"]
+        a_is_better = response.answers["a_is_better"]
+
+        if not isinstance(clear_winner, NoulAnswer):
+            raise ValueError(f"Jev returned a non-Noul answer for clear_winner: {clear_winner!r}")
+        if not isinstance(a_is_better, NoulAnswer):
+            raise ValueError(f"Jev returned a non-Noul answer for a_is_better: {a_is_better!r}")
+
+        return JevRuling(
+            clear_winner=_judgment(clear_winner),
+            a_is_better=_judgment(a_is_better),
+        )

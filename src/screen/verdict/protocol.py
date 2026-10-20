@@ -33,6 +33,27 @@ class RubricVerdict:
     confidence: float
 
 
+@dataclass(frozen=True)
+class NoulJudgment:
+    """One binary Noul answer from Jev.
+
+    `p_true` is Jev's estimated probability that the answer is True. A false answer's
+    confidence is therefore `1 - p_true`.
+    """
+
+    p_true: float
+
+
+@dataclass(frozen=True)
+class JevRuling:
+    """Jev's raw answers to two Noul questions: whether there is a clear winner, and
+    whether A is the winner. These are interpreted by routing logic to produce a
+    `VerdictOutcome` and auto-commit policy."""
+
+    clear_winner: NoulJudgment
+    a_is_better: NoulJudgment
+
+
 @runtime_checkable
 class VerdictProvider(Protocol):
     def rule(
