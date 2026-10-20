@@ -29,9 +29,11 @@ def aggregate_uncertainty(
 
 
 def boundary_weight(p_top_k: float) -> float:
-    """How contested an opening's top-K membership is: `p*(1-p)`, maximized at 0.5
-    (genuinely on the boundary) and zero at 0 or 1 (settled in or out)."""
-    return p_top_k * (1 - p_top_k)
+    """How relevant an opening is to the top-K pool. Replaced `p*(1-p)` (which
+    forced dead-heats at exactly the boundary) with `p` itself, so roles safely
+    in the pool remain relevant for upside discovery if they still have high
+    variance."""
+    return p_top_k
 
 
 def target_suppression(stall_count: int) -> float:

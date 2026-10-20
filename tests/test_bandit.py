@@ -101,18 +101,13 @@ def test_draw_opening_is_deterministic_given_a_seeded_generator() -> None:
     assert seq_a == seq_b
 
 
-def test_boundary_weight_is_maximized_at_the_boundary_and_zero_at_the_extremes() -> None:
-    """`boundary_weight` peaks at p_top_k=0.5 (maximally contested) and vanishes at
-    p_top_k=0 or 1 (settled in or out) — the shape `p*(1-p)` guarantees this."""
-    assert boundary_weight(0.5) == pytest.approx(0.25)
+def test_boundary_weight_reflects_upside() -> None:
+    """`boundary_weight` returns `p_top_k` to maintain relevance for roles safely
+    in the pool (upside discovery) rather than dropping them to zero."""
+    assert boundary_weight(0.5) == pytest.approx(0.5)
     assert boundary_weight(0.0) == pytest.approx(0.0)
-    assert boundary_weight(1.0) == pytest.approx(0.0)
-    assert boundary_weight(0.5) > boundary_weight(0.2)
-    assert boundary_weight(0.5) > boundary_weight(0.8)
-
-
-def test_boundary_weight_is_symmetric_around_the_midpoint() -> None:
-    assert boundary_weight(0.3) == pytest.approx(boundary_weight(0.7))
+    assert boundary_weight(1.0) == pytest.approx(1.0)
+    assert boundary_weight(0.9) > boundary_weight(0.1)
 
 
 def test_target_suppression_is_identity_at_zero() -> None:

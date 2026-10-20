@@ -29,6 +29,11 @@ from screen.score.types import ScoringConfig
 from screen.types import Assertion, Fit
 
 _MIN_PAIR = 2
+_PAIR_SKIP_THRESHOLD = 0.05
+"""P(A > B) floor/ceiling: pairs outside [_PAIR_SKIP_THRESHOLD, 1 - _PAIR_SKIP_THRESHOLD]
+are skipped before boundary_weight and before reaching Jev. Stops overwhelmingly decided
+pairs from burning Jev calls, restoring the pre-screen chain length that the old
+closeness-as-multiplier provided for free."""
 
 
 @dataclass(frozen=True)
@@ -76,17 +81,34 @@ def _qualify_for_dimension(
     return qualified
 
 
-def _provisionally_settled_pairs(comparisons: list[Comparison]) -> set[frozenset[str]]:
-    """Pairs whose *latest* comparison on this dimension is provisional — hard-excluded
-    from the picker's menu. Callers pass comparisons in the same oldest-first order
-    `_latest_per_pair` assumes (`comparisons_for_target`'s `created_at` order), so the
-    last occurrence per pair is authoritative: a later operator ruling on a pair that was
-    once auto-tied removes it from this set, exactly as `_latest_per_pair` displaces the
-    provisional row in the fit itself."""
-    latest_provenance: dict[frozenset[str], str] = {}
+def _settled_pairs(
+    target: str,
+    comparisons: list[Comparison],
+    assertions_by_opening: dict[str, list[Assertion]],
+) -> set[frozenset[str]]:
+    """Pairs whose *latest* comparison on this dimension is either provisional (hard-excluded),
+    or an operator ruling where the underlying digest versions haven't changed (loop fix)."""
+    latest_comparison: dict[frozenset[str], Comparison] = {}
     for c in comparisons:
-        latest_provenance[frozenset({c.winner, c.loser})] = c.provenance
-    return {pair for pair, provenance in latest_provenance.items() if provenance == "provisional"}
+        latest_comparison[frozenset({c.winner, c.loser})] = c
+
+    settled = set()
+    for pair, c in latest_comparison.items():
+        if c.provenance == "provisional":
+            settled.add(pair)
+            continue
+
+        # For operator rulings, check if new evidence arrived since the judgment
+        count_winner = str(
+            sum(1 for a in assertions_by_opening.get(c.winner, []) if a.target == target)
+        )
+        count_loser = str(
+            sum(1 for a in assertions_by_opening.get(c.loser, []) if a.target == target)
+        )
+        if c.winner_digest_version == count_winner and c.loser_digest_version == count_loser:
+            settled.add(pair)
+
+    return settled
 
 
 def _auto_ties(
@@ -241,32 +263,39 @@ def _best_triple(
     rng: np.random.Generator,
     gate_on_boundary: bool,
 ) -> tuple[float, ComparisonSuggestion] | None:
-    """The `(pair, dimension)` with the highest jittered priority. A pair's priority is
-    `closeness_overall × boundary_weight(max(p_top_k))` — both use the full rubric weight
-    (via `_overall_diff`), because they measure the real weighted rollup and its relevance
-    to the top-K cutoff; a pair where neither opening could plausibly enter or leave top-K
-    scores near zero regardless of how contested the two openings are against each other.
-    `gate_on_boundary=False` skips that factor entirely (score is `closeness` alone) —
-    when the whole pool fits within top-K, every opening's `p_top_k` is trivially 1.0 and
-    `boundary_weight` would zero out every candidate even though relative order inside a
-    small pool is still exactly what the operator is judging. Within a qualifying pair,
-    `_best_dimension_for_pair` picks the dimension; jitter is applied once per triple,
-    after both choices, so it can't make a boundary-irrelevant pair suddenly worth asking
-    about."""
+    """`(pair, dimension)` with the highest jittered priority. A pair's priority is
+    `boundary_weight(max(p_top_k))` — pairs where neither opening's top-K membership
+    could still move score near zero. Pairs where the overall outcome is overwhelmingly
+    settled (P(A > B) outside [0.05, 0.95]) are hard-skipped before `boundary_weight`
+    and before reaching Jev — cheap math, not a Jev call, restoring the pre-screen
+    chain length that `closeness`-as-multiplier previously provided for free. The gate
+    is not the old dead-heat-seeking `closeness` — it is a floor, not a multiplier, so
+    a strong-vs-unknown pair (high upside variance, boundary-relevant) still makes it
+    through even if the current expected outcome is lopsided, as long as uncertainty
+    spans the 5-95% band."""
     best_score = -1.0
     best: ComparisonSuggestion | None = None
     for i, a in enumerate(opening_ids):
         for b in opening_ids[i + 1 :]:
             mean_diff, var_diff = _overall_diff(a, b, posteriors, config)
-            closeness = 0.5 - abs(_p_a_gt_b(mean_diff, var_diff) - 0.5)
-            if closeness <= 0.0:
+            # Hard skip pairs that are overwhelmingly settled overall — a cheap
+            # exclusion gate, not the old closeness multiplier. The threshold
+            # (5% tail on each side) stops obviously decided pairs from reaching
+            # Jev, restoring the pre-screen chain length that closeness-as-
+            # multiplier previously provided for free. It is a floor, not a
+            # multiplier: a strong-vs-unknown pair still makes it through as long
+            # as overall uncertainty spans the 5-95% band.
+            p_a_gt_b = _p_a_gt_b(mean_diff, var_diff)
+            if p_a_gt_b < _PAIR_SKIP_THRESHOLD or p_a_gt_b > 1.0 - _PAIR_SKIP_THRESHOLD:
                 continue
+            # Pair priority: boundary_weight (relevance to the Top-K pool) only —
+            # not the old dead-heat-seeking closeness multiplier.
             boundary = (
                 max(boundary_weight(p_top_k_by_opening[a]), boundary_weight(p_top_k_by_opening[b]))
                 if gate_on_boundary
                 else 1.0
             )
-            pair_priority = closeness * boundary
+            pair_priority = boundary
             if pair_priority <= 0.0:
                 continue
             dimension_choice = _best_dimension_for_pair(
@@ -336,8 +365,8 @@ def select_comparison(
                 target, opening_ids, assertions_by_opening, rulings_by_opening, config
             )
         )
-        provisionally_settled_by_dimension[target] = _provisionally_settled_pairs(
-            comparisons_by_target.get(target, [])
+        provisionally_settled_by_dimension[target] = _settled_pairs(
+            target, comparisons_by_target.get(target, []), assertions_by_opening
         ) | {
             pair
             for pair, excluded_target in (excluded_triples or set())

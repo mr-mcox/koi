@@ -32,6 +32,8 @@ class Comparison:
     tie: bool = False
     provenance: ComparisonProvenance = "operator"
     weight: float = 1.0
+    winner_digest_version: str | None = None
+    loser_digest_version: str | None = None
 
 
 def comparison_beta(comparison: Comparison, params: ComparisonBetaParams) -> float:

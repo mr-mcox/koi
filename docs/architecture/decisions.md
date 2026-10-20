@@ -256,6 +256,10 @@ directly on every suggested pair with cached digests on both sides; `fastembed`,
 `src/screen/embed/`, `similarity_tau`, and the unwired bulk `provisional_verdicts()` composer
 were removed, not retained as dead code.
 
+**Addendum: The "Variance Decay" Loop and Digest-Aware Exclusion:** The original design explicitly chose to leave operator rulings in the pool, assuming variance decay would naturally suppress them. This failed: `_latest_per_pair` intentionally drops old operator rulings to keep only the newest, so asking the operator twice yields static variance, creating an infinite loop for dead-heats at the boundary. The fix was digest-aware hard exclusion: the picker now structurally excludes any pair/dimension whose latest comparison is an operator ruling, *unless* the underlying digest versions (assertion counts) have changed since the judgment, proving new evidence exists.
+
+**Addendum: Shift to Upside-Discovery:** The picker originally forced candidate pairs into dead-heats via a `closeness` multiplier, and mathematically zeroed out relevance for roles safely inside the Top 5 via `p*(1-p)`. This aggressively penalized high-variance unknowns. `closeness` was removed, and boundary weight was flattened to `p_top_k` (relevance over squabble), so the system now pits high-upside unknowns against known baselines for maximum information gain rather than hunting for perfect ties.
+
 ### S15 · The prior's shape is Gaussian; D6's Uniform survives as moments only · `demonstrated` (measured below) · amends S1/S3
 
 D6 and S3 specify an unexamined dimension as `Uniform(-1, +1)`, and `stats_for_target` still

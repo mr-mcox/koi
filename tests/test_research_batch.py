@@ -287,10 +287,10 @@ def test_eligible_weights_favors_fresh_and_boundary_openings_over_settled_ones(
     tmp_path: Path,
 ) -> None:
     """With a pool bigger than `top_k`, the boundary-weighted draw (product of
-    uncertainty and `p_top_k * (1 - p_top_k)`) gives a wholly unexamined opening and
-    boundary-contested mediocre openings far more weight than a clearly-settled top or
-    bottom opening — the shape agreed in research-targeting.md §Agreed (breadth-first,
-    biased toward fresh openings)."""
+    uncertainty and `p_top_k`) gives a wholly unexamined opening the most weight.
+    A clearly-settled top opening gets more weight than a mediocre one, reflecting
+    the shift to upside discovery / validation rather than squabbling over the
+    boundary."""
     config = load_scoring_config()
     targets = list(config.dimension_weights)
     for opening_id, company_id in [
@@ -311,10 +311,10 @@ def test_eligible_weights_favors_fresh_and_boundary_openings_over_settled_ones(
 
     weights = eligible_weights(conn, config)
     conn.close()
-    assert weights["fresh--eng"] > weights["mediocre0--eng"]
-    assert weights["mediocre0--eng"] > weights["top--eng"]
+    assert weights["fresh--eng"] > weights["top--eng"]
+    assert weights["top--eng"] > weights["mediocre0--eng"]
     assert weights["mediocre0--eng"] > weights["bottom--eng"]
-    assert weights["top--eng"] == pytest.approx(0.0, abs=1e-6)
+    assert weights["bottom--eng"] == pytest.approx(0.0, abs=1e-6)
     assert weights["bottom--eng"] == pytest.approx(0.0, abs=1e-6)
 
 
