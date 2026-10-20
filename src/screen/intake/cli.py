@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 import click
 
-from screen.digest.service import update_digests_for_opening
+from screen.digest.service import digest_for_target, update_digests_for_opening
 from screen.extract.baml_extractor import RELEVANCE_DROP_THRESHOLD
 from screen.extract.prompt import rubric_text_for_baml, rubric_text_for_dimension
 from screen.intake.pipeline import db_path_for
@@ -23,7 +23,6 @@ from screen.store.repo import (
     assertion_rulings_for_opening,
     assertions_for_opening,
     delete_assertion,
-    delete_dimension_digests_for_opening,
     list_openings,
     update_assertion_classification,
 )
@@ -107,25 +106,33 @@ def backfill_jev_classification(dry_run: bool) -> None:
     """
     conn = connect(db_path_for(data_dir()))
     classifier = _build_assertion_classifier()
+    digester = _build_digester()
+    rubric = rubric_text_for_baml()
     openings = list_openings(conn)
     openings_touched = 0
     for opening in openings:
         assertions = assertions_for_opening(conn, opening.id)
         ruled_ids = {r.assertion_id for r in assertion_rulings_for_opening(conn, opening.id)}
-        # A list, not a generator passed straight to `any()`: `any()` short-circuits on the
-        # first `True`, which would silently skip classifying every assertion after the
-        # first one that needed reclassifying (the bug this comment replaced).
-        results = [
-            _reclassify_one_assertion(
+        touched_targets: set[str] = set()
+        for assertion in assertions:
+            changed = _reclassify_one_assertion(
                 conn, opening.id, assertion, classifier, ruled_ids, dry_run=dry_run
             )
-            for assertion in assertions
-        ]
-        touched = any(results)
-        if touched:
+            if changed:
+                touched_targets.add(assertion.target)
+        if touched_targets:
             openings_touched += 1
             if not dry_run:
-                delete_dimension_digests_for_opening(conn, opening.id)
+                for target in touched_targets:
+                    digest_for_target(
+                        conn,
+                        opening_id=opening.id,
+                        target=target,
+                        digester=digester,
+                        rubric_text=rubric,
+                        now=datetime.now(UTC),
+                        force=True,
+                    )
     prefix = "[dry-run] " if dry_run else ""
     click.echo(f"{prefix}backfilled {openings_touched}/{len(openings)} opening(s)")
 

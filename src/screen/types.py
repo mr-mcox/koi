@@ -191,7 +191,10 @@ class AssertionRuling(BaseModel):
 
 
 class DimensionDigest(BaseModel):
-    """Cached prose gist of a dimension's assertion mix for one opening.
+    """One append-only version of the prose gist of a dimension's assertion mix for one
+    opening. Each recomputation inserts a new row rather than replacing the last; `id` is
+    the durable version identifier a `Comparison` can reference to say which digest the
+    operator actually saw.
 
     Never a verdict, count, or Fit word (S7 · The rollup is mechanical; the model
     never renders verdicts).
@@ -202,6 +205,7 @@ class DimensionDigest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
     opening_id: Annotated[str, Field(min_length=1)]
     target: Target
     digest: Annotated[str, Field(min_length=1)]
@@ -218,8 +222,10 @@ class Comparison(BaseModel):
     judgment is kept, not just the latest — the batch fit reads the latest per (unordered
     pair, dimension), the calibration log keeps them all regardless.
     `provenance` distinguishes operator-ratified rows from provisional similarity ties.
-    `opening_a_digest_version`/`opening_b_digest_version` identify the digest versions shown
-    at judgment time once `dimension_digests` becomes append-only; until then both are `None`."""
+    `opening_a_digest_version`/`opening_b_digest_version` are the `DimensionDigest.id`
+    values shown at judgment time — `dimension_digests` is append-only, so these point at
+    a specific historical digest row, not just the latest. `None` for comparisons recorded
+    before this field was threaded through, or for a side with no digest yet."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

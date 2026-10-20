@@ -35,7 +35,7 @@ from screen.api.pool import (
 from screen.api.scoring import latest_ruling_by_assertion
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
-from screen.digest.service import digest_for_target
+from screen.digest.service import digest_record_for_target
 from screen.extract.prompt import rubric_text_for_baml
 from screen.research.batch import eta_text
 from screen.score.compare_picker import ComparisonSuggestion
@@ -85,6 +85,7 @@ templates.env.filters["eta_text"] = eta_text
 class _DimensionGroup:
     target: str
     digest: str
+    digest_version: str | None
     assertions: list[Assertion]
 
 
@@ -233,7 +234,7 @@ def _dimension_groups(
     for target in all_targets:
         target_assertions = by_target.get(target, [])
         if target_assertions:
-            digest = digest_for_target(
+            digest_record = digest_record_for_target(
                 conn,
                 opening_id=opening_id,
                 target=target,
@@ -241,12 +242,16 @@ def _dimension_groups(
                 rubric_text=rubric_text,
                 now=now,
             )
+            digest = digest_record.digest
+            digest_version = digest_record.id
         else:
             digest = "not yet examined"
+            digest_version = None
         groups.append(
             _DimensionGroup(
                 target=target,
                 digest=digest,
+                digest_version=digest_version,
                 assertions=target_assertions,
             )
         )
@@ -463,18 +468,22 @@ def _compare_target_context(
         target,
         _fits(opening_b_id) or None,
     )
+    group_a = _group(opening_a_id)
+    group_b = _group(opening_b_id)
     return {
         "target": target,
         "opening_left": opening_left,
         "opening_right": opening_right,
-        "group_left": _group(opening_left.id),
-        "group_right": _group(opening_right.id),
+        "group_left": group_b if swapped else group_a,
+        "group_right": group_a if swapped else group_b,
         "rulings_left": _rulings(opening_left.id),
         "rulings_right": _rulings(opening_right.id),
         "outcome_left": "b" if swapped else "a",
         "outcome_right": "a" if swapped else "b",
         "fit_values": list(FIT_VALUES),
         "redirect_url": redirect_url,
+        "opening_a_digest_version": group_a.digest_version if group_a else None,
+        "opening_b_digest_version": group_b.digest_version if group_b else None,
         "predicted_a_beats_b": pre_comparison_probability(
             stats_a.mean, stats_a.half_width, stats_b.mean, stats_b.half_width
         ),
@@ -722,6 +731,8 @@ def submit_comparison(
     opening_b_id: Annotated[str, Form()],
     target: Annotated[str, Form()],
     outcome: Annotated[str, Form()],
+    opening_a_digest_version: Annotated[str, Form()] = "",
+    opening_b_digest_version: Annotated[str, Form()] = "",
 ) -> RedirectResponse:
     """Record one operator comparison between two openings on a single scoring
     dimension, then redirect straight to the next comparison the picker hands over —
@@ -770,6 +781,8 @@ def submit_comparison(
             target=cast("Target", target),
             outcome=cast("ComparisonOutcome", outcome),
             predicted_a_beats_b=predicted_a_beats_b,
+            opening_a_digest_version=opening_a_digest_version or None,
+            opening_b_digest_version=opening_b_digest_version or None,
             created_at=datetime.now(UTC),
         ),
     )

@@ -22,8 +22,8 @@ from screen.store.repo import (
     append_assertions,
     append_comparison,
     comparisons_for_target,
+    insert_dimension_digest,
     upsert_company,
-    upsert_dimension_digest,
     upsert_opening,
 )
 from screen.types import Assertion, Citation, Company, Comparison, Opening
@@ -101,7 +101,7 @@ def _seed(conn, digest_a: str, digest_b: str) -> None:  # type: ignore[no-untype
         [_assertion("location", "Strong"), _assertion("craft_direction", "Poor")],
         opening_id="widgets--b",
     )
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--a",
         target="location",
@@ -109,7 +109,7 @@ def _seed(conn, digest_a: str, digest_b: str) -> None:  # type: ignore[no-untype
         assertion_count=1,
         computed_at=_NOW,
     )
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="widgets--b",
         target="location",
@@ -282,7 +282,7 @@ def test_run_prescreen_sources_few_shot_examples_from_operator_rulings(tmp_path:
     )
     append_assertions(conn, [_assertion("location", "Strong")], opening_id="acme--a")
     append_assertions(conn, [_assertion("location", "Strong")], opening_id="widgets--b")
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--a",
         target="location",
@@ -290,7 +290,7 @@ def test_run_prescreen_sources_few_shot_examples_from_operator_rulings(tmp_path:
         assertion_count=1,
         computed_at=_NOW,
     )
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="widgets--b",
         target="location",
@@ -447,7 +447,7 @@ def test_speculative_prescreen_discards_its_result_if_the_operator_wrote_meanwhi
     # The speculated pair must have cached digests on both sides, or Jev is never
     # consulted and the mid-call race this test exercises cannot occur.
     for opening_id in ("acme--a", "widgets--b"):
-        upsert_dimension_digest(
+        insert_dimension_digest(
             conn,
             opening_id=opening_id,
             target="craft_direction",

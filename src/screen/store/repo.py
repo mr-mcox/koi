@@ -108,17 +108,6 @@ def delete_assertion(conn: sqlite3.Connection, assertion_id: str) -> None:
     conn.commit()
 
 
-def delete_dimension_digests_for_opening(conn: sqlite3.Connection, opening_id: str) -> None:
-    """Invalidates cached digests after a backfill mutates/deletes assertions out from under
-    them — `DimensionDigest`'s staleness check (`assertion_count >= current_count`) assumes
-    the count only grows (Wall 6); a backfill that deletes rows can shrink it, which would
-    make a stale digest look fresh. Forcing recompute is the safe response."""
-    conn.execute(
-        "DELETE FROM dimension_digests WHERE opening_id = :opening_id", {"opening_id": opening_id}
-    )
-    conn.commit()
-
-
 def upsert_assertion_ruling(conn: sqlite3.Connection, ruling: AssertionRuling) -> None:
     """Upsert by `assertion_id` (Approach: repeated ratings replace the previous one,
     not append) — the corpus is a calibration record, one ruling per assertion, not an
@@ -183,7 +172,7 @@ def get_dimension_digest(
     conn: sqlite3.Connection, opening_id: str, target: str
 ) -> DimensionDigest | None:
     row = conn.execute(
-        "SELECT * FROM dimension_digests WHERE opening_id = ? AND target = ?",
+        "SELECT * FROM dimension_digests WHERE opening_id = ? AND target = ? ORDER BY computed_at DESC LIMIT 1",
         (opening_id, target),
     ).fetchone()
     if row is None:
@@ -191,7 +180,18 @@ def get_dimension_digest(
     return dimension_digest_from_row(dict(row))
 
 
-def upsert_dimension_digest(
+def get_dimension_digest_by_id(conn: sqlite3.Connection, digest_id: str) -> DimensionDigest | None:
+    """Historical lookup by durable version id — the audit path: given a `Comparison`'s
+    `opening_a_digest_version`/`opening_b_digest_version`, recover the exact digest the
+    operator saw at judgment time, even if it's no longer the latest for that
+    `(opening_id, target)`."""
+    row = conn.execute("SELECT * FROM dimension_digests WHERE id = ?", (digest_id,)).fetchone()
+    if row is None:
+        return None
+    return dimension_digest_from_row(dict(row))
+
+
+def insert_dimension_digest(
     conn: sqlite3.Connection,
     *,
     opening_id: str,
@@ -199,7 +199,7 @@ def upsert_dimension_digest(
     digest: str,
     assertion_count: int,
     computed_at: datetime,
-) -> None:
+) -> DimensionDigest:
     record = DimensionDigest.model_validate(
         {
             "opening_id": opening_id,
@@ -210,15 +210,12 @@ def upsert_dimension_digest(
         }
     )
     conn.execute(
-        """INSERT INTO dimension_digests (opening_id, target, digest, assertion_count, computed_at)
-           VALUES (:opening_id, :target, :digest, :assertion_count, :computed_at)
-           ON CONFLICT (opening_id, target) DO UPDATE SET
-               digest = excluded.digest,
-               assertion_count = excluded.assertion_count,
-               computed_at = excluded.computed_at""",
+        """INSERT INTO dimension_digests (id, opening_id, target, digest, assertion_count, computed_at)
+           VALUES (:id, :opening_id, :target, :digest, :assertion_count, :computed_at)""",
         dimension_digest_to_row(record),
     )
     conn.commit()
+    return record
 
 
 def append_comparison(conn: sqlite3.Connection, comparison: Comparison) -> None:

@@ -149,6 +149,7 @@ def assertion_ruling_from_row(row: dict[str, object]) -> AssertionRuling:
 
 def dimension_digest_to_row(digest: DimensionDigest) -> dict[str, object]:
     return {
+        "id": digest.id,
         "opening_id": digest.opening_id,
         "target": digest.target,
         "digest": digest.digest,
@@ -163,6 +164,7 @@ def dimension_digest_from_row(row: dict[str, object]) -> DimensionDigest | None:
         return None
     return DimensionDigest.model_validate(
         {
+            "id": str(row["id"]),
             "opening_id": str(row["opening_id"]),
             "target": target,
             "digest": str(row["digest"]),

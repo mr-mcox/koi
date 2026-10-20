@@ -35,6 +35,8 @@
     <input type="hidden" name="opening_a_id" value="{{ opening_a_id }}">
     <input type="hidden" name="opening_b_id" value="{{ opening_b_id }}">
     <input type="hidden" name="target" value="{{ target }}">
+    <input type="hidden" name="opening_a_digest_version" value="{{ opening_a_digest_version or '' }}">
+    <input type="hidden" name="opening_b_digest_version" value="{{ opening_b_digest_version or '' }}">
     <button type="submit" name="outcome" value="{{ outcome_left }}">Left wins</button>
     <button type="submit" name="outcome" value="tie">Tie</button>
     <button type="submit" name="outcome" value="{{ outcome_right }}">Right wins</button>

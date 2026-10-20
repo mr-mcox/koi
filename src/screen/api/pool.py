@@ -50,24 +50,32 @@ _prescreen_log = logging.getLogger("screen.prescreen")
 def _to_score_comparison(comparison: StoredComparison) -> ScoreComparison:
     """Map a stored `screen.types.Comparison` (opening_a/opening_b/outcome) onto the pure
     fit's `winner`/`loser`/`tie` shape — the fit only ever needs the resolved judgment, and
-    `provenance` rides along so the fit can pick this comparison's beta."""
+    `provenance` rides along so the fit can pick this comparison's beta. Digest versions
+    carry over so `_settled_pairs` can tell whether the evidence shown at judgment time is
+    still current."""
     if comparison.outcome == "tie":
         return ScoreComparison(
             winner=comparison.opening_a_id,
             loser=comparison.opening_b_id,
             tie=True,
             provenance=comparison.provenance,
+            winner_digest_version=comparison.opening_a_digest_version,
+            loser_digest_version=comparison.opening_b_digest_version,
         )
     if comparison.outcome == "a":
         return ScoreComparison(
             winner=comparison.opening_a_id,
             loser=comparison.opening_b_id,
             provenance=comparison.provenance,
+            winner_digest_version=comparison.opening_a_digest_version,
+            loser_digest_version=comparison.opening_b_digest_version,
         )
     return ScoreComparison(
         winner=comparison.opening_b_id,
         loser=comparison.opening_a_id,
         provenance=comparison.provenance,
+        winner_digest_version=comparison.opening_b_digest_version,
+        loser_digest_version=comparison.opening_a_digest_version,
     )
 
 
@@ -231,6 +239,8 @@ def _consult_jev_for_suggestion(
         ),
         provenance="provisional",
         predicted_a_beats_b=predicted_a_beats_b,
+        opening_a_digest_version=digest_a.id,
+        opening_b_digest_version=digest_b.id,
         created_at=datetime.now(UTC),
     )
     return stored, gate.verdict

@@ -35,9 +35,10 @@ from screen.store.repo import (
     append_comparison,
     assertion_rulings_for_opening,
     assertions_for_opening,
+    get_dimension_digest,
     get_opening,
+    insert_dimension_digest,
     upsert_company,
-    upsert_dimension_digest,
     upsert_opening,
 )
 from screen.types import (
@@ -184,7 +185,7 @@ def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Pat
         assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -445,6 +446,69 @@ def test_compare_page_previews_target_digests(client: TestClient, db_path: Path)
     assert response.text.count(f'name="redirect_to" value="{redirect_url}"') == 2
 
 
+def test_compare_page_and_submission_carry_digest_versions(
+    client: TestClient, db_path: Path
+) -> None:
+    """The compare GET renders a durable digest-version id per side as a hidden form
+    field, and the POST persists those versions on the stored `Comparison` — the
+    evidence provenance the operator actually judged against, not a placeholder."""
+    _seed_opening(
+        db_path,
+        company_id="acme",
+        opening_id="acme--a",
+        assertions=[_assertion("craft_direction", "Strong")],
+    )
+    _seed_opening(
+        db_path,
+        company_id="widgets",
+        opening_id="widgets--b",
+        assertions=[_assertion("craft_direction", "Strong")],
+    )
+
+    response = client.get(
+        "/compare",
+        params={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "craft_direction",
+        },
+    )
+    assert response.status_code == 200
+    assert 'name="opening_a_digest_version"' in response.text
+    assert 'name="opening_b_digest_version"' in response.text
+
+    conn = connect(db_path)
+    digest_a = get_dimension_digest(conn, "acme--a", "craft_direction")
+    digest_b = get_dimension_digest(conn, "widgets--b", "craft_direction")
+    conn.close()
+    assert digest_a is not None
+    assert digest_b is not None
+
+    post_response = client.post(
+        "/compare",
+        data={
+            "opening_a_id": "acme--a",
+            "opening_b_id": "widgets--b",
+            "target": "craft_direction",
+            "outcome": "a",
+            "opening_a_digest_version": digest_a.id,
+            "opening_b_digest_version": digest_b.id,
+        },
+        follow_redirects=False,
+    )
+    assert post_response.status_code == 303
+
+    conn = connect(db_path)
+    row = conn.execute(
+        "SELECT opening_a_digest_version, opening_b_digest_version FROM comparisons"
+    ).fetchone()
+    conn.close()
+    assert dict(row) == {
+        "opening_a_digest_version": digest_a.id,
+        "opening_b_digest_version": digest_b.id,
+    }
+
+
 def test_compare_page_rejects_invalid_pair(client: TestClient, db_path: Path) -> None:
     """The compare GET rejects a pair that is missing, identical, or unknown."""
     _seed_opening(
@@ -593,7 +657,7 @@ def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
         assertions=[_assertion("location", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--a",
         target="location",
@@ -601,7 +665,7 @@ def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
         assertion_count=1,
         computed_at=_NOW,
     )
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="widgets--b",
         target="location",
@@ -1070,7 +1134,7 @@ def test_rate_opening_shows_cached_digest_above_assertions(
         assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -1103,7 +1167,7 @@ def test_rate_opening_dimension_order_is_weight_descending(
         ],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -1111,7 +1175,7 @@ def test_rate_opening_dimension_order_is_weight_descending(
         assertion_count=1,
         computed_at=_NOW,
     )
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="domain",
@@ -1140,7 +1204,7 @@ def test_rate_opening_empty_dimension_shows_not_yet_examined(
         assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -1171,7 +1235,7 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
         assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -1201,7 +1265,7 @@ def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_p
         assertions=[_assertion("craft_direction", "Strong")],
     )
     conn = connect(db_path)
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",

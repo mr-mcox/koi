@@ -4,18 +4,18 @@ type: bearing
 date: 2026-10-20
 commit: 756fb40
 parent: ./scouting.md
-status: orienting
+status: done
 ---
 
 ## Problem
 We need historical digest visibility, not just the latest cache entry, so we can reconstruct what the operator saw at judgment time and preserve comparison provenance across later assertion updates. The current `dimension_digests` table is a replace-in-place cache keyed by `(opening_id, target)`; that is enough for the live view, but not enough for historical comparison or durable digest-version references.
 
 ## Done When
-- [ ] Every recomputed digest gets a durable version identifier instead of replacing the prior record in place.
-- [ ] `Comparison.opening_a_digest_version` / `opening_b_digest_version` are populated from the version actually shown at judgment time.
-- [ ] The current digest remains easy to read for the live UI, but old digests stay queryable for audit/historical comparison.
-- [ ] Backfill / assertion-update flows no longer erase the only record of a prior digest.
-- [ ] Tests cover both the latest-digest read path and a historical lookup path.
+- [x] Every recomputed digest gets a durable version identifier instead of replacing the prior record in place.
+- [x] `Comparison.opening_a_digest_version` / `opening_b_digest_version` are populated from the version actually shown at judgment time.
+- [x] The current digest remains easy to read for the live UI, but old digests stay queryable for audit/historical comparison.
+- [x] Backfill / assertion-update flows no longer erase the only record of a prior digest.
+- [x] Tests cover both the latest-digest read path and a historical lookup path.
 
 ## Approach
 1. Split the current digest-cache concern from the historical record concern: keep the live read path fast, but store each recomputation as a versioned digest record rather than overwriting the only row.

@@ -12,15 +12,16 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from screen.digest.fakes import FakeDigester
 from screen.intake import cli as cli_module
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
     assertions_for_opening,
     get_dimension_digest,
+    insert_dimension_digest,
     upsert_assertion_ruling,
     upsert_company,
-    upsert_dimension_digest,
     upsert_opening,
 )
 from screen.types import AssertionRuling, Company, Opening
@@ -276,11 +277,11 @@ def test_backfill_invalidates_cached_digest_for_touched_opening(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A stale cached digest's staleness check assumes assertion_count only grows (Wall 6);
-    a backfill drop can shrink it, so the digest must be invalidated, not left to look
-    falsely fresh."""
+    a backfill drop can shrink it, so the digest must be recomputed as a new version rather
+    than left to look falsely fresh (append-only history, not an erased cache row)."""
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
     conn = connect(tmp_path / "screen.db")
-    upsert_dimension_digest(
+    insert_dimension_digest(
         conn,
         opening_id="acme--eng",
         target="craft_direction",
@@ -300,14 +301,16 @@ def test_backfill_invalidates_cached_digest_for_touched_opening(
             ]
         ),
     )
-
+    monkeypatch.setattr(cli_module, "_build_digester", lambda: FakeDigester(["fresh digest text"]))
     result = CliRunner().invoke(
         cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
     )
-
     assert result.exit_code == 0, f"CLI failed: {result.output}"
     conn = connect(tmp_path / "screen.db")
-    assert get_dimension_digest(conn, "acme--eng", "craft_direction") is None
+    record = get_dimension_digest(conn, "acme--eng", "craft_direction")
+    assert record is not None
+    assert record.digest == "fresh digest text"
+    assert record.assertion_count == 0
 
 
 def test_backfill_reports_opening_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
