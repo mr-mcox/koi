@@ -43,11 +43,11 @@ def test_pair_priority_zero_skips_pair():
         provenance_weight={"model_proposed": 1.0, "unexamined": 0.0},
         top_k=5,
         research_target_action_cap=3,
-        jev_confidence_threshold=0.75,
+        jev_confidence_threshold=0.85,
         jev_few_shot_examples=12,
         comparison_jitter_sigma=0.3,
-        tie_commit_threshold=0.90,
-        winner_commit_threshold=0.75,
+        tie_commit_threshold=0.95,
+        winner_commit_threshold=0.85,
     )
     res = select_comparison(
         ["a", "b"],

@@ -1,33 +1,30 @@
 """Backtest Jev's routing policy on operator comparisons.
-
-Reports how often the routing function would auto-commit versus route to the operator,
 and can optionally print the individual mismatches for a chosen threshold pair.
 """
+# ruff: noqa: I001, E402
 
 from __future__ import annotations
-
 import argparse
-import concurrent.futures
+from dotenv import load_dotenv
 import os
 import sqlite3
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from itertools import product
-
-from dotenv import load_dotenv
-
+from typesafe_sdk import TypeSafeClient
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 from screen.extract.prompt import rubric_text_for_dimension
+from screen.score.loader import load_scoring_config
 from screen.store.repo import comparisons_for_target, get_dimension_digest
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import JevRuling
 from screen.verdict.routing import route_verdict
-from typesafe_sdk import TypeSafeClient
 
 DEFAULT_TARGETS = ["location", "craft_direction", "schematic", "mission", "internal_culture"]
-TIE_THRESHOLDS = [0.80, 0.85, 0.90, 0.95]
+
+TIE_THRESHOLDS = [0.80, 0.85, 0.90, 0.92, 0.95]
 WINNER_THRESHOLDS = [0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
 
 
@@ -237,6 +234,7 @@ def main() -> int:
 
     args = _parse_args()
     targets = args.targets or DEFAULT_TARGETS
+    scoring_config = load_scoring_config()
 
     conn = sqlite3.connect(
         f"file:{os.path.abspath(args.db_path)}?mode=ro", uri=True, check_same_thread=False
@@ -252,12 +250,19 @@ def main() -> int:
         print("No operator comparisons found.")
         return 0
 
-    print(f"Evaluated {len(cases)} operator comparisons across {len(set(case.target for case in cases))} targets")
+    print(f"Evaluated {len(cases)} operator comparisons across {len({case.target for case in cases})} targets")
     print()
     _print_target_load_stats(load_stats)
 
-    default_result = _evaluate_thresholds(cases, tie_threshold=0.90, winner_threshold=0.75)
-    print("Default")
+    default_result = _evaluate_thresholds(
+        cases,
+        tie_threshold=scoring_config.tie_commit_threshold,
+        winner_threshold=scoring_config.winner_commit_threshold,
+    )
+    print(
+        f"Default (tie={scoring_config.tie_commit_threshold:.2f} "
+        f"winner={scoring_config.winner_commit_threshold:.2f})"
+    )
     print(_format_result(default_result))
     print()
 
