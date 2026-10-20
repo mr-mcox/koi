@@ -1,1 +1,1 @@
-docs/features/few-shot-calibration/bearing.md
+docs/features/digest-history/bearing.md
