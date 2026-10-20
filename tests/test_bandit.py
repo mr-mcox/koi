@@ -102,9 +102,9 @@ def test_draw_opening_is_deterministic_given_a_seeded_generator() -> None:
 
 
 def test_boundary_weight_reflects_upside() -> None:
-    """`boundary_weight` returns `p_top_k` to maintain relevance for roles safely
-    in the pool (upside discovery) rather than dropping them to zero."""
-    assert boundary_weight(0.5) == pytest.approx(0.5)
+    """`boundary_weight` uses `sqrt(p_top_k)` to keep frontier relevance while
+    softening the drop-off for lower-ranked openings."""
+    assert boundary_weight(0.5) == pytest.approx(0.7071067811865476)
     assert boundary_weight(0.0) == pytest.approx(0.0)
     assert boundary_weight(1.0) == pytest.approx(1.0)
     assert boundary_weight(0.9) > boundary_weight(0.1)

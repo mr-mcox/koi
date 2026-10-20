@@ -29,11 +29,12 @@ def aggregate_uncertainty(
 
 
 def boundary_weight(p_top_k: float) -> float:
-    """How relevant an opening is to the top-K pool. Replaced `p*(1-p)` (which
-    forced dead-heats at exactly the boundary) with `p` itself, so roles safely
-    in the pool remain relevant for upside discovery if they still have high
-    variance."""
-    return p_top_k
+    """How relevant an opening is to the top-K pool.
+
+    Uses `sqrt(p_top_k)` so boundary relevance still grows with top-K probability
+    but low-ranked uncertain openings are not starved as hard as a linear rule.
+    """
+    return math.sqrt(p_top_k) if p_top_k > 0.0 else 0.0
 
 
 def target_suppression(stall_count: int) -> float:
