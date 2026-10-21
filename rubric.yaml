@@ -1,298 +1,91 @@
-# Job Screener Rubric
-#
-# This file is the source of truth for evaluation criteria. Rubric text is
-# sliced verbatim into research prompts and review screens (R4). Git history
-# is the change log — no in-file version/revision_note; this isn't a schema
-# with multiple versions live at once.
-#
-# Cross-references: docs/architecture/decisions.md (R4, S2-S8, D7).
-# Schema: `src/screen/baml_src/extract.baml` (`Assertion`) and `src/screen/types.py`.
-#
-# Privacy boundary: this file is public. Compensation baseline, résumé, and
-# contact details live in untracked config, not here.
-# ---------------------------------------------------------------------------
-# Scored dimensions — weighted rollup (D6, D7)
-# ---------------------------------------------------------------------------
-#
-# Fit vocabulary: Poor = −1, Mixed = 0, Strong = +1 (D2, D3).
-# Only Medium/High confidence assertions count; Low-confidence assertions
-# are excluded and logged to the hypothesis queue.
-#
-# Per-dimension distribution: mean n·m/(n+1), variance ⅓/(n+1).
-# Unexamined dimensions are Uniform(−1, +1) — same mean as confirmed Mixed,
-# far wider spread. They are not dropped from the denominator (D5, D6).
-#
-# `location` and `internal_culture` carry no special scoring path — a
-# rank-based queue only needs a sufficiently-weighted additive dimension to
-# sink a bad case out of top K; there is no separate multiplicative
-# "constraint" mechanism to maintain. Their weights are unmeasured placeholders,
-# same status as `top_k` (open-questions.md OQ9) — expect them to move once real
-# ranking runs.
-#
-# Ranking sorts on P(rank ≤ top_k) by Monte Carlo (S9), not on the mean (D10).
-# top_k is a config value, not set here.
-
 dimensions:
-  - slug: craft_direction
-    label: "Craft Direction"
-    weight: 3
-    definition: >
-      Whether this role's day-to-day discipline is focused on managing conditions
-      for self-improving loops that can be evaluated to emerge (agentic system 
-      design, eval-driven development, LLM solution design). This replaces the 
-      older, generic "discipline-preference ladder" with a strict test for AI/ML
-      and agentic architecture. Independent of `domain` (industry novelty) and
-      `schematic` (shape of the work).
-    fit_anchors:
-      Strong: >
-        Role focuses on managing conditions for self-improving loops that can be
-        evaluated to emerge (agentic system design, eval-driven development, LLM
-        solution design).
-      Mixed: >
-        There is some agentic and/or ML work in the role, but it is not the primary
-        focus. Or data/analytics engineering that the operator can execute well but
-        is less excited to keep deepening.
-      Poor: >
-        Standard backend, web, frontend, or CRUD engineering with no AI/ML or agentic
-        system design. Standard responsibilities like 'technical mentorship' or 'system
-        performance' without a tie to the desired craft direction. If a detailed JD
-        lacks any mention of AI/ML work, that is negative evidence (Poor).
-    look_for: >
-      JD-legible baseline: title and responsibilities describing the discipline mix
-      (model work, LLM/agent systems, data pipelines, backend services, UI work,
-      firmware). Corroboration signal: engineering-blog posts, conference talks, or
-      shipped-work discussion evidencing the claimed discipline mix is real, not
-      aspirational. Absence of corroboration under a JD that aspirationally claims
-      AI/ML work is itself a negative signal — often marks immature data or
-      infrastructure underneath the claim.
-      
-      Whether the seat owns an evaluable improvement loop: a measurement harness
-      (evals, tuning runs, experiment tracking, or an agent self-improvement cycle)
-      whose results feed the next design decision, built in layers so each round of
-      experiments is cheaper than the last. Corroboration: JD or engineering-blog
-      language showing the team owns this infrastructure rather than inheriting it.
-      A JD claiming ML work where the seat is upkeep of a fixed model or pipeline
-      is a negative signal.
-
-  - slug: schematic
-    label: "Schematic"
-    weight: 3
-    definition: >
-      Whether the role's central work is originating the shape of a solution —
-      decomposition, mechanism design, structure that didn't exist before —
-      versus achieving depth within a structure, protocol, or spec someone
-      else already fixed.
-      structure is still being decided, as distinct from construction
-      documents or construction administration, when a design is executed
-      and detailed to spec.
-
-      Independent of `craft_direction` — shape of the work, not distance from
-      the operator's ability. Expected to correlate in practice
-      (architecturally ambiguous roles tend to also be unfamiliar) but not
-      redundant; the divergent cases are the ones worth catching.
-    fit_anchors:
-      Poor: >
-        The ceiling is depth within a fixed frame: protocol or spec
-        mastery, becoming the internal expert on an existing product,
-        implementing to a design set elsewhere.
-      Mixed: >
-        Some room to shape implementation details, but the overall frame
-        (architecture, protocol, product boundary) is set elsewhere.
-      Strong: >
-        The role's core work is inventing structure: decomposition,
-        mechanism design, building the thing that resolves the question —
-        whether that shows up as system or bounded-context design, or as
-        creative algorithmic/mechanism design outside a structural
-        register.
-    look_for: >
-      Posting language distinguishing "design the approach" from
-      "implement to spec"; whether the team owns architecture decisions or
-      inherits them from a platform/vendor; interview questions about how
-      past ambiguous problems were resolved, asked to originate vs. asked
-      to recall.
-    notes: >
-      Anchors describe the role's shape only, not operator fit — the
-      over/underqualified judgment emerges from combining this with `craft_direction`
-      in the rollup, not from baking it into these anchors.
-
-  - slug: trajectory
-    label: "Trajectory & Leverage"
-    weight: 2
-    definition: >
-      Two-part: is the company's trajectory actually healthy, AND would the
-      operator's specific work be load-bearing to it — not just 'fine, get
-      paid, learn something'. Poor trajectory always dominates regardless
-      of leverage.
-    fit_anchors:
-      Poor: >
-        Trajectory at risk regardless of individual effort — distress-framed
-        cuts, leadership instability, no coherent strategic answer. A sinking
-        ship is a sinking ship whether or not the work would matter.
-      Mixed: >
-        Healthy company, but unclear whether this specific role is the thing
-        driving outcomes.
-      Strong: >
-        Healthy trajectory AND the role is demonstrably load-bearing to a
-        stated strategy.
-    look_for: >
-      Funding recency/stage; headcount direction; layoff framing (strategic
-      vs. distress); whether the role sits on a stated strategic critical path;
-      whether the company's stated strategy reads as a defensible plan vs hype.
-      For AI-based roles, look for business cases strong enough to survive an
-      AI bubble burst or the requirement to pay non-subsidized rates for tokens.
-      A hype-driven strategy is a severe trajectory risk.
-
-  - slug: mission
-    label: "Mission fit"
-    weight: 2
-    definition: >
-      Does the business win when the customer wins, or by extracting from
-      them. Covers the full range from clear-cut anchor cases to nuanced
-      middle ground at one confidence-agnostic band — no separate dimension
-      for the obvious cases. Internal culture is NOT part of this dimension;
-      that is the separate `internal_culture` dimension below. AI-narrative
-      authenticity is not part of this dimension either; that is a
-      `trajectory` signal (is the stated strategy defensible or hype), not a
-      values question.
-    fit_anchors:
-      Poor: >
-        Wins by extracting from the customer, at any confidence from a
-        clear-cut anchor case to a subtler pattern — the mechanism, not the
-        obviousness, is what matters.
-      Mixed: >
-        Ambiguous, or props up a systemic problem rather than disrupting it —
-        non-predatory but not clearly value-creating either.
-      Strong: >
-        No signal of extraction, having looked — the outcome of looking, not
-        the starting state. Reasoning from the company's mission that it is
-        generative rather than extractive is what earns this, not the
-        absence of evidence.
-    look_for: >
-      Revenue mechanics; business model description; user complaints framed
-      around exploitation (dark patterns, addictive design, predatory
-      pricing); comparison against anchor companies.
-
-  - slug: agentic
-    label: "Agentic/AI Engineering Culture"
-    weight: 2
-    definition: >
-      How the work gets done on a daily basis. Does the employer provide resources
-      and momentum for agentic coding (harnesses, provider-agnostic tools, 
-      evaluations), or are they fighting it?
-    fit_anchors:
-      Poor: >
-        "We write all our code by hand," or actively resistant to agentic workflows.
-        Copilot-tier autocomplete is the ceiling.
-      Mixed: >
-        "We just discovered Copilot and it's great." Individual engineers can use
-        tools, but there is no org-level momentum or investment providing leverage.
-      Strong: >
-        Real investment — employer provides resources and momentum for agentic
-        coding. Dedicated tooling, provider-agnostic experimentation, and
-        measuring outputs are discussed as genuine practice.
-    look_for: >
-      Engineering blog posts on tooling/practice; posting language about
-      AI-tooling expectations; whether tooling is single-vendor-locked or
-      genuinely experimental. Company-wide AI rollout announcements 
-      (e.g., 'we gave everyone Copilot/Cursor') usually point to Mixed, not Strong,
-      unless accompanied by infrastructure for agentic workflows.
-
-  - slug: compensation
-    label: "Compensation"
-    weight: 2
-    definition: >
-      Would total compensation likely be higher than the operator's
-      configured baseline (SCREEN_COMPENSATION_BASELINE)? A likelihood
-      judgment, not a flat band comparison — domain coolness handles the
-      "would justify a below-baseline offer" case through the weighted
-      average, so this dimension asks only whether the evidence points
-      above or below baseline.
-    fit_anchors:
-      Poor: "Evidence points to total compensation below baseline."
-      Mixed: "Evidence is mixed, or points to roughly baseline."
-      Strong: "Evidence points to total compensation above baseline."
-    look_for: >
-      Posted range (best signal); Levels.fyi/comparable benchmarks;
-      recruiter-stated range.
-
-  - slug: domain
-    label: "Domain coolness"
-    weight: 1
-    definition: >
-      Genuine personal fascination with the subject matter itself,
-      independent of the business's mission ethics. This is what would
-      justify a below-baseline offer without special-case logic anywhere
-      else, since the weighted average handles the tradeoff naturally.
-    fit_anchors:
-      Poor: "Flat, no pull."
-      Mixed: "Neutral, no strong pull either direction — most roles land here."
-      Strong: "The domain itself excites regardless of mission story."
-    look_for: >
-      Operator's own reaction to the domain; overlap with known interests
-      (creative/music/audio, novel technical domains).
-
-  - slug: location
-    label: "Location compatibility"
-    weight: 6
-    definition: >
-      Whether the role's location arrangement is workable and desirable for the
-      operator's actual situation. Ordered: remote-first company > remote as
-      an option > hybrid or awkward remote > relocation required. Negotiability
-      shows up as spread within a Fit band via the ordinary shrinkage math.
-    fit_anchors:
-      Poor: >
-        Relocation required, stated, with no flexibility language; or a
-        commute/schedule the operator's situation cannot accommodate.
-      Mixed: >
-        Remote is offered but the posting is silent on travel or team
-        distribution culture; or the company is centrally based and hiring
-        this seat remotely as an exception; or hybrid with mandated in-office
-        days that create a genuine commute/schedule burden.
-      Strong: >
-        A genuinely distributed / remote-first company, or a remote role that
-        openly acknowledges only occasional travel as the tradeoff.
-    look_for: >
-      Explicit location/remote policy language; whether the team/company is
-      distributed by design or centrally based; travel expectations; whether
-      remote hires exist at the level being applied for; metro/commute distance
-      from the operator's home base; any relocation assistance or flexibility
-      language.
-
-  - slug: internal_culture
-    label: "Internal culture"
-    weight: 4
-    definition: >
-      Stack-ranking, extractive-toward-employees dynamics, or leadership
-      instability. Distinct from `mission` — this captures how the company
-      treats its own people, not its customers or the world.
-    fit_anchors:
-      Poor: >
-        Forced-ranking, punitive layoffs, or leadership whiplash at
-        Medium/High confidence — heavy enough that no other dimension's
-        strength should be expected to fully offset it.
-      Mixed: >
-        Negative evidence exists only at Low confidence (logged as a
-        hypothesis, not yet discounting), or no strong signal either way.
-      Strong: >
-        Researched, no negative evidence found — 'nothing bad turned up'
-        after genuinely looking, not the default state of nobody checking.
-    look_for: >
-      Layoff framing and cadence; stated performance-management practices
-      (forced ranking, stack ranking); leadership tenure/turnover; employee
-      review sites, weighted for recency and corroboration.
-
-# ---------------------------------------------------------------------------
-# Non-scoring targets
-# ---------------------------------------------------------------------------
-#
-# Assertions about these topics are stored and surfaced but never enter the
-# scoring rollup. The `non_scoring:` namespace prefix prevents accidental
-# confusion with a scoring slug (Wall 3).
-
+- definition: "Whether this role's day-to-day discipline is focused on managing conditions for self-improving loops that can be evaluated to emerge (agentic system  design, eval-driven development, LLM solution design). This replaces the  older, generic \"discipline-preference ladder\" with a strict test for AI/ML and agentic architecture. Independent of `domain` (industry novelty) and `schematic` (shape of the work)."
+  fit_anchors:
+    Poor: "Standard backend, web, frontend, or CRUD engineering with no AI/ML or agentic system design. Standard responsibilities like 'technical mentorship' or 'system performance' without a tie to the desired craft direction. If a detailed JD lacks any mention of AI/ML work, that is negative evidence (Poor)."
+    Mixed: There is some agentic and/or ML work in the role, but it is not the primary focus. Or data/analytics engineering that the operator can execute well but is less excited to keep deepening.
+    Strong: Role focuses on managing conditions for self-improving loops that can be evaluated to emerge (agentic system design, eval-driven development, LLM solution design).
+  label: Craft Direction
+  look_for: |-
+    JD-legible baseline: title and responsibilities describing the discipline mix (model work, LLM/agent systems, data pipelines, backend services, UI work, firmware). Corroboration signal: engineering-blog posts, conference talks, or shipped-work discussion evidencing the claimed discipline mix is real, not aspirational. Absence of corroboration under a JD that aspirationally claims AI/ML work is itself a negative signal — often marks immature data or infrastructure underneath the claim.
+    Whether the seat owns an evaluable improvement loop: a measurement harness (evals, tuning runs, experiment tracking, or an agent self-improvement cycle) whose results feed the next design decision, built in layers so each round of experiments is cheaper than the last. Corroboration: JD or engineering-blog language showing the team owns this infrastructure rather than inheriting it. A JD claiming ML work where the seat is upkeep of a fixed model or pipeline is a negative signal.
+  slug: craft_direction
+  weight: 3
+- definition: |-
+    Whether the role's central work is originating the shape of a solution — decomposition, mechanism design, structure that didn't exist before — versus achieving depth within a structure, protocol, or spec someone else already fixed. structure is still being decided, as distinct from construction documents or construction administration, when a design is executed and detailed to spec.
+    Independent of `craft_direction` — shape of the work, not distance from the operator's ability. Expected to correlate in practice (architecturally ambiguous roles tend to also be unfamiliar) but not redundant; the divergent cases are the ones worth catching.
+  fit_anchors:
+    Poor: 'The ceiling is depth within a fixed frame: protocol or spec mastery, becoming the internal expert on an existing product, implementing to a design set elsewhere.'
+    Mixed: Some room to shape implementation details, but the overall frame (architecture, protocol, product boundary) is set elsewhere.
+    Strong: "The role's core work is inventing structure: decomposition, mechanism design, building the thing that resolves the question — whether that shows up as system or bounded-context design, or as creative algorithmic/mechanism design outside a structural register."
+  label: Schematic
+  look_for: Posting language distinguishing "design the approach" from "implement to spec"; whether the team owns architecture decisions or inherits them from a platform/vendor; interview questions about how past ambiguous problems were resolved, asked to originate vs. asked to recall.
+  notes: "Anchors describe the role's shape only, not operator fit — the over/underqualified judgment emerges from combining this with `craft_direction` in the rollup, not from baking it into these anchors."
+  slug: schematic
+  weight: 3
+- definition: "Two-part: is the company's trajectory actually healthy, AND would the operator's specific work be load-bearing to it — not just 'fine, get paid, learn something'. Poor trajectory always dominates regardless of leverage."
+  fit_anchors:
+    Poor: Trajectory at risk regardless of individual effort — distress-framed cuts, leadership instability, no coherent strategic answer. A sinking ship is a sinking ship whether or not the work would matter.
+    Mixed: Healthy company, but unclear whether this specific role is the thing driving outcomes.
+    Strong: Healthy trajectory AND the role is demonstrably load-bearing to a stated strategy.
+  label: Trajectory & Leverage
+  look_for: "Funding recency/stage; headcount direction; layoff framing (strategic vs. distress); whether the role sits on a stated strategic critical path; whether the company's stated strategy reads as a defensible plan vs hype. For AI-based roles, look for business cases strong enough to survive an AI bubble burst or the requirement to pay non-subsidized rates for tokens. A hype-driven strategy is a severe trajectory risk."
+  slug: trajectory
+  weight: 2
+- definition: Does the business win when the customer wins, or by extracting from them. Covers the full range from clear-cut anchor cases to nuanced middle ground at one confidence-agnostic band — no separate dimension for the obvious cases. Internal culture is NOT part of this dimension; that is the separate `internal_culture` dimension below. AI-narrative authenticity is not part of this dimension either; that is a `trajectory` signal (is the stated strategy defensible or hype), not a values question.
+  fit_anchors:
+    Poor: Wins by extracting from the customer, at any confidence from a clear-cut anchor case to a subtler pattern — the mechanism, not the obviousness, is what matters.
+    Mixed: Ambiguous, or props up a systemic problem rather than disrupting it — non-predatory but not clearly value-creating either.
+    Strong: "No signal of extraction, having looked — the outcome of looking, not the starting state. Reasoning from the company's mission that it is generative rather than extractive is what earns this, not the absence of evidence."
+  label: Mission fit
+  look_for: Revenue mechanics; business model description; user complaints framed around exploitation (dark patterns, addictive design, predatory pricing); comparison against anchor companies.
+  slug: mission
+  weight: 2
+- definition: How the work gets done on a daily basis. Does the employer provide resources and momentum for agentic coding (harnesses, provider-agnostic tools,  evaluations), or are they fighting it?
+  fit_anchors:
+    Poor: '"We write all our code by hand," or actively resistant to agentic workflows. Copilot-tier autocomplete is the ceiling.'
+    Mixed: "\"We just discovered Copilot and it's great.\" Individual engineers can use tools, but there is no org-level momentum or investment providing leverage."
+    Strong: Real investment — employer provides resources and momentum for agentic coding. Dedicated tooling, provider-agnostic experimentation, and measuring outputs are discussed as genuine practice.
+  label: Agentic/AI Engineering Culture
+  look_for: "Engineering blog posts on tooling/practice; posting language about AI-tooling expectations; whether tooling is single-vendor-locked or genuinely experimental. Company-wide AI rollout announcements  (e.g., 'we gave everyone Copilot/Cursor') usually point to Mixed, not Strong, unless accompanied by infrastructure for agentic workflows."
+  slug: agentic
+  weight: 2
+- definition: "Would total compensation likely be higher than the operator's configured baseline (SCREEN_COMPENSATION_BASELINE)? A likelihood judgment, not a flat band comparison — domain coolness handles the \"would justify a below-baseline offer\" case through the weighted average, so this dimension asks only whether the evidence points above or below baseline."
+  fit_anchors:
+    Poor: Evidence points to total compensation below baseline.
+    Mixed: Evidence is mixed, or points to roughly baseline.
+    Strong: Evidence points to total compensation above baseline.
+  label: Compensation
+  look_for: Posted range (best signal); Levels.fyi/comparable benchmarks; recruiter-stated range.
+  slug: compensation
+  weight: 2
+- definition: "Genuine personal fascination with the subject matter itself, independent of the business's mission ethics. This is what would justify a below-baseline offer without special-case logic anywhere else, since the weighted average handles the tradeoff naturally."
+  fit_anchors:
+    Poor: Flat, no pull.
+    Mixed: Neutral, no strong pull either direction — most roles land here.
+    Strong: The domain itself excites regardless of mission story.
+  label: Domain coolness
+  look_for: "Operator's own reaction to the domain; overlap with known interests (creative/music/audio, novel technical domains)."
+  slug: domain
+  weight: 1
+- definition: "Whether the role's location arrangement is workable and desirable for the operator's actual situation. Ordered: remote-first company > remote as an option > hybrid or awkward remote > relocation required. Negotiability shows up as spread within a Fit band via the ordinary shrinkage math."
+  fit_anchors:
+    Poor: "Relocation required, stated, with no flexibility language; or a commute/schedule the operator's situation cannot accommodate."
+    Mixed: Remote is offered but the posting is silent on travel or team distribution culture; or the company is centrally based and hiring this seat remotely as an exception; or hybrid with mandated in-office days that create a genuine commute/schedule burden.
+    Strong: A genuinely distributed / remote-first company, or a remote role that openly acknowledges only occasional travel as the tradeoff.
+  label: Location compatibility
+  look_for: "Explicit location/remote policy language; whether the team/company is distributed by design or centrally based; travel expectations; whether remote hires exist at the level being applied for; metro/commute distance from the operator's home base; any relocation assistance or flexibility language."
+  slug: location
+  weight: 6
+- definition: Stack-ranking, extractive-toward-employees dynamics, or leadership instability. Distinct from `mission` — this captures how the company treats its own people, not its customers or the world.
+  fit_anchors:
+    Poor: "Forced-ranking, punitive layoffs, or leadership whiplash at Medium/High confidence — heavy enough that no other dimension's strength should be expected to fully offset it."
+    Mixed: Negative evidence exists only at Low confidence (logged as a hypothesis, not yet discounting), or no strong signal either way.
+    Strong: "Researched, no negative evidence found — 'nothing bad turned up' after genuinely looking, not the default state of nobody checking."
+  label: Internal culture
+  look_for: Layoff framing and cadence; stated performance-management practices (forced ranking, stack ranking); leadership tenure/turnover; employee review sites, weighted for recency and corroboration.
+  slug: internal_culture
+  weight: 4
 non_scoring:
-  - slug: "non_scoring:obtainability"
-    label: "Obtainability"
-    definition: >
-      Warm-path access, referral potential, recruiter source, inbound vs.
-      outbound. Relevant to urgency and application strategy but never to
-      the fit score. Never enters standing (Wall 4).
+- definition: Warm-path access, referral potential, recruiter source, inbound vs. outbound. Relevant to urgency and application strategy but never to the fit score. Never enters standing (Wall 4).
+  label: Obtainability
+  slug: non_scoring:obtainability
