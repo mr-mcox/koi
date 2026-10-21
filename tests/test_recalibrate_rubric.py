@@ -266,6 +266,35 @@ def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> N
     assert "..." not in call["current_cases_text"]
 
 
+def test_anthropic_proposer_retries_empty_text_responses() -> None:
+    class FlakyClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ProposeRubricEdit(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("Anthropic response contains no text")
+            return SimpleNamespace(
+                theory="theory sentence",
+                expected_effect="fewer wrong+sure on tie pairs",
+                definition="definition draft",
+                fit_anchor_poor=None,
+                fit_anchor_mixed=None,
+                fit_anchor_strong=None,
+                look_for=None,
+            )
+
+    proposer = cli.AnthropicProposer(context_mode="sampled", client=FlakyClient())
+    proposal = proposer.propose(
+        current_rubric_text=_BASELINE_RUBRIC,
+        labeled_cases=[],
+        prior_rounds=[],
+    )
+    assert proposal.theory == "theory sentence"
+    assert proposal.definition == "definition draft"
+
+
 # ---------------------------------------------------------------------------
 # Jev evaluation and paired acceptance
 # ---------------------------------------------------------------------------

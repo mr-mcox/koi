@@ -73,6 +73,8 @@ class JevEvaluator:
 
 
 class AnthropicProposer:
+    """Calls the generated BAML proposer."""
+
     def __init__(self, context_mode: ContextMode = "sampled", client: Any = baml) -> None:
         self._context_mode = context_mode
         self._client: Any = client
@@ -83,14 +85,20 @@ class AnthropicProposer:
         current_rubric_text: str,
         labeled_cases: list[core.LabeledCase],
         prior_rounds: list[core.RoundResult],
+        case_limit: int | None = None,
+        history_limit: int | None = None,
+        retry: bool = True,
     ) -> core.RubricProposal:
         mismatch_cases = [c for c in labeled_cases if c.jev_prediction != c.expected]
         agree_cases = [c for c in labeled_cases if c.jev_prediction == c.expected]
-        generated = self._client.ProposeRubricEdit(
-            current_rubric_text=current_rubric_text,
-            current_cases_text=self._build_cases_text(mismatch_cases, agree_cases),
-            history_text=self._build_history_text(prior_rounds),
-        )
+        kwargs = {
+            "current_rubric_text": current_rubric_text,
+            "current_cases_text": self._build_cases_text(
+                mismatch_cases, agree_cases, limit=case_limit
+            ),
+            "history_text": self._build_history_text(prior_rounds, limit=history_limit),
+        }
+        generated = self._call(kwargs, retry=retry)
         return core.RubricProposal(
             theory=generated.theory,
             expected_effect=generated.expected_effect,
@@ -101,8 +109,49 @@ class AnthropicProposer:
             look_for=generated.look_for,
         )
 
+    def _call(self, kwargs: dict[str, Any], *, retry: bool) -> Any:
+        attempts = 3 if retry else 1
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return self._client.ProposeRubricEdit(**kwargs)
+            except Exception as exc:
+                last_error = exc
+                if retry:
+                    meta = self._prompt_meta(kwargs)
+                    click.echo(
+                        (
+                            f"[recalibrate] ProposeRubricEdit attempt {attempt}/{attempts} "
+                            f"failed: cases={meta['cases_chars']} chars, "
+                            f"history={meta['history_chars']} chars, "
+                            f"prompt={meta['prompt_chars']} chars, error={exc}"
+                        ),
+                        err=True,
+                    )
+                if "contains no text" not in str(exc) or not retry:
+                    raise
+        assert last_error is not None
+        raise click.ClickException(
+            f"ProposeRubricEdit failed after {attempts} attempts: {last_error}"
+        )
+
+    @staticmethod
+    def _prompt_meta(kwargs: dict[str, Any]) -> dict[str, int]:
+        cases = str(kwargs.get("current_cases_text", ""))
+        history = str(kwargs.get("history_text", ""))
+        rubric = str(kwargs.get("current_rubric_text", ""))
+        return {
+            "cases_chars": len(cases),
+            "history_chars": len(history),
+            "prompt_chars": len(rubric) + len(cases) + len(history),
+        }
+
     def _build_cases_text(
-        self, mismatch_cases: list[core.LabeledCase], agree_cases: list[core.LabeledCase]
+        self,
+        mismatch_cases: list[core.LabeledCase],
+        agree_cases: list[core.LabeledCase],
+        *,
+        limit: int | None = None,
     ) -> str:
         def _fmt_cases(cases: list[core.LabeledCase], n: int) -> str:
             out: list[str] = []
@@ -116,17 +165,25 @@ class AnthropicProposer:
 
         mismatch_limit = len(mismatch_cases) if self._context_mode == "full" else 10
         agree_limit = len(agree_cases) if self._context_mode == "full" else 5
+        if limit is not None:
+            mismatch_limit = min(mismatch_limit, limit)
+            agree_limit = min(agree_limit, limit)
         return (
-            f"## Mismatches ({len(mismatch_cases)} cases)\n{_fmt_cases(mismatch_cases, mismatch_limit)}\n\n"
-            f"## Agreements ({len(agree_cases)} cases)\n{_fmt_cases(agree_cases, agree_limit)}"
+            f"## Mismatches ({len(mismatch_cases)} cases)\n"
+            f"{_fmt_cases(mismatch_cases, mismatch_limit)}\n\n"
+            f"## Agreements ({len(agree_cases)} cases)\n"
+            f"{_fmt_cases(agree_cases, agree_limit)}"
         )
 
-    def _build_history_text(self, prior_rounds: list[core.RoundResult]) -> str:
+    def _build_history_text(
+        self, prior_rounds: list[core.RoundResult], *, limit: int | None = None
+    ) -> str:
         if not prior_rounds:
             return "(none)"
 
+        rounds = prior_rounds if limit is None else prior_rounds[:limit]
         parts: list[str] = []
-        for round_result in prior_rounds:
+        for round_result in rounds:
             fixed = self._format_pair_block("Fixed", round_result.fixed_cases)
             broken = self._format_pair_block("Broken", round_result.broken_cases)
             parts.append(
@@ -219,6 +276,19 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
     default=None,
     help="Path to the resumable run state JSON. If omitted, a new timestamped run dir is created.",
 )
+@click.option(
+    "--probe-baml",
+    is_flag=True,
+    default=False,
+    help="Halve the prompt window and call the proposer directly up to a small cap, to check whether empty-text failures correlate with prompt size.",
+)
+@click.option(
+    "--probe-baml-bisects",
+    type=int,
+    default=8,
+    show_default=True,
+    help="Maximum prompt-size halvings to attempt in probe mode.",
+)
 def recalibrate(
     target: str,
     rounds: int,
@@ -227,6 +297,8 @@ def recalibrate(
     db_path: Path | None,
     context_mode: ContextMode,
     state_path: Path | None,
+    probe_baml: bool,
+    probe_baml_bisects: int,
 ) -> None:
     """Propose rubric edits for TARGET and measure them on held-out pairs.
 
@@ -264,6 +336,11 @@ def recalibrate(
             evaluator=evaluator,
         )
 
+    proposer = AnthropicProposer(context_mode=context_mode)
+    if probe_baml:
+        _probe_baml_prompt(state=state, proposer=proposer, max_halvings=probe_baml_bisects)
+        return
+
     if rounds > 0:
         click.echo(f"\n  Running {rounds} more round(s) with {context_mode} context…\n")
         core.run_rounds(
@@ -271,7 +348,7 @@ def recalibrate(
             held_pairs=state.held_pairs,
             labeled_cases=state.current_train.cases,
             current_rubric_text=state.current_rubric_text,
-            proposer=AnthropicProposer(context_mode=context_mode),
+            proposer=proposer,
             evaluator=evaluator,
             n_rounds=rounds,
             baseline_train=state.current_train,
@@ -283,6 +360,65 @@ def recalibrate(
 
     _print_results(state)
     _maybe_apply_winner(target, state)
+
+
+def _probe_baml_prompt(
+    *,
+    state: runstate.RunState,
+    proposer: AnthropicProposer,
+    max_halvings: int,
+) -> None:
+    """Exercise the BAML proposer directly with progressively smaller prompt windows.
+
+    This is a debugging aid: if the empty-text failure correlates with prompt size,
+    the run will stop reproducing when the case/history window is small enough.
+    """
+    cases = list(state.current_train.cases)
+    prior_rounds = list(state.rounds)
+    full_window = max(len(cases), len(prior_rounds), 1)
+
+    click.echo(
+        f"[probe] {state.target}: cases={len(cases)} rounds={len(prior_rounds)} "
+        f"starting_window={full_window} max_halvings={max_halvings}"
+    )
+    window = full_window
+    for step in range(1, max_halvings + 1):
+        cases_text = proposer._build_cases_text(
+            [c for c in cases if c.jev_prediction != c.expected],
+            [c for c in cases if c.jev_prediction == c.expected],
+            limit=window,
+        )
+        history_text = proposer._build_history_text(prior_rounds, limit=window)
+        prompt_bytes = len(state.current_rubric_text.encode("utf-8"))
+        prompt_bytes += len(cases_text.encode("utf-8"))
+        prompt_bytes += len(history_text.encode("utf-8"))
+        click.echo(
+            f"[probe] step {step}/{max_halvings}: window={window} prompt_bytes={prompt_bytes}"
+        )
+        try:
+            generated = proposer._call(
+                {
+                    "current_rubric_text": state.current_rubric_text,
+                    "current_cases_text": cases_text,
+                    "history_text": history_text,
+                },
+                retry=False,
+            )
+        except Exception as exc:
+            click.echo(f"[probe] step {step}: failure -> {exc}", err=True)
+            if window == 1:
+                click.echo("[probe] reached window=1; aborting probe")
+                return
+            window = max(1, window // 2)
+            continue
+
+        click.echo(
+            f"[probe] step {step}: success -> theory={generated.theory!r}, "
+            f"expected_effect={generated.expected_effect!r}"
+        )
+        if window == 1:
+            return
+        window = max(1, window // 2)
 
 
 def _start_run(
@@ -332,6 +468,8 @@ def _start_run(
     runstate.save_state(state)
     click.echo(f"  run state: {state.state_path}")
     return state
+
+
 
 
 def _run_compare_mode(
@@ -432,11 +570,61 @@ def _maybe_apply_winner(target: str, state: runstate.RunState) -> None:
     click.echo("\nrubric.yaml updated (not committed). Review with `git diff rubric.yaml`.")
 
 
+def _rubric_dump(doc: dict) -> str:
+    """Serialize a rubric document to stable, comment-free YAML.
+    - Multi-line strings → literal block scalar (|): no trailing newlines, no wrapping.
+    - Strings containing apostrophes → double-quote style: no '' escaping.
+    - Strings starting with a YAML indicator char → double-quote style.
+    - Everything else → plain scalar.
+    - width=4096: single-line strings are never wrapped (no backslash continuations).
+    - sort_keys=True for all keys EXCEPT fit_anchors, which is always Poor/Mixed/Strong.
+
+    Round-trips cleanly: strip() on every string value is idempotent.
+    """
+    _FIT_ANCHOR_ORDER = ["Poor", "Mixed", "Strong"]
+    def _strip(obj):
+        if isinstance(obj, str):
+            return obj.strip()
+        if isinstance(obj, dict):
+            return {k: _strip(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_strip(v) for v in obj]
+        return obj
+
+    def _normalize(obj):
+        """Sort non-fit-anchor dicts by key; fix fit_anchor order to Poor/Mixed/Strong."""
+        if isinstance(obj, list):
+            return [_normalize(v) for v in obj]
+        if isinstance(obj, dict):
+            if set(obj.keys()) <= set(_FIT_ANCHOR_ORDER) and obj:
+                return {k: _normalize(obj[k]) for k in _FIT_ANCHOR_ORDER if k in obj}
+            return {k: _normalize(obj[k]) for k in sorted(obj.keys())}
+        return obj
+    def _str_representer(dumper, data):
+        if "\n" in data:
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+        if "'" in data or (data and data[0] in ">|&*!{}[]#,%-"):
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=None)
+    class _Dumper(yaml.Dumper):  # type: ignore[misc]
+        pass
+    _Dumper.add_representer(str, _str_representer)
+    cleaned = _normalize(_strip(doc))
+    return yaml.dump(
+        cleaned,
+        Dumper=_Dumper,
+        allow_unicode=True,
+        default_flow_style=False,
+        sort_keys=False,  # pre-sorted by _normalize; sort_keys=True would override fit_anchor order
+        width=4096,
+    )
+
+
 def apply_candidate(slug: str, candidate_text: str, *, rubric_path: Path | None = None) -> str:
     """Write a winning candidate back into rubric.yaml and return the git diff.
-
-    The candidate is split with `core.parse_rubric_fields` — the same parser used to
     rehydrate partial proposals — so what lands in YAML is exactly what was measured.
+    The file is serialised with `_rubric_dump`, which produces stable, comment-free YAML;
+    subsequent runs that win a new candidate produce minimal diffs.
     """
     rubric_path = rubric_path or _RUBRIC_PATH
     doc = yaml.safe_load(rubric_path.read_text(encoding="utf-8"))
@@ -452,8 +640,7 @@ def apply_candidate(slug: str, candidate_text: str, *, rubric_path: Path | None 
             if fields.get("look_for"):
                 dim["look_for"] = fields["look_for"]
             break
-    new_yaml = yaml.dump(doc, allow_unicode=True, default_flow_style=False, sort_keys=False)
-    rubric_path.write_text(new_yaml, encoding="utf-8")
+    rubric_path.write_text(_rubric_dump(doc), encoding="utf-8")
     result = subprocess.run(
         ["git", "diff", "--", rubric_path.name],
         cwd=rubric_path.parent,
