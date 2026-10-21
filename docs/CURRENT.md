@@ -1,1 +1,1 @@
-docs/features/digest-history/bearing.md
+docs/features/rubric-recalibration/bearing.md

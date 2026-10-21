@@ -132,8 +132,11 @@ set exists. Open question from the operator: *is this effectively autoresearch?*
   not run `./run` concurrently with a recalibration run and can notice and revert a dirty
   `rubric.yaml` before starting a session. No isolated rubric path, no crash-restore
   machinery; the loop mutates the working-tree rubric directly and leaves it for `git`.
-- **F24** — `location`, this session — the hand-found candidates (silence-on-travel reads
-  as a penalty; location-pay language as a distributedness signal) are uncommitted in
-  `rubric.yaml` and were never measured. They give the loop's first run a **checkable
-  output**: an independent proposer either rediscovers them, contradicts them, or finds
-  something better, and any of the three is informative about the loop itself.
+- **F24** — operator, `67a04cb` — the hand-found `location` candidates (silence-on-travel
+  reads as a penalty; location-pay language as a distributedness signal) were committed
+  and then **deliberately reverted out of `rubric.yaml`**, on purpose, so the current
+  committed text has no trace of them. This is a planted control: the loop's first run on
+  `location` either rediscovers one or both from the backtest data alone, finds something
+  else, or finds nothing — any of the three is evidence about the proposer, not just about
+  `location`. The two candidates themselves live only here and in git history
+  (`bbb6a14`'s parent), not in any file the loop reads.

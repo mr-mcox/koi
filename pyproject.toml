@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Steel-thread intake-to-assertions for the job screener."
 requires-python = ">=3.14"
 dependencies = [
+    "anthropic>=1.17.0",
     "baml-py>=0.226.1",
     "click>=8.1",
     "fastapi>=0.115.0",

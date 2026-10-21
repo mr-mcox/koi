@@ -4,7 +4,7 @@ type: bearing
 date: 2026-10-20
 commit: bbb6a14
 branch: main
-status: orienting
+status: implementing
 scouting: ./scouting.md
 ---
 
@@ -28,7 +28,8 @@ one real `location` defect and several false leads. Terrain: [scouting.md](./sco
       and the rubric is left at its starting text → force with a fake proposer returning a
       no-op edit
 - [ ] A run ends with its best candidate left applied in the working tree, uncommitted,
-      and the round log naming what else was tried → `git diff rubric.yaml` after a run
+      and the round log naming what else was tried; held-out is reported but does not veto
+      the winner → `git diff rubric.yaml` after a run
 - [ ] Candidate text passes `tests/test_rubric.py`'s structural and privacy assertions
       before being applied → a candidate containing a salary figure is rejected in-loop
 
@@ -44,8 +45,8 @@ one real `location` defect and several false leads. Terrain: [scouting.md](./sco
   crash-restore machinery (→ scouting F23)
 - Each pair is evaluated in both orders and the probabilities averaged, so order can't
   confound a candidate comparison (→ scouting F19)
-- Split eligible pairs into propose/held-out; candidates are measured on pairs the proposer
-  never saw (→ scouting F14)
+- Split eligible pairs 80/20 into propose/held-out; candidates are chosen on the propose
+  split, and held-out is a readout for overfit rather than a gate (→ scouting F14)
 - Output is a diff plus the round log; `git` is the accept/reject surface
   (→ scouting F11, F16)
 - Candidate text is validated against `tests/test_rubric.py`'s assertions before use
@@ -73,9 +74,8 @@ Test-first by default. Exempt:
 - A target's forward accuracy sits at chance (~33%) — the rubric or the digest is wrong at
   a level wording can't reach, and the loop should say so rather than propose
   (→ scouting F20, F15)
-- The same failure pattern survives two rounds — that's missing operator data, not
-  wording (→ scouting F15)
-- A round's held-out gain is within sampling noise for the split size (→ scouting F14)
+- The held-out readout diverges materially from the training win for two rounds in a row —
+  the loop is overfitting and should surface that rather than hiding it (→ scouting F14)
 - Proposals start needing the full rubric rather than one dimension's text (→ scouting F8)
 
 ## Agreed
