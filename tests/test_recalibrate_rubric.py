@@ -422,6 +422,72 @@ Look for: Explicit location/remote policy language; whether the team/company is
     assert "Explicit location/remote policy language" in look_for
 
 
+def test_anthropic_proposer_sampled_context_truncates_case_list() -> None:
+    mismatch_cases = [
+        rr.LabeledCase(
+            digest_a=f"a{i}",
+            digest_b=f"b{i}",
+            expected="a",
+            jev_prediction="b",
+            jev_confidence=0.9,
+        )
+        for i in range(12)
+    ]
+    agree_cases = [
+        rr.LabeledCase(
+            digest_a=f"c{i}",
+            digest_b=f"d{i}",
+            expected="a",
+            jev_prediction="a",
+            jev_confidence=0.9,
+        )
+        for i in range(8)
+    ]
+    proposer = cli.AnthropicProposer(context_mode="sampled")
+    prompt = proposer._build_prompt("current rubric", mismatch_cases, agree_cases, "", "sampled")
+    assert prompt.count("expected=") == 15
+
+
+def test_anthropic_proposer_full_context_includes_all_cases() -> None:
+    mismatch_cases = [
+        rr.LabeledCase(
+            digest_a=f"a{i}",
+            digest_b=f"b{i}",
+            expected="a",
+            jev_prediction="b",
+            jev_confidence=0.9,
+        )
+        for i in range(12)
+    ]
+    agree_cases = [
+        rr.LabeledCase(
+            digest_a=f"c{i}",
+            digest_b=f"d{i}",
+            expected="a",
+            jev_prediction="a",
+            jev_confidence=0.9,
+        )
+        for i in range(8)
+    ]
+    proposer = cli.AnthropicProposer(context_mode="full")
+    prompt = proposer._build_prompt("current rubric", mismatch_cases, agree_cases, "", "full")
+    assert prompt.count("expected=") == 20
+
+
+def test_message_text_ignores_thinking_blocks() -> None:
+    class _Block:
+        def __init__(self, type_: str, text: str = "") -> None:
+            self.type = type_
+            self.text = text
+
+    message = type(
+        "Message",
+        (),
+        {"content": [_Block("thinking"), _Block("text", "hello"), _Block("text", " world")]},
+    )()
+    assert cli._message_text(message) == "hello world"
+
+
 def test_bucket_counts_formatting_and_best_round_pick() -> None:
     counts = rr.BucketCounts(right_sure=3, right_unsure=4, wrong_sure=1, wrong_unsure=2)
     assert counts.total == 10

@@ -22,6 +22,7 @@ import click
 import yaml
 from dotenv import load_dotenv
 from typesafe_sdk import TypeSafeClient
+from typing import Literal, Protocol
 
 from screen import recalibration as core
 from screen.extract.prompt import rubric_text_for_dimension
@@ -33,6 +34,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 _RUBRIC_PATH = Path(__file__).parent.parent / "rubric.yaml"
 _TIE_BOUNDARY = 0.5
 _SURE_THRESHOLD = 0.70
+ContextMode = Literal["sampled", "full"]
 
 
 def _decide(pc: float, pa: float) -> tuple[str, float]:
@@ -91,8 +93,9 @@ Rules:
   `# theory: no wording defect found — pattern looks like missing data`.
 """
 
-    def __init__(self, model: str = "claude-sonnet-5") -> None:
+    def __init__(self, model: str = "claude-sonnet-5", context_mode: ContextMode = "sampled") -> None:
         self._model = model
+        self._context_mode = context_mode
         self._client = anthropic.Anthropic()
 
     def propose(
@@ -118,12 +121,16 @@ Rules:
                 {
                     "role": "user",
                     "content": self._build_prompt(
-                        current_rubric_text, mismatch_cases, agree_cases, prior_text
+                        current_rubric_text,
+                        mismatch_cases,
+                        agree_cases,
+                        prior_text,
+                        self._context_mode,
                     ),
                 }
             ],
         )
-        return message.content[0].text
+        return _message_text(message)
 
     def _build_prompt(
         self,
@@ -131,6 +138,7 @@ Rules:
         mismatch_cases: list[core.LabeledCase],
         agree_cases: list[core.LabeledCase],
         prior_text: str,
+        context_mode: ContextMode,
     ) -> str:
         def _fmt_cases(cases: list[core.LabeledCase], n: int) -> str:
             out: list[str] = []
@@ -141,13 +149,19 @@ Rules:
                 )
             return "\n---\n".join(out) if out else "(none)"
 
+        mismatch_limit = len(mismatch_cases) if context_mode == "full" else 10
+        agree_limit = len(agree_cases) if context_mode == "full" else 5
         return (
             f"## Current rubric text\n{current_rubric_text}\n\n"
-            f"## Mismatches ({len(mismatch_cases)} cases)\n{_fmt_cases(mismatch_cases, 10)}\n\n"
-            f"## Agreements ({len(agree_cases)} cases)\n{_fmt_cases(agree_cases, 5)}\n"
+            f"## Mismatches ({len(mismatch_cases)} cases)\n{_fmt_cases(mismatch_cases, mismatch_limit)}\n\n"
+            f"## Agreements ({len(agree_cases)} cases)\n{_fmt_cases(agree_cases, agree_limit)}\n"
             f"{prior_text}\n\nPropose a revised rubric text for this dimension."
         )
 
+
+def _message_text(message: object) -> str:
+    content = getattr(message, "content", [])
+    return "".join(getattr(block, "text", "") for block in content if getattr(block, "type", None) == "text")
 
 def _build_labeled_cases(
     pairs: list[core.UsablePair], rubric_text: str, provider: JevVerdictProvider
@@ -296,7 +310,16 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
     default=None,
     help="Path to the SQLite DB (defaults to $SCREEN_DATA_DIR/screen.db or data/screen.db).",
 )
-def recalibrate(target: str, rounds: int, floor: int, seed: int, db_path: Path | None) -> None:
+@click.option(
+    "--context-mode",
+    type=click.Choice(["sampled", "full", "compare"], case_sensitive=False),
+    default="sampled",
+    show_default=True,
+    help="How much propose-split context to show the proposer.",
+)
+def recalibrate(
+    target: str, rounds: int, floor: int, seed: int, db_path: Path | None, context_mode: str
+) -> None:
     """Propose rubric edits for TARGET and measure them on held-out pairs.
 
     Leaves the winning candidate applied to rubric.yaml but never commits it.
@@ -326,8 +349,40 @@ def recalibrate(target: str, rounds: int, floor: int, seed: int, db_path: Path |
     click.echo("  Measuring baseline on held-out pairs…")
     baseline_held = evaluator.evaluate(held_pairs, rubric_text)
     click.echo(f"  baseline held-out: {baseline_held}")
-    proposer = AnthropicProposer()
-    click.echo(f"\n  Running {rounds} round(s)…\n")
+
+    if context_mode == "compare":
+        click.echo("\n  Comparing sampled and full-context runs…")
+        click.echo(f"  baseline train: {baseline_train}")
+        click.echo(f"  baseline held-out: {baseline_held}")
+        for mode in ("sampled", "full"):
+            proposer = AnthropicProposer(context_mode=mode)
+            click.echo(f"\n  [{mode}] Running {rounds} round(s)…\n")
+            results = core.run_rounds(
+                propose_pairs=propose_pairs,
+                held_pairs=held_pairs,
+                labeled_cases=labeled_cases,
+                current_rubric_text=rubric_text,
+                proposer=proposer,
+                evaluator=evaluator,
+                n_rounds=rounds,
+                baseline_train=baseline_train,
+            )
+            for r in results:
+                click.echo(f"  [{mode}] Round {r.round_num}: {r.theory}")
+                click.echo(f"    train:    {r.train_buckets}")
+                click.echo(f"    held-out: {r.held_out_buckets}")
+            winner = core.best_round(results, baseline_train, rubric_text)
+            if winner is None:
+                click.echo(
+                    f"  [{mode}] No candidate beat the training objective — no edit proposed."
+                )
+            else:
+                click.echo(f"  [{mode}] best train: {winner.train_buckets}")
+                click.echo(f"  [{mode}] best held:  {winner.held_out_buckets}")
+        return
+
+    proposer = AnthropicProposer(context_mode=context_mode)
+    click.echo(f"\n  Running {rounds} round(s) with {context_mode} context…\n")
     results = core.run_rounds(
         propose_pairs=propose_pairs,
         held_pairs=held_pairs,
