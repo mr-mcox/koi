@@ -13,7 +13,7 @@ _RUBRIC_PATH = Path(__file__).resolve().parents[3] / "rubric.yaml"
 # only at render time. The rubric file is public (AGENTS.md §Privacy, decisions.md R6), so
 # the number lives in the environment; the model still needs it to answer the likelihood
 # question the compensation anchors are written against.
-_PRIVATE_PLACEHOLDERS = ("SCREEN_COMPENSATION_BASELINE",)
+PRIVATE_PLACEHOLDERS = ("SCREEN_COMPENSATION_BASELINE",)
 
 
 class MissingPrivateConfigError(RuntimeError):
@@ -25,7 +25,7 @@ def _load() -> dict[str, Any]:
     return yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
 
 
-def _resolve_private(text: str, environ: dict[str, str] | None = None) -> str:
+def resolve_private(text: str, environ: dict[str, str] | None = None) -> str:
     """Substitute private config names with their values from the environment.
     Raises when a referenced name is unset. Rendering the rubric without the baseline is
     never correct: the compensation anchors are all defined relative to it, so the model
@@ -33,7 +33,7 @@ def _resolve_private(text: str, environ: dict[str, str] | None = None) -> str:
     A loud failure at render time is the only honest outcome.
     """
     source = environ if environ is not None else os.environ
-    for name in _PRIVATE_PLACEHOLDERS:
+    for name in PRIVATE_PLACEHOLDERS:
         if name not in text:
             continue
         value = source.get(name)
@@ -81,7 +81,7 @@ def rubric_text_for_baml(environ: dict[str, str] | None = None) -> str:
         _render_dimensions(data),
         _render_non_scoring(data),
     ]
-    return _resolve_private(
+    return resolve_private(
         "\n".join(line for section in parts for line in section), environ=environ
     )
 
@@ -100,16 +100,20 @@ def rubric_text_for_dimension(target: str, environ: dict[str, str] | None = None
     unrelated dimensions' anchors. Falls back to the non-scoring entry's definition for
     `non_scoring:obtainability` and friends (no fit anchors — never scored, Wall 4).
     Raises `KeyError` for a slug in neither vocabulary."""
+    return resolve_private(unresolved_rubric_text_for_dimension(target), environ=environ)
+
+
+def unresolved_rubric_text_for_dimension(target: str) -> str:
+    """`rubric_text_for_dimension` with private placeholders left as their names. For
+    callers that show rubric text to a model that may rewrite it, or write it back to
+    the public `rubric.yaml` — they must never hold the private value."""
     data = _load()
     by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
     if target in by_slug:
-        return _resolve_private("\n".join(_render_one_dimension(by_slug[target])), environ=environ)
+        return "\n".join(_render_one_dimension(by_slug[target]))
     non_scoring_by_slug = {ns["slug"]: ns for ns in data.get("non_scoring", [])}
     ns = non_scoring_by_slug[target]
-    return _resolve_private(
-        f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}",
-        environ=environ,
-    )
+    return f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}"
 
 
 def fit_anchors_for_dimension(target: str) -> dict[str, str]:

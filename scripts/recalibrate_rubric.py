@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,7 +27,7 @@ from typesafe_sdk import TypeSafeClient
 from screen import recalibration as core
 from screen import recalibration_run as runstate
 from screen.baml_client.sync_client import b as baml
-from screen.extract.prompt import rubric_text_for_dimension
+from screen.extract.prompt import resolve_private, unresolved_rubric_text_for_dimension
 from screen.score.loader import load_scoring_config
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import JevRuling, NoulJudgment
@@ -39,11 +40,23 @@ ContextMode = Literal["sampled", "full", "compare"]
 
 
 class JevEvaluator:
-    def __init__(self, provider: Any, config) -> None:
+    """Scores rubric text with Jev. Takes text with private placeholders unresolved and
+    resolves them only for the Jev call, so the value never reaches the proposer, the
+    run state, or the rubric.yaml write-back."""
+
+    def __init__(
+        self,
+        provider: Any,
+        config,
+        resolve: Callable[[str], str] = resolve_private,
+    ) -> None:
         self._provider = provider
         self._config = config
+        self._resolve = resolve
 
     def evaluate(self, pairs: list[core.UsablePair], rubric_text: str) -> core.EvaluationResult:
+        rubric_text = self._resolve(rubric_text)
+
         def _eval_one(pair: core.UsablePair) -> core.LabeledCase:
             fwd = self._provider.get_ruling(rubric_text, pair.digest_a, pair.digest_b, [])
             rev = self._provider.get_ruling(rubric_text, pair.digest_b, pair.digest_a, [])
@@ -66,6 +79,8 @@ class JevEvaluator:
                 jev_prediction=decision.verdict.outcome,
                 jev_confidence=decision.verdict.confidence,
                 sure=decision.auto_commit,
+                p_clear=pc,
+                p_a=pa,
             )
 
         cases = list(map(_eval_one, pairs))
@@ -75,7 +90,16 @@ class JevEvaluator:
 class AnthropicProposer:
     """Calls the generated BAML proposer."""
 
-    def __init__(self, context_mode: ContextMode = "sampled", client: Any = baml) -> None:
+    def __init__(
+        self,
+        *,
+        costs: core.CommitCosts,
+        brier_floor: float,
+        context_mode: ContextMode = "sampled",
+        client: Any = baml,
+    ) -> None:
+        self._costs = costs
+        self._brier_floor = brier_floor
         self._context_mode = context_mode
         self._client: Any = client
 
@@ -97,6 +121,7 @@ class AnthropicProposer:
                 mismatch_cases, agree_cases, limit=case_limit
             ),
             "history_text": self._build_history_text(prior_rounds, limit=history_limit),
+            "scoring_rule_text": self.scoring_rule_text(),
         }
         generated = self._call(kwargs, retry=retry)
         return core.RubricProposal(
@@ -135,6 +160,26 @@ class AnthropicProposer:
             f"ProposeRubricEdit failed after {attempts} attempts: {last_error}"
         )
 
+    def scoring_rule_text(self) -> str:
+        """The acceptance rule as the proposer reads it, with this run's numbers."""
+        return (
+            "Jev re-scores every case under your text, and the candidate replaces the\n"
+            "current text only if it wins on these, in order:\n"
+            "1. net = (right+sure) "
+            f"- {self._costs.k_winner:.2f} x (wrong+sure a/b calls) "
+            f"- {self._costs.k_tie:.2f} x (wrong+sure tie calls). Higher wins.\n"
+            "   A sure call saves the operator a look; a wrong sure call is a silent\n"
+            "   error that costs several. Unsure cases don't count: the operator reviews\n"
+            "   those whether jev was right or not.\n"
+            "2. Mean Brier score (lower wins): how far jev's probabilities sit from the\n"
+            "   operator's ruling. p_ruling in each case is the probability jev put on\n"
+            "   the operator's ruling; raising it on any case helps, including on\n"
+            "   unsure cases and agreements. A change counts only beyond "
+            f"{self._brier_floor:.4f},\n"
+            "   jev's run-to-run jitter.\n"
+            "3. Shorter rubric text. Add words only if they move net or Brier."
+        )
+
     @staticmethod
     def _prompt_meta(kwargs: dict[str, Any]) -> dict[str, int]:
         cases = str(kwargs.get("current_cases_text", ""))
@@ -158,7 +203,7 @@ class AnthropicProposer:
             for c in cases[:n]:
                 out.append(
                     f"pair={c.pair_id} expected={c.expected} jev={c.jev_prediction} "
-                    f"sure={c.sure} conf={c.jev_confidence:.2f}\n"
+                    f"sure={c.sure} conf={c.jev_confidence:.2f} p_ruling={c.p_ruling:.2f}\n"
                     f"A: {c.digest_a}\nB: {c.digest_b}"
                 )
             return "\n---\n".join(out) if out else "(none)"
@@ -193,8 +238,8 @@ class AnthropicProposer:
                         f"Theory: {round_result.theory}",
                         f"Expected effect: {round_result.expected_effect or '(not stated)'}",
                         f"Train: {round_result.train_buckets}",
-                        f"Noise floor delta: {round_result.noise_floor_delta}",
-                        f"Candidate delta: {round_result.candidate_delta}",
+                        f"Train net: {round_result.train_net:.2f}  "
+                        f"mean Brier: {round_result.train_brier:.4f}",
                         f"Accepted: {round_result.accepted}",
                         "Candidate draft:",
                         round_result.candidate_rubric_text,
@@ -213,7 +258,8 @@ class AnthropicProposer:
         for c in cases:
             lines.append(
                 f"- pair={c.pair_id} expected={c.expected} jev={c.jev_prediction} "
-                f"sure={c.sure} conf={c.jev_confidence:.2f}\n  A: {c.digest_a}\n  B: {c.digest_b}"
+                f"sure={c.sure} conf={c.jev_confidence:.2f} p_ruling={c.p_ruling:.2f}\n"
+                f"  A: {c.digest_a}\n  B: {c.digest_b}"
             )
         return "\n".join(lines)
 
@@ -314,11 +360,12 @@ def recalibrate(
 
     run_dir = state_path.parent if state_path else runstate.default_run_dir(target)
     evaluator = JevEvaluator(JevVerdictProvider(config, TypeSafeClient()), config)
+    costs = _commit_costs(config)
 
     if (run_dir / "state.json").exists():
-        state = runstate.load_state(run_dir / "state.json")
         try:
-            runstate.require_baseline_unchanged(state, rubric_text_for_dimension(target))
+            state = runstate.load_state(run_dir / "state.json")
+            runstate.require_baseline_unchanged(state, unresolved_rubric_text_for_dimension(target))
         except runstate.ResumeRefusedError as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo(
@@ -336,7 +383,9 @@ def recalibrate(
             evaluator=evaluator,
         )
 
-    proposer = AnthropicProposer(context_mode=context_mode)
+    proposer = AnthropicProposer(
+        costs=costs, brier_floor=state.brier_noise_floor, context_mode=context_mode
+    )
     if probe_baml:
         _probe_baml_prompt(state=state, proposer=proposer, max_halvings=probe_baml_bisects)
         return
@@ -346,20 +395,31 @@ def recalibrate(
         core.run_rounds(
             propose_pairs=state.propose_pairs,
             held_pairs=state.held_pairs,
-            labeled_cases=state.current_train.cases,
             current_rubric_text=state.current_rubric_text,
             proposer=proposer,
             evaluator=evaluator,
+            costs=costs,
+            brier_floor=state.brier_noise_floor,
             n_rounds=rounds,
             baseline_train=state.current_train,
-            baseline_noise=state.baseline_noise,
-            noise_floor_delta=state.noise_floor_delta,
             round_offset=state.rounds_completed,
             on_round=lambda result: runstate.record_round(state, result),
         )
 
-    _print_results(state)
+    _print_results(state, costs)
     _maybe_apply_winner(target, state)
+
+
+def _commit_costs(config) -> core.CommitCosts:
+    return core.CommitCosts.from_thresholds(
+        winner_commit_threshold=config.winner_commit_threshold,
+        tie_commit_threshold=config.tie_commit_threshold,
+    )
+
+
+def _score_line(cases: list[core.LabeledCase], costs: core.CommitCosts) -> str:
+    score = core.Score.of(cases, costs)
+    return f"net {score.net:.2f}  mean Brier {score.brier:.4f}"
 
 
 def _probe_baml_prompt(
@@ -401,6 +461,7 @@ def _probe_baml_prompt(
                     "current_rubric_text": state.current_rubric_text,
                     "current_cases_text": cases_text,
                     "history_text": history_text,
+                    "scoring_rule_text": proposer.scoring_rule_text(),
                 },
                 retry=False,
             )
@@ -443,7 +504,7 @@ def _start_run(
     propose_pairs, held_pairs = core.split_pairs(pairs, seed=seed)
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
 
-    rubric_text = rubric_text_for_dimension(target)
+    rubric_text = unresolved_rubric_text_for_dimension(target)
     click.echo("\n  Measuring baseline on the propose split…")
     baseline_train = evaluator.evaluate(propose_pairs, rubric_text)
     click.echo(f"  baseline train: {baseline_train.buckets}")
@@ -464,12 +525,10 @@ def _start_run(
         propose_pairs=propose_pairs,
         held_pairs=held_pairs,
     )
-    click.echo(f"  noise floor delta: {state.noise_floor_delta} pair(s)")
+    click.echo(f"  Brier noise floor: {state.brier_noise_floor:.4f}")
     runstate.save_state(state)
     click.echo(f"  run state: {state.state_path}")
     return state
-
-
 
 
 def _run_compare_mode(
@@ -493,25 +552,28 @@ def _run_compare_mode(
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
     provider = JevVerdictProvider(config, TypeSafeClient())
     evaluator = JevEvaluator(provider, config)
-    rubric_text = rubric_text_for_dimension(target)
+    costs = _commit_costs(config)
+    rubric_text = unresolved_rubric_text_for_dimension(target)
     baseline_train = evaluator.evaluate(propose_pairs, rubric_text)
+    baseline_noise = evaluator.evaluate(propose_pairs, rubric_text)
+    brier_floor = core.brier_noise_floor(baseline_train, baseline_noise)
     baseline_held = evaluator.evaluate(held_pairs, rubric_text)
     click.echo("\n  Comparing sampled and full-context runs…")
     click.echo(f"  baseline train: {baseline_train.buckets}")
     click.echo(f"  baseline held-out: {baseline_held.buckets}")
     for mode in ("sampled", "full"):
-        proposer = AnthropicProposer(context_mode=mode)
+        proposer = AnthropicProposer(costs=costs, brier_floor=brier_floor, context_mode=mode)
         click.echo(f"\n  [{mode}] Running {rounds} round(s)…\n")
         results = core.run_rounds(
             propose_pairs=propose_pairs,
             held_pairs=held_pairs,
-            labeled_cases=baseline_train.cases,
             current_rubric_text=rubric_text,
             proposer=proposer,
             evaluator=evaluator,
+            costs=costs,
+            brier_floor=brier_floor,
             n_rounds=rounds,
             baseline_train=baseline_train,
-            baseline_noise=baseline_train,
         )
         for r in results:
             click.echo(f"  [{mode}] Round {r.round_num}: {r.theory}")
@@ -519,29 +581,33 @@ def _run_compare_mode(
             click.echo(f"    train:    {r.train_buckets}")
             click.echo(f"    train cm: {core.ConfusionMatrix.from_cases(r.train_cases or [])}")
             click.echo(f"    held-out: {r.held_out_buckets}")
-            click.echo(f"    delta:    {r.candidate_delta} (noise floor {r.noise_floor_delta})")
-        winner = core.best_round(results, baseline_train.buckets, rubric_text)
+            click.echo(f"    score:    train {_score_line(r.train_cases or [], costs)}")
+            click.echo(f"              held  {_score_line(r.held_out_cases or [], costs)}")
+            click.echo(f"    accepted: {r.accepted}")
+        winner = core.best_round(results)
         if winner is None:
-            click.echo(f"  [{mode}] No candidate beat the training objective — no edit proposed.")
+            click.echo(f"  [{mode}] No candidate was accepted — no edit proposed.")
         else:
             click.echo(f"  [{mode}] best train: {winner.train_buckets}")
             click.echo(f"  [{mode}] best held:  {winner.held_out_buckets}")
 
 
-def _print_results(state: runstate.RunState) -> None:
+def _print_results(state: runstate.RunState, costs: core.CommitCosts) -> None:
     click.echo(
         f"\n[recalibrate] {state.target}: {state.rounds_completed} round(s) recorded in {state.state_path}"
     )
     click.echo(f"  baseline train: {state.baseline_train.buckets}")
-    click.echo(f"  baseline noise: {state.baseline_noise.buckets}")
-    click.echo(f"  noise floor delta: {state.noise_floor_delta}")
+    click.echo(f"  baseline score: {_score_line(state.baseline_train.cases, costs)}")
+    click.echo(f"  Brier noise floor: {state.brier_noise_floor:.4f}")
+    click.echo(f"  commit costs: k_winner {costs.k_winner:.2f}  k_tie {costs.k_tie:.2f}")
     for r in state.rounds:
         click.echo(f"\n  Round {r.round_num}: {r.theory}")
         click.echo(f"    expect:   {r.expected_effect}")
         click.echo(f"    train:    {r.train_buckets}")
         click.echo(f"    train cm: {core.ConfusionMatrix.from_cases(r.train_cases or [])}")
         click.echo(f"    held-out: {r.held_out_buckets}")
-        click.echo(f"    delta:    {r.candidate_delta} (noise floor {r.noise_floor_delta})")
+        click.echo(f"    score:    train {_score_line(r.train_cases or [], costs)}")
+        click.echo(f"              held  {_score_line(r.held_out_cases or [], costs)}")
         click.echo(f"    accepted: {r.accepted}")
         click.echo(f"    fixed:    {len(r.fixed_cases)}")
         click.echo(f"    broken:   {len(r.broken_cases)}")
@@ -556,10 +622,10 @@ def _print_results(state: runstate.RunState) -> None:
 
 
 def _maybe_apply_winner(target: str, state: runstate.RunState) -> None:
-    winner = core.best_round(state.rounds, state.baseline_train.buckets, state.baseline_rubric_text)
-    if winner is None or not winner.accepted:
+    winner = core.best_round(state.rounds)
+    if winner is None:
         click.echo(
-            "\n[recalibrate] No candidate beat the current best on the paired acceptance rule — no edit proposed. "
+            "\n[recalibrate] No candidate beat the current best — no edit proposed. "
             "rubric.yaml unchanged."
         )
         return
@@ -582,6 +648,7 @@ def _rubric_dump(doc: dict) -> str:
     Round-trips cleanly: strip() on every string value is idempotent.
     """
     _FIT_ANCHOR_ORDER = ["Poor", "Mixed", "Strong"]
+
     def _strip(obj):
         if isinstance(obj, str):
             return obj.strip()
@@ -600,14 +667,17 @@ def _rubric_dump(doc: dict) -> str:
                 return {k: _normalize(obj[k]) for k in _FIT_ANCHOR_ORDER if k in obj}
             return {k: _normalize(obj[k]) for k in sorted(obj.keys())}
         return obj
+
     def _str_representer(dumper, data):
         if "\n" in data:
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
         if "'" in data or (data and data[0] in ">|&*!{}[]#,%-"):
             return dumper.represent_scalar("tag:yaml.org,2002:str", data, style='"')
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=None)
+
     class _Dumper(yaml.Dumper):  # type: ignore[misc]
         pass
+
     _Dumper.add_representer(str, _str_representer)
     cleaned = _normalize(_strip(doc))
     return yaml.dump(

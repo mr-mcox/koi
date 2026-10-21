@@ -7,12 +7,15 @@ and the paired-acceptance rule. The paid proposer and CLI plumbing live in
 
 from __future__ import annotations
 
+import math
 import random
 import sqlite3
+import statistics
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from screen.extract.prompt import PRIVATE_PLACEHOLDERS
 from screen.store.repo import comparisons_for_target, get_dimension_digest
 
 # ---------------------------------------------------------------------------
@@ -33,6 +36,23 @@ def validate_candidate(text: str) -> None:
             raise PrivacyViolationError(
                 f"Candidate rubric text contains private pattern {pattern!r}. "
                 "The proposer hallucinated a private value; discarding candidate."
+            )
+
+
+class PlaceholderDroppedError(ValueError):
+    """Candidate rubric text lost a private-config placeholder its source carried."""
+
+
+def require_placeholders_kept(current_text: str, candidate_text: str) -> None:
+    """Raise if the candidate drops a placeholder the current text uses.
+
+    A dropped placeholder either leaves the dimension anchored to nothing or was replaced
+    by a literal value, which would then be written into the public rubric.yaml.
+    """
+    for name in PRIVATE_PLACEHOLDERS:
+        if name in current_text and name not in candidate_text:
+            raise PlaceholderDroppedError(
+                f"Candidate rubric text dropped the {name} placeholder; discarding candidate."
             )
 
 
@@ -62,6 +82,115 @@ class LabeledCase:
     jev_prediction: str
     jev_confidence: float
     sure: bool
+    p_clear: float
+    p_a: float
+
+    def outcome_probabilities(self) -> dict[str, float]:
+        """Jev's distribution over the three rulings, from its two answers: P(clear
+        winner) splits between a and b by P(a is better); the rest is tie."""
+        return {
+            "a": self.p_clear * self.p_a,
+            "b": self.p_clear * (1 - self.p_a),
+            "tie": 1 - self.p_clear,
+        }
+
+    @property
+    def p_ruling(self) -> float:
+        """Probability Jev put on the operator's ruling."""
+        return self.outcome_probabilities()[self.expected]
+
+    @property
+    def brier(self) -> float:
+        """Multiclass Brier score against the operator's ruling: 0 is certain and right,
+        2 is certain and wrong. Proper, so it can't be gamed by blanket confidence."""
+        return sum(
+            (p - (1.0 if outcome == self.expected else 0.0)) ** 2
+            for outcome, p in self.outcome_probabilities().items()
+        )
+
+
+@dataclass(frozen=True)
+class CommitCosts:
+    """What a wrong auto-commit costs, in operator looks saved by a right one.
+
+    A pair Jev isn't sure of costs the operator one look whether Jev was right or not.
+    Committing it saves that look if right and costs k if wrong, so committing breaks
+    even at precision k/(k+1). Reading each commit threshold t as that break-even point
+    gives k = t/(1-t).
+    """
+
+    k_winner: float
+    k_tie: float
+
+    @classmethod
+    def from_thresholds(
+        cls, *, winner_commit_threshold: float, tie_commit_threshold: float
+    ) -> CommitCosts:
+        def k(t: float) -> float:
+            return t / (1 - t)
+
+        return cls(k_winner=k(winner_commit_threshold), k_tie=k(tie_commit_threshold))
+
+    def net(self, cases: list[LabeledCase]) -> float:
+        """Looks saved net of silent errors: each right+sure is +1, each wrong+sure
+        costs k for the threshold it crossed. Unsure cases cost a look either way."""
+        total = 0.0
+        for case in cases:
+            if not case.sure:
+                continue
+            if case.jev_prediction == case.expected:
+                total += 1
+            else:
+                total -= self.k_tie if case.jev_prediction == "tie" else self.k_winner
+        return total
+
+
+@dataclass(frozen=True)
+class Score:
+    net: float
+    brier: float
+
+    @classmethod
+    def of(cls, cases: list[LabeledCase], costs: CommitCosts) -> Score:
+        return cls(net=costs.net(cases), brier=mean_brier(cases))
+
+
+def mean_brier(cases: list[LabeledCase]) -> float:
+    return statistics.fmean(case.brier for case in cases) if cases else 0.0
+
+
+# Two standard errors: a gain this size from jitter alone happens ~5% of the time.
+_NOISE_FLOOR_STANDARD_ERRORS = 2
+_MIN_SAMPLES_FOR_STDEV = 2
+
+
+def brier_noise_floor(first: EvaluationResult, second: EvaluationResult) -> float:
+    """Two standard errors of the mean Brier difference between two evaluations of the
+    same text. Jev's verdicts barely move between runs but its probabilities jitter, so
+    a mean-Brier gain smaller than this is indistinguishable from re-running Jev."""
+    by_id = {case.pair_id: case for case in second.cases}
+    diffs = [case.brier - by_id[case.pair_id].brier for case in first.cases]
+    if len(diffs) < _MIN_SAMPLES_FOR_STDEV:
+        return 0.0
+    return _NOISE_FLOOR_STANDARD_ERRORS * statistics.stdev(diffs) / math.sqrt(len(diffs))
+
+
+def accepts(
+    candidate: Score,
+    current: Score,
+    *,
+    brier_floor: float,
+    candidate_text: str,
+    current_text: str,
+) -> bool:
+    """Lexicographic: higher net, then a Brier gain beyond the noise floor, then shorter
+    text. A Brier difference inside the floor counts as a tie."""
+    if not math.isclose(candidate.net, current.net, abs_tol=1e-9):
+        return candidate.net > current.net
+    brier_gain = current.brier - candidate.brier
+    if abs(brier_gain) > brier_floor:
+        return brier_gain > 0
+    return len(candidate_text.strip()) < len(current_text.strip())
 
 
 @dataclass(frozen=True)
@@ -174,10 +303,6 @@ class PairDelta:
     fixed: list[LabeledCase] = field(default_factory=list)
     broken: list[LabeledCase] = field(default_factory=list)
 
-    @property
-    def delta(self) -> int:
-        return len(self.fixed) - len(self.broken)
-
 
 @dataclass
 class BucketCounts:
@@ -230,8 +355,8 @@ class RoundResult:
     held_out_cases: list[LabeledCase] | None = None
     fixed_cases: list[LabeledCase] = field(default_factory=list)
     broken_cases: list[LabeledCase] = field(default_factory=list)
-    noise_floor_delta: int = 0
-    candidate_delta: int = 0
+    train_net: float = 0.0
+    train_brier: float = 0.0
     accepted: bool = False
 
 
@@ -252,20 +377,6 @@ class Proposer(Protocol):
 
 class Evaluator(Protocol):
     def evaluate(self, pairs: list[UsablePair], rubric_text: str) -> EvaluationResult: ...
-
-
-# ---------------------------------------------------------------------------
-# Objective
-# ---------------------------------------------------------------------------
-
-
-def objective(counts: BucketCounts, rubric_text: str) -> tuple[int, int, int, int]:
-    """Lexicographic objective: more right, more right-sure, fewer wrong-sure, shorter."""
-    right_total = counts.right_sure + counts.right_unsure
-    right_sure = counts.right_sure
-    wrong_sure = -counts.wrong_sure
-    brevity = -len(rubric_text.strip())
-    return (right_total, right_sure, wrong_sure, brevity)
 
 
 # ---------------------------------------------------------------------------
@@ -393,54 +504,50 @@ def run_rounds(
     *,
     propose_pairs: list[UsablePair],
     held_pairs: list[UsablePair],
-    labeled_cases: list[LabeledCase],
     current_rubric_text: str,
     proposer: Proposer,
     evaluator: Evaluator,
+    costs: CommitCosts,
+    brier_floor: float,
     n_rounds: int = 3,
     baseline_train: EvaluationResult | None = None,
-    baseline_noise: EvaluationResult | None = None,
-    noise_floor_delta: int | None = None,
     round_offset: int = 0,
     on_round: Callable[[RoundResult], None] | None = None,
 ) -> list[RoundResult]:
-    """Run sequential rounds.
+    """Run sequential rounds; the proposer always sees the current-best train cases.
 
-    The proposer always sees the current-best train cases. Acceptance is paired:
-    a candidate must beat the baseline noise delta (from evaluating the current
-    best twice) before the aggregate objective can break ties.
+    Acceptance is `accepts` on the train split. Held-out is measured and recorded but
+    never consulted, so it stays an honest estimate of the accepted text.
     """
     rounds: list[RoundResult] = []
     rubric_text = current_rubric_text
     current_train = baseline_train or evaluator.evaluate(propose_pairs, rubric_text)
-    current_noise = baseline_noise or evaluator.evaluate(propose_pairs, rubric_text)
-    if noise_floor_delta is None:
-        noise_floor_delta = current_noise.diff_against(current_train).delta
-    current_score = objective(current_train.buckets, rubric_text)
-    current_cases = list(current_train.cases)
+    current_score = Score.of(current_train.cases, costs)
 
     for i in range(n_rounds):
         proposal = proposer.propose(
             current_rubric_text=rubric_text,
-            labeled_cases=current_cases,
+            labeled_cases=list(current_train.cases),
             prior_rounds=list(rounds),
         )
         candidate = render_candidate_text(rubric_text, proposal)
         validate_candidate(candidate)
+        require_placeholders_kept(rubric_text, candidate)
         candidate_train = evaluator.evaluate(propose_pairs, candidate)
         candidate_held = evaluator.evaluate(held_pairs, candidate)
         delta = candidate_train.diff_against(current_train)
-        candidate_score = objective(candidate_train.buckets, candidate)
-        accepted = False
-        if delta.delta > noise_floor_delta:
-            accepted = True
-        elif delta.delta == noise_floor_delta and candidate_score > current_score:
-            accepted = True
+        candidate_score = Score.of(candidate_train.cases, costs)
+        accepted = accepts(
+            candidate_score,
+            current_score,
+            brier_floor=brier_floor,
+            candidate_text=candidate,
+            current_text=rubric_text,
+        )
         if accepted:
             rubric_text = candidate
             current_train = candidate_train
             current_score = candidate_score
-            current_cases = list(candidate_train.cases)
 
         rounds.append(
             RoundResult(
@@ -454,8 +561,8 @@ def run_rounds(
                 held_out_cases=candidate_held.cases,
                 fixed_cases=delta.fixed,
                 broken_cases=delta.broken,
-                noise_floor_delta=noise_floor_delta,
-                candidate_delta=delta.delta,
+                train_net=candidate_score.net,
+                train_brier=candidate_score.brier,
                 accepted=accepted,
             )
         )
@@ -466,22 +573,7 @@ def run_rounds(
     return rounds
 
 
-def best_round(
-    rounds: list[RoundResult], baseline: BucketCounts, baseline_text: str
-) -> RoundResult | None:
-    """Return the final accepted round, or fall back to the old objective-based pick."""
+def best_round(rounds: list[RoundResult]) -> RoundResult | None:
+    """The last accepted round: each acceptance beat the best before it."""
     accepted = [r for r in rounds if r.accepted]
-    if accepted:
-        return accepted[-1]
-    baseline_score = objective(baseline, baseline_text)
-    scored_rounds = [
-        r
-        for r in rounds
-        if r.train_buckets is not None
-        and objective(r.train_buckets, r.candidate_rubric_text) > baseline_score
-    ]
-    if not scored_rounds:
-        return None
-    return max(
-        scored_rounds, key=lambda r: objective(r.train_buckets or baseline, r.candidate_rubric_text)
-    )
+    return accepted[-1] if accepted else None

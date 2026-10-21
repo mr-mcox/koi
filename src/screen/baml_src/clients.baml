@@ -28,11 +28,20 @@ client<llm> Anthropic {
   }
 }
 
+// Sonnet 5 always thinks adaptively (no token budget; `budget_tokens` is a 400),
+// and thinking counts against `max_tokens`. BAML's default cap (~4k) lets a
+// hard prompt spend it all on thinking and return no text, so the cap is raised
+// and truncation is surfaced as a finish-reason error instead.
 client<llm> AnthropicSonnet {
   provider anthropic
   options {
     model "claude-sonnet-5"
     api_key env.ANTHROPIC_API_KEY
+    max_tokens 32000
+    output_config {
+      effort "high"
+    }
+    finish_reason_deny_list ["max_tokens"]
   }
 }
 

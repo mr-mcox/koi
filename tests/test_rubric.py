@@ -71,7 +71,7 @@ def test_rubric_compensation_dimension_has_no_baseline_number(rubric: dict) -> N
 
 
 def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None:  # type: ignore[type-arg]
-    """The committed rubric names the config key; `_resolve_private` swaps in the real
+    """The committed rubric names the config key; `resolve_private` swaps in the real
     value at render time. If this reference is ever edited away, the substitution silently
     stops happening and Jev goes back to judging compensation against nothing."""
     comp = next(d for d in rubric["dimensions"] if d["slug"] == "compensation")

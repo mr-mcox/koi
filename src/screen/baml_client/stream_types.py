@@ -50,13 +50,13 @@ class IdentificationResult(BaseModel):
     opening_notes: typing.Optional[str] = Field(default=None, description='Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not surfaced as a user-visible field.')
 
 class RecalibrationProposal(BaseModel):
-    theory: typing.Optional[str] = Field(default=None, description='One sentence: the pattern this edit is intended to fix.')
+    theory: typing.Optional[str] = Field(default=None, description='One sentence: the pattern in the cases this edit targets. If you find no wording defect, say so here and leave every rubric field null.')
     expected_effect: typing.Optional[str] = Field(default=None, description='What measurable change you expect and in which direction, e.g. \'fewer wrong+sure on expected-tie pairs\'.')
-    definition: typing.Optional[str] = Field(default=None, description='Full replacement definition text. Omit entirely if you are not changing it.')
-    fit_anchor_poor: typing.Optional[str] = Field(default=None, description='Full replacement Poor fit anchor. Omit entirely if you are not changing it.')
-    fit_anchor_mixed: typing.Optional[str] = Field(default=None, description='Full replacement Mixed fit anchor. Omit entirely if you are not changing it.')
-    fit_anchor_strong: typing.Optional[str] = Field(default=None, description='Full replacement Strong fit anchor. Omit entirely if you are not changing it.')
-    look_for: typing.Optional[str] = Field(default=None, description='Full replacement Look for text. Omit entirely if you are not changing it.')
+    definition: typing.Optional[str] = Field(default=None, description='Full replacement definition text, or null if unchanged.')
+    fit_anchor_poor: typing.Optional[str] = Field(default=None, description='Full replacement Poor fit anchor, or null if unchanged.')
+    fit_anchor_mixed: typing.Optional[str] = Field(default=None, description='Full replacement Mixed fit anchor, or null if unchanged.')
+    fit_anchor_strong: typing.Optional[str] = Field(default=None, description='Full replacement Strong fit anchor, or null if unchanged.')
+    look_for: typing.Optional[str] = Field(default=None, description='Full replacement Look for text, or null if unchanged.')
 
 class SearchAction(BaseModel):
     tag: typing.Optional[str] = Field(default=None, description='Always \'search\'.')

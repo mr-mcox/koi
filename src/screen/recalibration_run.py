@@ -24,6 +24,9 @@ from screen.recalibration import (
     RoundResult,
     UsablePair,
 )
+from screen.recalibration import (
+    brier_noise_floor as _brier_noise_floor,
+)
 
 _STATE_FILENAME = "state.json"
 _TRANSCRIPT_FILENAME = "transcript.jsonl"
@@ -37,7 +40,7 @@ class ResumeRefusedError(RuntimeError):
 class RunState:
     """One recalibration run, as persisted.
 
-    The splits, baseline and noise floor are pinned at creation and never
+    The splits, baseline and Brier noise floor are pinned at creation and never
     recomputed: new operator rulings would otherwise reshuffle the split for the
     same seed, and re-measuring the baseline both costs Jev calls and moves the
     reference point a resumed run is being compared against.
@@ -70,10 +73,10 @@ class RunState:
         return len(self.rounds)
 
     @property
-    def noise_floor_delta(self) -> int:
-        """Pairs that flipped between two evaluations of the same baseline text —
-        the bar a candidate's fixed-minus-broken has to clear to count as signal."""
-        return self.baseline_noise.diff_against(self.baseline_train).delta
+    def brier_noise_floor(self) -> float:
+        """Mean-Brier jitter between two evaluations of the same baseline text — the
+        gain a candidate needs before its Brier score counts as signal."""
+        return _brier_noise_floor(self.baseline_train, self.baseline_noise)
 
 
 def default_run_dir(
@@ -155,6 +158,11 @@ def save_state(state: RunState) -> None:
 
 def load_state(state_path: Path) -> RunState:
     data = json.loads(state_path.read_text(encoding="utf-8"))
+    if any("p_clear" not in case for case in data["baseline_train"]["cases"]):
+        raise ResumeRefusedError(
+            f"{state_path} predates per-case Jev probabilities, which the Brier score "
+            "needs. Start a new run."
+        )
     return RunState(
         run_dir=state_path.parent,
         target=data["target"],
@@ -229,8 +237,8 @@ def _round_to_dict(result: RoundResult) -> dict:
         "held_out_cases": [asdict(case) for case in result.held_out_cases or []],
         "fixed_cases": [asdict(case) for case in result.fixed_cases],
         "broken_cases": [asdict(case) for case in result.broken_cases],
-        "noise_floor_delta": result.noise_floor_delta,
-        "candidate_delta": result.candidate_delta,
+        "train_net": result.train_net,
+        "train_brier": result.train_brier,
         "accepted": result.accepted,
     }
 
@@ -248,7 +256,7 @@ def _round_from_dict(data: dict) -> RoundResult:
         held_out_cases=[LabeledCase(**item) for item in data.get("held_out_cases", [])],
         fixed_cases=[LabeledCase(**item) for item in data.get("fixed_cases", [])],
         broken_cases=[LabeledCase(**item) for item in data.get("broken_cases", [])],
-        noise_floor_delta=int(data.get("noise_floor_delta", 0)),
-        candidate_delta=int(data.get("candidate_delta", 0)),
+        train_net=float(data.get("train_net", 0.0)),
+        train_brier=float(data.get("train_brier", 0.0)),
         accepted=bool(data.get("accepted", False)),
     )

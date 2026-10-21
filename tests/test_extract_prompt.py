@@ -17,6 +17,7 @@ from screen.extract.prompt import (
     fit_anchors_for_dimension,
     rubric_text_for_baml,
     rubric_text_for_dimension,
+    unresolved_rubric_text_for_dimension,
 )
 
 
@@ -80,6 +81,14 @@ def test_compensation_rubric_resolves_the_private_baseline() -> None:
 
     assert "$999,999" in text
     assert "SCREEN_COMPENSATION_BASELINE" not in text
+
+
+def test_unresolved_compensation_rubric_keeps_the_placeholder() -> None:
+    """The regression: recalibration shows this text to a proposer that rewrites it and
+    writes it back to the public rubric.yaml, so it must never carry the private value."""
+    text = unresolved_rubric_text_for_dimension("compensation")
+
+    assert "SCREEN_COMPENSATION_BASELINE" in text
 
 
 def test_unset_baseline_raises_instead_of_rendering_a_placeholder() -> None:

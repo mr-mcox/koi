@@ -25,6 +25,8 @@ def _case(pair_id: str = "p1", prediction: str = "b") -> rr.LabeledCase:
         jev_prediction=prediction,
         jev_confidence=0.9,
         sure=True,
+        p_clear=0.9,
+        p_a=0.1,
     )
 
 
@@ -45,8 +47,8 @@ def _round(round_num: int = 1) -> rr.RoundResult:
         held_out_cases=baseline.cases,
         fixed_cases=baseline.cases,
         broken_cases=[],
-        noise_floor_delta=0,
-        candidate_delta=1,
+        train_net=1.0,
+        train_brier=0.25,
         accepted=True,
     )
 
@@ -97,6 +99,9 @@ def test_save_and_load_round_trips_every_field(tmp_path: Path) -> None:
     assert loaded.rounds[0].expected_effect == "fewer wrong+sure on tie pairs"
     assert loaded.rounds[0].fixed_cases[0].pair_id == "p1"
     assert loaded.rounds[0].accepted is True
+    assert loaded.rounds[0].train_net == 1.0
+    assert loaded.rounds[0].train_brier == 0.25
+    assert loaded.baseline_noise.cases[0].p_a == 0.1
     assert loaded.state_path == state.state_path
     assert loaded.transcript_path == state.transcript_path
 
@@ -158,6 +163,21 @@ def test_resume_refuses_when_the_baseline_rubric_has_drifted(tmp_path: Path) -> 
 
     with pytest.raises(run.ResumeRefusedError, match="location"):
         run.require_baseline_unchanged(state, "### Location (slug: location, weight: 6)\nedited")
+
+
+def test_load_state_refuses_a_run_saved_without_jev_probabilities(tmp_path: Path) -> None:
+    """The regression: a pre-Brier state.json loads with no per-case probabilities and
+    the run crashes mid-round (or scores against made-up defaults) instead of saying
+    the run can't be resumed."""
+    state = _state(tmp_path)
+    run.save_state(state)
+    data = json.loads(state.state_path.read_text(encoding="utf-8"))
+    for case in data["baseline_train"]["cases"]:
+        del case["p_clear"]
+    state.state_path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(run.ResumeRefusedError, match="Start a new run"):
+        run.load_state(state.state_path)
 
 
 def test_default_run_dir_is_namespaced_by_target_and_timestamp() -> None:

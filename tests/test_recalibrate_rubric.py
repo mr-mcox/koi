@@ -7,7 +7,9 @@ resumable run record is covered in `test_recalibration_run.py`.
 
 from __future__ import annotations
 
+import math
 import sqlite3
+import statistics
 from types import SimpleNamespace
 
 import pytest
@@ -107,6 +109,8 @@ def _pair_cases(
     digest_a: str = "A digest",
     digest_b: str = "B digest",
     confidence: float = 0.9,
+    p_clear: float = 0.9,
+    p_a: float = 0.9,
 ) -> rr.LabeledCase:
     return rr.LabeledCase(
         pair_id=pair_id,
@@ -116,7 +120,12 @@ def _pair_cases(
         jev_prediction=prediction,
         jev_confidence=confidence,
         sure=sure,
+        p_clear=p_clear,
+        p_a=p_a,
     )
+
+
+_COSTS = rr.CommitCosts(k_winner=3.0, k_tie=5.0)
 
 
 def _eval_result(cases: list[rr.LabeledCase]) -> rr.EvaluationResult:
@@ -234,7 +243,14 @@ def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> N
     long_a = "A" * 140
     long_b = "B" * 145
     fake_client = FakeClient()
-    proposer = cli.AnthropicProposer(context_mode="sampled", client=fake_client)
+    proposer = cli.AnthropicProposer(
+        costs=rr.CommitCosts.from_thresholds(
+            winner_commit_threshold=0.75, tie_commit_threshold=0.85
+        ),
+        brier_floor=0.0123,
+        context_mode="sampled",
+        client=fake_client,
+    )
     cases = [
         _pair_cases(
             pair_id="p1",
@@ -264,6 +280,10 @@ def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> N
     call = fake_client.calls[0]
     assert long_b in call["current_cases_text"]
     assert "..." not in call["current_cases_text"]
+    assert "p_ruling=" in call["current_cases_text"]
+    assert "3.00 x (wrong+sure a/b calls)" in call["scoring_rule_text"]
+    assert "5.67 x (wrong+sure tie calls)" in call["scoring_rule_text"]
+    assert "0.0123" in call["scoring_rule_text"]
 
 
 def test_anthropic_proposer_retries_empty_text_responses() -> None:
@@ -285,7 +305,9 @@ def test_anthropic_proposer_retries_empty_text_responses() -> None:
                 look_for=None,
             )
 
-    proposer = cli.AnthropicProposer(context_mode="sampled", client=FlakyClient())
+    proposer = cli.AnthropicProposer(
+        costs=_COSTS, brier_floor=0.0, context_mode="sampled", client=FlakyClient()
+    )
     proposal = proposer.propose(
         current_rubric_text=_BASELINE_RUBRIC,
         labeled_cases=[],
@@ -321,7 +343,7 @@ def test_evaluator_uses_zero_shot_and_live_thresholds() -> None:
 
     config = SimpleNamespace(tie_commit_threshold=0.95, winner_commit_threshold=0.85)
     fake_provider = FakeProvider()
-    evaluator = cli.JevEvaluator(fake_provider, config)
+    evaluator = cli.JevEvaluator(fake_provider, config, resolve=lambda text: text)
 
     result = evaluator.evaluate(
         [rr.UsablePair("p1", "oa", "ob", "A1", "B1", "a")],
@@ -330,7 +352,34 @@ def test_evaluator_uses_zero_shot_and_live_thresholds() -> None:
     assert result.buckets.right_sure == 1
     assert result.cases[0].jev_prediction == "a"
     assert result.cases[0].sure is True
+    assert result.cases[0].p_clear == pytest.approx(0.85)
+    assert result.cases[0].p_a == pytest.approx(0.9)
     assert fake_provider.calls == [[], []]
+
+
+def test_evaluator_resolves_placeholders_only_for_the_jev_call() -> None:
+    """The regression: the run carries unresolved text so the private value never reaches
+    the proposer or rubric.yaml; if the evaluator forwarded it as-is, Jev would score
+    compensation against a variable name instead of the baseline."""
+    seen: list[str] = []
+
+    class FakeProvider:
+        def get_ruling(
+            self, rubric_text: str, digest_a: str, digest_b: str, few_shot_examples: list
+        ):
+            seen.append(rubric_text)
+            return JevRuling(
+                clear_winner=NoulJudgment(p_true=0.1), a_is_better=NoulJudgment(p_true=0.5)
+            )
+
+    config = SimpleNamespace(tie_commit_threshold=0.95, winner_commit_threshold=0.85)
+    evaluator = cli.JevEvaluator(
+        FakeProvider(), config, resolve=lambda text: text.replace("PLACEHOLDER", "42")
+    )
+
+    evaluator.evaluate([rr.UsablePair("p1", "oa", "ob", "A1", "B1", "tie")], "above PLACEHOLDER")
+
+    assert seen == ["above 42", "above 42"]
 
 
 class FakeProposer:
@@ -369,7 +418,7 @@ class FakeEvaluator:
         return result
 
 
-def test_run_rounds_records_history_and_uses_paired_acceptance() -> None:
+def test_run_rounds_records_history_and_accepts_on_net() -> None:
     pairs = [
         rr.UsablePair("p1", "oa1", "ob1", "A1", "B1", "a"),
         rr.UsablePair("p2", "oa2", "ob2", "A2", "B2", "b"),
@@ -387,7 +436,6 @@ def test_run_rounds_records_history_and_uses_paired_acceptance() -> None:
         _pair_cases(pair_id="p2", expected="b", prediction="a", sure=True),
     ]
     baseline_train = _eval_result(baseline_cases)
-    baseline_noise = _eval_result(baseline_cases)
     proposer = FakeProposer(
         [
             rr.RubricProposal(
@@ -422,19 +470,18 @@ def test_run_rounds_records_history_and_uses_paired_acceptance() -> None:
     rounds = rr.run_rounds(
         propose_pairs=pairs,
         held_pairs=pairs,
-        labeled_cases=baseline_train.cases,
         current_rubric_text="### Location compatibility (slug: location, weight: 6)\nold",
         proposer=proposer,
         evaluator=evaluator,
+        costs=_COSTS,
+        brier_floor=0.0,
         n_rounds=2,
         baseline_train=baseline_train,
-        baseline_noise=baseline_noise,
-        noise_floor_delta=0,
     )
 
     assert len(rounds) == 2
     assert rounds[0].accepted is True
-    assert rounds[0].candidate_delta == 1
+    assert rounds[0].train_net == 2.0
     assert len(rounds[0].fixed_cases) == 1
     assert len(rounds[0].broken_cases) == 0
     assert rounds[1].accepted is False
@@ -493,12 +540,12 @@ def test_render_candidate_text_requires_heading() -> None:
         rr.render_candidate_text("old body only", proposal)
 
 
-def test_evaluation_result_diff_against_and_best_round_fallback() -> None:
+def test_evaluation_result_diff_against() -> None:
     a = _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="b", sure=False)])
     b = _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)])
     delta = b.diff_against(a)
-    assert delta.delta == 1
     assert len(delta.fixed) == 1
+    assert delta.broken == []
 
     with pytest.raises(ValueError):
         b.diff_against(
@@ -506,66 +553,25 @@ def test_evaluation_result_diff_against_and_best_round_fallback() -> None:
         )
 
 
+def _round(round_num: int, *, accepted: bool) -> rr.RoundResult:
+    return rr.RoundResult(
+        round_num=round_num,
+        candidate_rubric_text=f"text {round_num}",
+        held_out_buckets=rr.BucketCounts(),
+        theory=f"t{round_num}",
+        accepted=accepted,
+    )
+
+
 def test_best_round_returns_last_accepted_round() -> None:
-    baseline = rr.BucketCounts(right_sure=1)
-    rounds = [
-        rr.RoundResult(
-            round_num=1,
-            candidate_rubric_text="short",
-            held_out_buckets=rr.BucketCounts(),
-            theory="t1",
-            train_buckets=rr.BucketCounts(right_sure=1),
-            accepted=True,
-        ),
-        rr.RoundResult(
-            round_num=2,
-            candidate_rubric_text="longer",
-            held_out_buckets=rr.BucketCounts(),
-            theory="t2",
-            train_buckets=rr.BucketCounts(right_sure=2),
-            accepted=True,
-        ),
-    ]
-    winner = rr.best_round(rounds, baseline, "baseline rubric")
+    rounds = [_round(1, accepted=True), _round(2, accepted=True), _round(3, accepted=False)]
+    winner = rr.best_round(rounds)
     assert winner is not None
     assert winner.round_num == 2
 
 
-def test_best_round_picks_best_scored_round_when_none_accepted() -> None:
-    baseline = rr.BucketCounts(right_sure=1)
-    rounds = [
-        rr.RoundResult(
-            round_num=1,
-            candidate_rubric_text="short",
-            held_out_buckets=rr.BucketCounts(),
-            theory="t1",
-            train_buckets=rr.BucketCounts(right_sure=2),
-        ),
-        rr.RoundResult(
-            round_num=2,
-            candidate_rubric_text="longer",
-            held_out_buckets=rr.BucketCounts(),
-            theory="t2",
-            train_buckets=rr.BucketCounts(right_sure=3),
-        ),
-    ]
-    winner = rr.best_round(rounds, baseline, "baseline rubric")
-    assert winner is not None
-    assert winner.round_num == 2
-
-
-def test_best_round_returns_none_when_no_round_beats_baseline() -> None:
-    baseline = rr.BucketCounts(right_sure=1)
-    rounds = [
-        rr.RoundResult(
-            round_num=1,
-            candidate_rubric_text="a much longer rubric text",
-            held_out_buckets=rr.BucketCounts(),
-            theory="t1",
-            train_buckets=rr.BucketCounts(right_sure=1),
-        )
-    ]
-    assert rr.best_round(rounds, baseline, "baseline rubric") is None
+def test_best_round_returns_none_when_nothing_was_accepted() -> None:
+    assert rr.best_round([_round(1, accepted=False)]) is None
 
 
 def test_run_rounds_numbers_rounds_after_a_resume() -> None:
@@ -579,42 +585,31 @@ def test_run_rounds_numbers_rounds_after_a_resume() -> None:
     rounds = rr.run_rounds(
         propose_pairs=pairs,
         held_pairs=pairs,
-        labeled_cases=baseline.cases,
         current_rubric_text=_BASELINE_RUBRIC,
         proposer=proposer,
         evaluator=evaluator,
+        costs=_COSTS,
+        brier_floor=0.0,
         n_rounds=2,
         baseline_train=baseline,
-        baseline_noise=baseline,
-        noise_floor_delta=0,
         round_offset=3,
     )
 
     assert [r.round_num for r in rounds] == [4, 5]
 
 
-def test_run_rounds_uses_noise_floor_and_on_round_callback() -> None:
+def test_run_rounds_prefers_shorter_text_on_a_tie_and_calls_on_round() -> None:
     pairs = [rr.UsablePair("p1", "oa1", "ob1", "A1", "B1", "a")]
     baseline_cases = [_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)]
-    baseline_train = _eval_result(baseline_cases)
-    baseline_noise = _eval_result(baseline_cases)
     proposer = FakeProposer(
         [rr.RubricProposal(theory="t", expected_effect="e", definition="short")]
     )
-    evaluator = FakeEvaluator(
-        [
-            baseline_train,
-            baseline_noise,
-            _eval_result(baseline_cases),
-            _eval_result(baseline_cases),
-        ]
-    )
+    evaluator = FakeEvaluator([_eval_result(baseline_cases)])
     seen: list[int] = []
 
     rounds = rr.run_rounds(
         propose_pairs=pairs,
         held_pairs=pairs,
-        labeled_cases=baseline_train.cases,
         current_rubric_text="""### Location compatibility (slug: location, weight: 6)
 very long baseline body that is deliberately much longer than the candidate draft.
 Fit anchors:
@@ -625,13 +620,106 @@ Look for: lots of words that make the baseline long.
 """,
         proposer=proposer,
         evaluator=evaluator,
+        costs=_COSTS,
+        brier_floor=0.0,
         n_rounds=1,
         on_round=lambda round_result: seen.append(round_result.round_num),
     )
 
     assert rounds[0].accepted is True
-    assert rounds[0].candidate_delta == 0
     assert seen == [1]
+
+
+# ---------------------------------------------------------------------------
+# Scoring: net value, Brier, acceptance
+# ---------------------------------------------------------------------------
+
+
+def test_commit_costs_read_each_threshold_as_its_break_even_precision() -> None:
+    """The regression: an inverted ratio ((1-t)/t) makes a wrong auto-commit cheaper
+    than a right one is valuable, so the loop would reward confident guessing."""
+    costs = rr.CommitCosts.from_thresholds(winner_commit_threshold=0.75, tie_commit_threshold=0.85)
+    assert costs.k_winner == pytest.approx(3.0)
+    assert costs.k_tie == pytest.approx(0.85 / 0.15)
+
+
+def test_net_charges_each_wrong_commit_its_own_cost_and_ignores_unsure() -> None:
+    """The regression: charging every wrong commit the same k, or counting unsure
+    cases, which cost the operator a look whether Jev was right or not."""
+    cases = [
+        _pair_cases(pair_id="rs", expected="a", prediction="a", sure=True),
+        _pair_cases(pair_id="ws-winner", expected="tie", prediction="a", sure=True),
+        _pair_cases(pair_id="ws-tie", expected="a", prediction="tie", sure=True),
+        _pair_cases(pair_id="ru", expected="b", prediction="b", sure=False),
+        _pair_cases(pair_id="wu", expected="b", prediction="a", sure=False),
+    ]
+    assert _COSTS.net(cases) == pytest.approx(1 - 3.0 - 5.0)
+
+
+def test_brier_scores_the_three_way_distribution_against_the_ruling() -> None:
+    """The regression: mis-splitting P(clear winner) into a/b, so a confident call on
+    the right side scores like a wrong one."""
+    certain_a = _pair_cases(
+        pair_id="p", expected="a", prediction="a", sure=True, p_clear=1.0, p_a=1.0
+    )
+    certain_tie = _pair_cases(
+        pair_id="p", expected="a", prediction="tie", sure=True, p_clear=0.0, p_a=0.5
+    )
+    split = _pair_cases(
+        pair_id="p", expected="b", prediction="b", sure=False, p_clear=0.8, p_a=0.25
+    )
+
+    assert certain_a.brier == 0.0
+    assert certain_tie.brier == pytest.approx(2.0)
+    assert split.p_ruling == pytest.approx(0.6)
+    assert split.brier == pytest.approx(0.2**2 + 0.4**2 + 0.2**2)
+
+
+def test_brier_noise_floor_is_two_standard_errors_of_the_paired_difference() -> None:
+    first = _eval_result(
+        [
+            _pair_cases(
+                pair_id="p1", expected="a", prediction="a", sure=True, p_clear=1.0, p_a=1.0
+            ),
+            _pair_cases(
+                pair_id="p2", expected="a", prediction="a", sure=True, p_clear=1.0, p_a=1.0
+            ),
+        ]
+    )
+    second = _eval_result(
+        [
+            _pair_cases(
+                pair_id="p1", expected="a", prediction="a", sure=True, p_clear=1.0, p_a=0.9
+            ),
+            _pair_cases(
+                pair_id="p2", expected="a", prediction="a", sure=True, p_clear=1.0, p_a=1.0
+            ),
+        ]
+    )
+    diffs = [0.0 - 2 * 0.1**2, 0.0]
+    expected = 2 * statistics.stdev(diffs) / math.sqrt(2)
+
+    assert rr.brier_noise_floor(first, second) == pytest.approx(expected)
+    assert rr.brier_noise_floor(first, first) == 0.0
+    single = _eval_result([first.cases[0]])
+    assert rr.brier_noise_floor(single, single) == 0.0
+
+
+def test_accepts_orders_net_then_brier_beyond_the_floor_then_brevity() -> None:
+    """The regressions: Brier outvoting net, jitter inside the floor counting as a
+    win, and a longer text winning a true tie."""
+
+    def accepts(candidate: rr.Score, current: rr.Score, cand_text: str = "x") -> bool:
+        return rr.accepts(
+            candidate, current, brier_floor=0.01, candidate_text=cand_text, current_text="xx"
+        )
+
+    assert accepts(rr.Score(net=1, brier=0.9), rr.Score(net=0, brier=0.1))
+    assert not accepts(rr.Score(net=0, brier=0.1), rr.Score(net=1, brier=0.9))
+    assert accepts(rr.Score(net=0, brier=0.30), rr.Score(net=0, brier=0.32), "xxx")
+    assert not accepts(rr.Score(net=0, brier=0.32), rr.Score(net=0, brier=0.30), "")
+    assert accepts(rr.Score(net=0, brier=0.305), rr.Score(net=0, brier=0.30), "x")
+    assert not accepts(rr.Score(net=0, brier=0.295), rr.Score(net=0, brier=0.30), "xxx")
 
 
 # ---------------------------------------------------------------------------
@@ -680,6 +768,22 @@ def test_apply_candidate_writes_every_field_back_to_the_rubric(tmp_path) -> None
 def test_privacy_gate_rejects_candidate_with_salary_figure() -> None:
     with pytest.raises(rr.PrivacyViolationError, match="230"):
         rr.validate_candidate("Anchors: below $230,000 is Poor; above is Strong.")
+
+
+def test_candidate_that_drops_a_placeholder_is_rejected() -> None:
+    """The regression: a proposer that rewrites the baseline placeholder as a literal
+    number gets that number written into the public rubric.yaml."""
+    with pytest.raises(rr.PlaceholderDroppedError, match="SCREEN_COMPENSATION_BASELINE"):
+        rr.require_placeholders_kept(
+            "Above SCREEN_COMPENSATION_BASELINE is Strong.", "Above $1 is Strong."
+        )
+
+
+def test_candidate_that_keeps_its_placeholder_is_accepted() -> None:
+    rr.require_placeholders_kept(
+        "Above SCREEN_COMPENSATION_BASELINE is Strong.",
+        "Clearly above SCREEN_COMPENSATION_BASELINE is Strong.",
+    )
 
 
 def test_privacy_gate_accepts_clean_candidate() -> None:
