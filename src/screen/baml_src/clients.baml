@@ -28,6 +28,14 @@ client<llm> Anthropic {
   }
 }
 
+client<llm> AnthropicSonnet {
+  provider anthropic
+  options {
+    model "claude-sonnet-5"
+    api_key env.ANTHROPIC_API_KEY
+  }
+}
+
 // Generates `src/screen/baml_client/` from these definitions. Run
 // `baml-cli generate` (or use the BAML VSCode extension's
 // save-on-edit hook) to regenerate.

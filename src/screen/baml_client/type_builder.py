@@ -20,7 +20,7 @@ from .globals import DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIM
 class TypeBuilder(type_builder.TypeBuilder):
     def __init__(self):
         super().__init__(classes=set(
-          ["Assertion","Citation","FetchAction","IdentificationResult","SearchAction","StopAction",]
+          ["Assertion","Citation","FetchAction","IdentificationResult","RecalibrationProposal","SearchAction","StopAction",]
         ), enums=set(
           []
         ), runtime=DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME)
@@ -31,7 +31,7 @@ class TypeBuilder(type_builder.TypeBuilder):
 
 
     # #########################################################################
-    # Generated classes 6
+    # Generated classes 7
     # #########################################################################
 
     @property
@@ -51,6 +51,10 @@ class TypeBuilder(type_builder.TypeBuilder):
         return IdentificationResultViewer(self)
 
     @property
+    def RecalibrationProposal(self) -> "RecalibrationProposalViewer":
+        return RecalibrationProposalViewer(self)
+
+    @property
     def SearchAction(self) -> "SearchActionViewer":
         return SearchActionViewer(self)
 
@@ -66,7 +70,7 @@ class TypeBuilder(type_builder.TypeBuilder):
 
 
 # #########################################################################
-# Generated classes 6
+# Generated classes 7
 # #########################################################################
 
 class AssertionAst:
@@ -265,6 +269,69 @@ class IdentificationResultProperties:
     @property
     def opening_notes(self) -> type_builder.ClassPropertyViewer:
         return type_builder.ClassPropertyViewer(self.__bldr.property("opening_notes"))
+    
+    
+
+
+class RecalibrationProposalAst:
+    def __init__(self, tb: type_builder.TypeBuilder):
+        _tb = tb._tb # type: ignore (we know how to use this private attribute)
+        self._bldr = _tb.class_("RecalibrationProposal")
+        self._properties: typing.Set[str] = set([  "theory",  "expected_effect",  "definition",  "fit_anchor_poor",  "fit_anchor_mixed",  "fit_anchor_strong",  "look_for",  ])
+        self._props = RecalibrationProposalProperties(self._bldr, self._properties)
+
+    def type(self) -> baml_py.FieldType:
+        return self._bldr.field()
+
+    @property
+    def props(self) -> "RecalibrationProposalProperties":
+        return self._props
+
+
+class RecalibrationProposalViewer(RecalibrationProposalAst):
+    def __init__(self, tb: type_builder.TypeBuilder):
+        super().__init__(tb)
+
+    
+    def list_properties(self) -> typing.List[typing.Tuple[str, type_builder.ClassPropertyViewer]]:
+        return [(name, type_builder.ClassPropertyViewer(self._bldr.property(name))) for name in self._properties]
+    
+
+
+class RecalibrationProposalProperties:
+    def __init__(self, bldr: baml_py.ClassBuilder, properties: typing.Set[str]):
+        self.__bldr = bldr
+        self.__properties = properties # type: ignore (we know how to use this private attribute) # noqa: F821
+
+    
+    
+    @property
+    def theory(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("theory"))
+    
+    @property
+    def expected_effect(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("expected_effect"))
+    
+    @property
+    def definition(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("definition"))
+    
+    @property
+    def fit_anchor_poor(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("fit_anchor_poor"))
+    
+    @property
+    def fit_anchor_mixed(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("fit_anchor_mixed"))
+    
+    @property
+    def fit_anchor_strong(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("fit_anchor_strong"))
+    
+    @property
+    def look_for(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("look_for"))
     
     
 

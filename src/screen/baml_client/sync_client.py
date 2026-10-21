@@ -150,6 +150,20 @@ class BamlSyncClient:
                 "page_content": page_content,
             })
             return typing.cast(types.IdentificationResult, __result__.cast_to(types, types, stream_types, False, __runtime__))
+    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,
+        baml_options: BamlCallOptions = {},
+    ) -> types.RecalibrationProposal:
+        # Check if on_tick is provided
+        if 'on_tick' in baml_options:
+            __stream__ = self.stream.ProposeRubricEdit(current_rubric_text=current_rubric_text,current_cases_text=current_cases_text,history_text=history_text,
+                baml_options=baml_options)
+            return __stream__.get_final_response()
+        else:
+            # Original non-streaming code
+            __result__ = self.__options.merge_options(baml_options).call_function_sync(function_name="ProposeRubricEdit", args={
+                "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,
+            })
+            return typing.cast(types.RecalibrationProposal, __result__.cast_to(types, types, stream_types, False, __runtime__))
     
 
 
@@ -207,6 +221,18 @@ class BamlStreamClient:
           lambda x: typing.cast(types.IdentificationResult, x.cast_to(types, types, stream_types, False, __runtime__)),
           __ctx__,
         )
+    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.BamlSyncStream[stream_types.RecalibrationProposal, types.RecalibrationProposal]:
+        __ctx__, __result__ = self.__options.merge_options(baml_options).create_sync_stream(function_name="ProposeRubricEdit", args={
+            "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,
+        })
+        return baml_py.BamlSyncStream[stream_types.RecalibrationProposal, types.RecalibrationProposal](
+          __result__,
+          lambda x: typing.cast(stream_types.RecalibrationProposal, x.cast_to(types, types, stream_types, True, __runtime__)),
+          lambda x: typing.cast(types.RecalibrationProposal, x.cast_to(types, types, stream_types, False, __runtime__)),
+          __ctx__,
+        )
     
 
 class BamlHttpRequestClient:
@@ -243,6 +269,13 @@ class BamlHttpRequestClient:
             "page_content": page_content,
         }, mode="request")
         return __result__
+    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.baml_py.HTTPRequest:
+        __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="ProposeRubricEdit", args={
+            "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,
+        }, mode="request")
+        return __result__
     
 
 class BamlHttpStreamRequestClient:
@@ -277,6 +310,13 @@ class BamlHttpStreamRequestClient:
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="IdentifyOpening", args={
             "page_content": page_content,
+        }, mode="stream")
+        return __result__
+    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.baml_py.HTTPRequest:
+        __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="ProposeRubricEdit", args={
+            "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,
         }, mode="stream")
         return __result__
     

@@ -1,23 +1,22 @@
-"""Tests for `screen.recalibration` — the autoresearch loop.
+"""Tests for the rubric recalibration loop.
 
-Covers: eligibility gate, propose/held-out split, round sequencing,
-no-improvement reporting, and privacy gate on candidate text.
-The LLM proposer is injected via a Protocol so no live calls are made.
+Covers: eligibility gate, full-digest proposer context, structured proposer output,
+partial-draft rehydration, zero-shot Jev evaluation, and paired acceptance. The
+resumable run record is covered in `test_recalibration_run.py`.
 """
 
 from __future__ import annotations
 
 import sqlite3
-import textwrap
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from screen import recalibration as rr
+from screen.extract.prompt import rubric_text_for_dimension
+from screen.verdict.protocol import JevRuling, NoulJudgment
 from scripts import recalibrate_rubric as cli
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -28,28 +27,12 @@ class _ClosingConnection(sqlite3.Connection):
             pass
 
 
-def test_open_db_accepts_an_explicit_db_path(tmp_path) -> None:
-    db_path = tmp_path / "screen.db"
-    conn = sqlite3.connect(db_path)
-    conn.executescript("""
-        CREATE TABLE dimension_digests (
-            id TEXT PRIMARY KEY,
-            opening_id TEXT NOT NULL,
-            target TEXT NOT NULL,
-            digest TEXT NOT NULL,
-            assertion_count INTEGER NOT NULL,
-            computed_at TEXT NOT NULL
-        );
-        """)
-    conn.commit()
-    conn.close()
-
-    opened = cli._open_db(db_path)
-    opened.close()
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _make_conn() -> sqlite3.Connection:
-    """In-memory DB with the tables the script reads."""
     conn = sqlite3.connect(":memory:", factory=_ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.executescript("""
@@ -84,11 +67,13 @@ def _insert_pair(
     target: str,
     outcome: str = "a",
     provenance: str = "operator",
+    digest_a: str | None = None,
+    digest_b: str | None = None,
 ) -> None:
     oid_a = f"{pair_id}_a"
     oid_b = f"{pair_id}_b"
     conn.execute(
-        """INSERT INTO comparisons VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        "INSERT INTO comparisons VALUES (?,?,?,?,?,?,?,?,?,?)",
         (
             pair_id,
             oid_a,
@@ -102,40 +87,228 @@ def _insert_pair(
             None,
         ),
     )
-    for oid, label in [(oid_a, "digest-a"), (oid_b, "digest-b")]:
+    for oid, label in [
+        (oid_a, digest_a or f"digest-a for {pair_id}"),
+        (oid_b, digest_b or f"digest-b for {pair_id}"),
+    ]:
         conn.execute(
-            """INSERT INTO dimension_digests VALUES (?,?,?,?,?,?)""",
-            (f"{oid}-{target}", oid, target, f"{label} for {pair_id}", 1, "2026-01-01T00:00:00"),
+            "INSERT INTO dimension_digests VALUES (?,?,?,?,?,?)",
+            (f"{oid}-{target}", oid, target, label, 1, "2026-01-01T00:00:00"),
         )
     conn.commit()
 
 
-def _labeled_cases(pairs: list[rr.UsablePair]) -> list[rr.LabeledCase]:
-    return [
-        rr.LabeledCase(
-            digest_a=p.digest_a,
-            digest_b=p.digest_b,
-            expected=p.expected,
-            jev_prediction="tie",
-            jev_confidence=0.5,
-        )
-        for p in pairs
+def _pair_cases(
+    *,
+    pair_id: str,
+    expected: str,
+    prediction: str,
+    sure: bool,
+    digest_a: str = "A digest",
+    digest_b: str = "B digest",
+    confidence: float = 0.9,
+) -> rr.LabeledCase:
+    return rr.LabeledCase(
+        pair_id=pair_id,
+        digest_a=digest_a,
+        digest_b=digest_b,
+        expected=expected,
+        jev_prediction=prediction,
+        jev_confidence=confidence,
+        sure=sure,
+    )
+
+
+def _eval_result(cases: list[rr.LabeledCase]) -> rr.EvaluationResult:
+    return rr.EvaluationResult.from_cases(cases)
+
+
+# ---------------------------------------------------------------------------
+# Eligibility gate
+# ---------------------------------------------------------------------------
+
+
+def test_load_pairs_rejects_target_below_floor() -> None:
+    conn = _make_conn()
+    for i in range(5):
+        _insert_pair(conn, pair_id=f"p{i}", target="trajectory")
+
+    pairs, shortfall = rr.load_pairs(conn, target="trajectory", floor=70)
+    assert pairs == []
+    assert shortfall == 65
+    conn.close()
+
+
+def test_load_pairs_accepts_target_at_floor_and_skips_non_operator() -> None:
+    conn = _make_conn()
+    for i in range(70):
+        _insert_pair(conn, pair_id=f"p{i}", target="location", provenance="operator")
+    for i in range(10):
+        _insert_pair(conn, pair_id=f"prov{i}", target="location", provenance="provisional")
+
+    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
+    assert len(pairs) == 70
+    assert shortfall == 0
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Proposer context and rendering
+# ---------------------------------------------------------------------------
+
+
+_BASELINE_RUBRIC = """### Location compatibility (slug: location, weight: 6)
+old definition
+Fit anchors:
+  Poor: Relocation required.
+  Mixed: Remote offered but travel unclear.
+  Strong: Distributed / remote-first.
+Look for: Explicit remote policy language."""
+
+
+def test_render_candidate_text_keeps_heading_and_omits_proposer_reasoning() -> None:
+    proposal = rr.RubricProposal(
+        theory="fix the offsite travel signal",
+        expected_effect="more right+sure on remote-vs-hybrid pairs",
+        definition="A new definition line.",
+        fit_anchor_poor="Bad evidence.",
+        fit_anchor_mixed="Mixed evidence.",
+        fit_anchor_strong="Strong evidence.",
+        look_for="Look for explicit remote policy.",
+    )
+    candidate = rr.render_candidate_text(_BASELINE_RUBRIC, proposal)
+    assert candidate.startswith("### Location compatibility (slug: location, weight: 6)")
+    assert "A new definition line." in candidate
+    assert "fix the offsite travel signal" not in candidate
+    assert "more right+sure" not in candidate
+
+
+def test_render_candidate_text_rehydrates_fields_the_proposer_left_alone() -> None:
+    """A proposer editing one anchor must not have to retype the untouched fields."""
+    proposal = rr.RubricProposal(
+        theory="only the Mixed anchor is wrong",
+        expected_effect="fewer wrong+sure ties",
+        fit_anchor_mixed="Remote offered but the posting is silent on travel.",
+    )
+    candidate = rr.render_candidate_text(_BASELINE_RUBRIC, proposal)
+
+    assert "old definition" in candidate
+    assert "Poor: Relocation required." in candidate
+    assert "Mixed: Remote offered but the posting is silent on travel." in candidate
+    assert "Strong: Distributed / remote-first." in candidate
+    assert "Look for: Explicit remote policy language." in candidate
+
+
+def test_render_candidate_text_of_an_empty_proposal_reproduces_the_baseline() -> None:
+    """The no-op candidate must be byte-identical, or the loop measures formatting."""
+    proposal = rr.RubricProposal(theory="no wording defect found", expected_effect="nothing")
+    assert rr.render_candidate_text(_BASELINE_RUBRIC, proposal) == _BASELINE_RUBRIC
+
+
+def test_render_candidate_text_round_trips_the_live_rubric_text() -> None:
+    """Guards the live shape: `rubric_text_for_dimension` leads with a blank line, and
+    an unedited proposal must reproduce it exactly or every candidate pays a formatting
+    penalty Jev reads as a rubric change."""
+    live = rubric_text_for_dimension("location")
+    proposal = rr.RubricProposal(theory="no edit", expected_effect="nothing")
+    assert rr.render_candidate_text(live, proposal) == live
+
+
+def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def ProposeRubricEdit(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(
+                theory="theory sentence",
+                expected_effect="fewer wrong+sure on tie pairs",
+                definition="definition draft",
+                fit_anchor_poor="poor draft",
+                fit_anchor_mixed="mixed draft",
+                fit_anchor_strong="strong draft",
+                look_for="look for draft",
+            )
+
+    long_a = "A" * 140
+    long_b = "B" * 145
+    fake_client = FakeClient()
+    proposer = cli.AnthropicProposer(context_mode="sampled", client=fake_client)
+    cases = [
+        _pair_cases(
+            pair_id="p1",
+            expected="a",
+            prediction="b",
+            sure=True,
+            digest_a=long_a,
+            digest_b=long_b,
+        ),
+        _pair_cases(
+            pair_id="p2",
+            expected="a",
+            prediction="a",
+            sure=False,
+            digest_a="short-a",
+            digest_b="short-b",
+        ),
     ]
+    proposal = proposer.propose(
+        current_rubric_text="### Location compatibility (slug: location, weight: 6)\nold",
+        labeled_cases=cases,
+        prior_rounds=[],
+    )
+
+    assert proposal.theory == "theory sentence"
+    assert proposal.expected_effect == "fewer wrong+sure on tie pairs"
+    call = fake_client.calls[0]
+    assert long_b in call["current_cases_text"]
+    assert "..." not in call["current_cases_text"]
 
 
 # ---------------------------------------------------------------------------
-# Fake proposer
+# Jev evaluation and paired acceptance
 # ---------------------------------------------------------------------------
+
+
+def test_evaluator_uses_zero_shot_and_live_thresholds() -> None:
+    class FakeProvider:
+        def __init__(self) -> None:
+            self.calls: list[list] = []
+
+        def get_ruling(
+            self, rubric_text: str, digest_a: str, digest_b: str, few_shot_examples: list
+        ):
+            self.calls.append(few_shot_examples)
+            if (digest_a, digest_b) == ("A1", "B1"):
+                return JevRuling(
+                    clear_winner=NoulJudgment(p_true=0.9),
+                    a_is_better=NoulJudgment(p_true=0.9),
+                )
+            return JevRuling(
+                clear_winner=NoulJudgment(p_true=0.8),
+                a_is_better=NoulJudgment(p_true=0.1),
+            )
+
+    config = SimpleNamespace(tie_commit_threshold=0.95, winner_commit_threshold=0.85)
+    fake_provider = FakeProvider()
+    evaluator = cli.JevEvaluator(fake_provider, config)
+
+    result = evaluator.evaluate(
+        [rr.UsablePair("p1", "oa", "ob", "A1", "B1", "a")],
+        "rubric text",
+    )
+    assert result.buckets.right_sure == 1
+    assert result.cases[0].jev_prediction == "a"
+    assert result.cases[0].sure is True
+    assert fake_provider.calls == [[], []]
 
 
 class FakeProposer:
-    """Returns canned rubric text proposals in order, repeating the last."""
-
-    def __init__(self, proposals: list[str]) -> None:
-        assert proposals, "FakeProposer requires at least one proposal"
+    def __init__(self, proposals: list[rr.RubricProposal]) -> None:
         self._proposals = proposals
-        self._index = 0
         self.calls: list[dict] = []
+        self._index = 0
 
     def propose(
         self,
@@ -143,7 +316,7 @@ class FakeProposer:
         current_rubric_text: str,
         labeled_cases: list[rr.LabeledCase],
         prior_rounds: list[rr.RoundResult],
-    ) -> str:
+    ) -> rr.RubricProposal:
         self.calls.append(
             {
                 "current_rubric_text": current_rubric_text,
@@ -156,92 +329,127 @@ class FakeProposer:
         return proposal
 
 
-# ---------------------------------------------------------------------------
-# Fake evaluator (order-averaged bucket counts without real Jev calls)
-# ---------------------------------------------------------------------------
-
-
 class FakeEvaluator:
-    """Returns canned BucketCounts per call, repeating the last."""
-
-    def __init__(self, results: list[rr.BucketCounts]) -> None:
-        assert results
+    def __init__(self, results: list[rr.EvaluationResult]) -> None:
         self._results = results
         self._index = 0
 
-    def evaluate(
-        self,
-        pairs: list[rr.UsablePair],
-        rubric_text: str,
-    ) -> rr.BucketCounts:
+    def evaluate(self, pairs: list[rr.UsablePair], rubric_text: str) -> rr.EvaluationResult:
         result = self._results[min(self._index, len(self._results) - 1)]
         self._index += 1
         return result
 
 
-# ---------------------------------------------------------------------------
-# Eligibility gate
-# ---------------------------------------------------------------------------
+def test_run_rounds_records_history_and_uses_paired_acceptance() -> None:
+    pairs = [
+        rr.UsablePair("p1", "oa1", "ob1", "A1", "B1", "a"),
+        rr.UsablePair("p2", "oa2", "ob2", "A2", "B2", "b"),
+    ]
+    baseline_cases = [
+        _pair_cases(pair_id="p1", expected="a", prediction="b", sure=True),
+        _pair_cases(pair_id="p2", expected="b", prediction="b", sure=True),
+    ]
+    improved_cases = [
+        _pair_cases(pair_id="p1", expected="a", prediction="a", sure=True),
+        _pair_cases(pair_id="p2", expected="b", prediction="b", sure=True),
+    ]
+    worse_cases = [
+        _pair_cases(pair_id="p1", expected="a", prediction="b", sure=True),
+        _pair_cases(pair_id="p2", expected="b", prediction="a", sure=True),
+    ]
+    baseline_train = _eval_result(baseline_cases)
+    baseline_noise = _eval_result(baseline_cases)
+    proposer = FakeProposer(
+        [
+            rr.RubricProposal(
+                theory="theory 1",
+                expected_effect="effect 1",
+                definition="definition 1",
+                fit_anchor_poor="poor 1",
+                fit_anchor_mixed="mixed 1",
+                fit_anchor_strong="strong 1",
+                look_for="look 1",
+            ),
+            rr.RubricProposal(
+                theory="theory 2",
+                expected_effect="effect 2",
+                definition="definition 2",
+                fit_anchor_poor="poor 2",
+                fit_anchor_mixed="mixed 2",
+                fit_anchor_strong="strong 2",
+                look_for="look 2",
+            ),
+        ]
+    )
+    evaluator = FakeEvaluator(
+        [
+            _eval_result(improved_cases),
+            _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)]),
+            _eval_result(worse_cases),
+            _eval_result(worse_cases),
+        ]
+    )
+
+    rounds = rr.run_rounds(
+        propose_pairs=pairs,
+        held_pairs=pairs,
+        labeled_cases=baseline_train.cases,
+        current_rubric_text="### Location compatibility (slug: location, weight: 6)\nold",
+        proposer=proposer,
+        evaluator=evaluator,
+        n_rounds=2,
+        baseline_train=baseline_train,
+        baseline_noise=baseline_noise,
+        noise_floor_delta=0,
+    )
+
+    assert len(rounds) == 2
+    assert rounds[0].accepted is True
+    assert rounds[0].candidate_delta == 1
+    assert len(rounds[0].fixed_cases) == 1
+    assert len(rounds[0].broken_cases) == 0
+    assert rounds[1].accepted is False
+    assert proposer.calls[1]["prior_rounds"][0] is rounds[0]
+    assert proposer.calls[1]["labeled_cases"][0].jev_prediction == "a"
 
 
-def test_eligibility_gate_rejects_target_below_floor() -> None:
-    """load_pairs returns empty and a shortfall when n < floor."""
-    conn = _make_conn()
-    for i in range(5):
-        _insert_pair(conn, pair_id=f"p{i}", target="trajectory")
-
-    pairs, shortfall = rr.load_pairs(conn, target="trajectory", floor=70)
-    assert pairs == []
-    assert shortfall == 65  # 70 - 5
-    conn.close()
-
-
-def test_eligibility_gate_accepts_target_at_floor() -> None:
-    conn = _make_conn()
-    for i in range(70):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-
-    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
-    assert len(pairs) == 70
-    assert shortfall == 0
-    conn.close()
-
-
-def test_eligibility_gate_skips_non_operator_comparisons() -> None:
-    conn = _make_conn()
-    for i in range(70):
-        _insert_pair(conn, pair_id=f"p{i}", target="location", provenance="operator")
-    for i in range(10):
-        _insert_pair(conn, pair_id=f"prov{i}", target="location", provenance="provisional")
-
-    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
-    assert len(pairs) == 70  # provisional not counted
-    conn.close()
+def test_confusion_matrix_and_bucket_counts_cover_all_outcomes() -> None:
+    cases = [
+        _pair_cases(pair_id="p1", expected="a", prediction="a", sure=True),
+        _pair_cases(pair_id="p2", expected="a", prediction="a", sure=False),
+        _pair_cases(pair_id="p3", expected="a", prediction="b", sure=True),
+        _pair_cases(pair_id="p4", expected="a", prediction="b", sure=False),
+        _pair_cases(pair_id="p5", expected="tie", prediction="tie", sure=False),
+    ]
+    evaluation = _eval_result(cases)
+    assert evaluation.buckets.right_sure == 1
+    assert evaluation.buckets.right_unsure == 2
+    assert evaluation.buckets.wrong_sure == 1
+    assert evaluation.buckets.wrong_unsure == 1
+    assert evaluation.buckets.total == 5
+    assert evaluation.buckets.precision_when_sure == 1 / 2
+    assert str(evaluation.buckets).startswith("right+sure")
+    assert str(evaluation.confusion).startswith("expected a")
+    with pytest.raises(ValueError):
+        rr.ConfusionMatrix.from_cases(
+            [_pair_cases(pair_id="bad", expected="x", prediction="a", sure=False)]
+        )
 
 
-def test_eligibility_gate_skips_pairs_missing_digest() -> None:
-    conn = _make_conn()
-    for i in range(72):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-    # Break digests for two pairs
-    conn.execute("DELETE FROM dimension_digests WHERE opening_id = 'p0_a'")
-    conn.execute("DELETE FROM dimension_digests WHERE opening_id = 'p1_b'")
-    conn.commit()
-
-    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
-    assert len(pairs) == 70
-
-    # ---------------------------------------------------------------------------
-    # Propose / held-out split
-    # ---------------------------------------------------------------------------
-    conn.close()
+def test_bucket_counts_precision_when_sure_handles_empty_denominator() -> None:
+    assert rr.BucketCounts().precision_when_sure == 0.0
 
 
-def test_split_is_deterministic_with_same_seed() -> None:
+def test_load_pairs_skips_missing_digest_and_split_pairs_is_deterministic() -> None:
     conn = _make_conn()
     for i in range(80):
         _insert_pair(conn, pair_id=f"p{i}", target="location")
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
+    conn.execute("DELETE FROM dimension_digests WHERE opening_id = 'p0_a'")
+    conn.commit()
+
+    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
+    assert shortfall == 0
+    assert len(pairs) == 79
 
     propose_a, held_a = rr.split_pairs(pairs, seed=42)
     propose_b, held_b = rr.split_pairs(pairs, seed=42)
@@ -250,257 +458,43 @@ def test_split_is_deterministic_with_same_seed() -> None:
     conn.close()
 
 
-def test_split_is_different_with_different_seed() -> None:
-    conn = _make_conn()
-    for i in range(80):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
-
-    propose_a, _ = rr.split_pairs(pairs, seed=1)
-    propose_b, _ = rr.split_pairs(pairs, seed=2)
-    assert [p.pair_id for p in propose_a] != [p.pair_id for p in propose_b]
-    conn.close()
+def test_render_candidate_text_requires_heading() -> None:
+    proposal = rr.RubricProposal(theory="t", expected_effect="e", definition="d")
+    with pytest.raises(ValueError, match="heading"):
+        rr.render_candidate_text("old body only", proposal)
 
 
-def test_split_sizes_are_reasonable() -> None:
-    conn = _make_conn()
-    for i in range(80):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
+def test_evaluation_result_diff_against_and_best_round_fallback() -> None:
+    a = _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="b", sure=False)])
+    b = _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)])
+    delta = b.diff_against(a)
+    assert delta.delta == 1
+    assert len(delta.fixed) == 1
 
-    propose, held = rr.split_pairs(pairs, seed=42)
-    assert len(propose) + len(held) == len(pairs)
-    assert len(held) >= 15  # enough to measure something
-
-    # ---------------------------------------------------------------------------
-    # Round sequencing: prior rounds visible in subsequent proposer calls
-    # ---------------------------------------------------------------------------
-    conn.close()
-
-
-def test_round_2_prompt_contains_round_1_result() -> None:
-    conn = _make_conn()
-    for i in range(80):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
-    propose_pairs, held_pairs = rr.split_pairs(pairs, seed=42)
-
-    baseline = rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12)
-    worse = rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12)
-    better = rr.BucketCounts(right_sure=8, right_unsure=10, wrong_sure=1, wrong_unsure=11)
-
-    proposer = FakeProposer(["rubric text v1", "rubric text v2"])
-    evaluator = FakeEvaluator([baseline, worse, better])
-
-    rounds = rr.run_rounds(
-        propose_pairs=propose_pairs,
-        held_pairs=held_pairs,
-        labeled_cases=_labeled_cases(propose_pairs),
-        current_rubric_text="original rubric",
-        proposer=proposer,
-        evaluator=evaluator,
-        n_rounds=2,
-    )
-
-    assert len(rounds) == 2
-    # Round 2's proposer call saw round 1's result
-    assert len(proposer.calls[1]["prior_rounds"]) == 1
-    assert proposer.calls[1]["prior_rounds"][0] is rounds[0]
-
-    # ---------------------------------------------------------------------------
-    # No-improvement: best candidate is "no edit" when nothing beats baseline
-    # ---------------------------------------------------------------------------
-    conn.close()
-
-
-def test_no_improvement_returns_none_candidate() -> None:
-    conn = _make_conn()
-    for i in range(80):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
-    propose_pairs, held_pairs = rr.split_pairs(pairs, seed=42)
-
-    baseline = rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12)
-    same = rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12)
-
-    proposer = FakeProposer(["original rubric"])
-    evaluator = FakeEvaluator([baseline, same])
-
-    rounds = rr.run_rounds(
-        propose_pairs=propose_pairs,
-        held_pairs=held_pairs,
-        labeled_cases=_labeled_cases(propose_pairs),
-        current_rubric_text="original rubric",
-        proposer=proposer,
-        evaluator=evaluator,
-        n_rounds=1,
-    )
-
-    best = rr.best_round(rounds, baseline, "original rubric")
-    assert best is None  # no candidate beat baseline
-    conn.close()
-
-
-def test_run_rounds_accepts_precomputed_baseline_train() -> None:
-    conn = _make_conn()
-    for i in range(80):
-        _insert_pair(conn, pair_id=f"p{i}", target="location")
-
-    pairs, _ = rr.load_pairs(conn, target="location", floor=70)
-    propose_pairs, held_pairs = rr.split_pairs(pairs, seed=42)
-
-    baseline_train = rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12)
-    proposer = FakeProposer(["original rubric"])
-    evaluator = FakeEvaluator(
-        [
-            rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12),
-            rr.BucketCounts(right_sure=5, right_unsure=10, wrong_sure=3, wrong_unsure=12),
-        ]
-    )
-
-    rounds = rr.run_rounds(
-        propose_pairs=propose_pairs,
-        held_pairs=held_pairs,
-        labeled_cases=_labeled_cases(propose_pairs),
-        current_rubric_text="original rubric",
-        proposer=proposer,
-        evaluator=evaluator,
-        n_rounds=1,
-        baseline_train=baseline_train,
-    )
-
-    assert len(rounds) == 1
-    conn.close()
-
-
-def test_objective_prioritizes_more_right_then_more_confident_right_then_less_wrong_then_shorter() -> (
-    None
-):
-    a = rr.BucketCounts(right_sure=3, right_unsure=4, wrong_sure=2, wrong_unsure=1)
-    b = rr.BucketCounts(right_sure=4, right_unsure=3, wrong_sure=1, wrong_unsure=2)
-    assert rr.objective(b, "short text") > rr.objective(a, "much longer text")
-
-
-def test_objective_prefers_fewer_confident_wrong_when_right_is_tied() -> None:
-    a = rr.BucketCounts(right_sure=4, right_unsure=4, wrong_sure=3, wrong_unsure=0)
-    b = rr.BucketCounts(right_sure=4, right_unsure=4, wrong_sure=1, wrong_unsure=2)
-    assert rr.objective(b, "same length") > rr.objective(a, "same length")
-
-
-def test_objective_uses_length_only_after_bucket_tie() -> None:
-    a = rr.BucketCounts(right_sure=4, right_unsure=4, wrong_sure=1, wrong_unsure=2)
-    b = rr.BucketCounts(right_sure=4, right_unsure=4, wrong_sure=1, wrong_unsure=2)
-    assert rr.objective(b, "short") > rr.objective(a, "a much longer rubric text")
-
-
-def test_parse_dimension_candidate_round_trips_location_fields() -> None:
-    definition, fit_anchors, look_for = cli._parse_dimension_candidate(
-        """### Location compatibility (slug: location, weight: 6)
-Whether the role's location arrangement is workable and desirable for the
-operator's actual situation. Ordered: remote-first company > remote as
-an option > hybrid or awkward remote > relocation required. Negotiability
-shows up as spread within a Fit band via the ordinary shrinkage math.
-Fit anchors:
-  Poor: Relocation required, stated, with no flexibility language; or a
-    commute/schedule the operator's situation cannot accommodate.
-  Mixed: Remote is offered but the posting is silent on travel or team
-    distribution culture; or the company is centrally based and hiring
-    this seat remotely as an exception; or hybrid with mandated in-office
-    days that create a genuine commute/schedule burden.
-  Strong: A genuinely distributed / remote-first company, or a remote role that
-    openly acknowledges only occasional travel as the tradeoff.
-Look for: Explicit location/remote policy language; whether the team/company is
-    distributed by design or centrally based; travel expectations; whether
-    remote hires exist at the level being applied for; metro/commute distance
-    from the operator's home base; any relocation assistance or flexibility
-    language."""
-    )
-    assert "workable and desirable" in definition
-    assert set(fit_anchors) == {"Poor", "Mixed", "Strong"}
-    assert "Explicit location/remote policy language" in look_for
-
-
-def test_anthropic_proposer_sampled_context_truncates_case_list() -> None:
-    mismatch_cases = [
-        rr.LabeledCase(
-            digest_a=f"a{i}",
-            digest_b=f"b{i}",
-            expected="a",
-            jev_prediction="b",
-            jev_confidence=0.9,
+    with pytest.raises(ValueError):
+        b.diff_against(
+            _eval_result([_pair_cases(pair_id="other", expected="a", prediction="a", sure=True)])
         )
-        for i in range(12)
-    ]
-    agree_cases = [
-        rr.LabeledCase(
-            digest_a=f"c{i}",
-            digest_b=f"d{i}",
-            expected="a",
-            jev_prediction="a",
-            jev_confidence=0.9,
-        )
-        for i in range(8)
-    ]
-    proposer = cli.AnthropicProposer(context_mode="sampled")
-    prompt = proposer._build_prompt("current rubric", mismatch_cases, agree_cases, "", "sampled")
-    assert prompt.count("expected=") == 15
 
 
-def test_anthropic_proposer_full_context_includes_all_cases() -> None:
-    mismatch_cases = [
-        rr.LabeledCase(
-            digest_a=f"a{i}",
-            digest_b=f"b{i}",
-            expected="a",
-            jev_prediction="b",
-            jev_confidence=0.9,
-        )
-        for i in range(12)
-    ]
-    agree_cases = [
-        rr.LabeledCase(
-            digest_a=f"c{i}",
-            digest_b=f"d{i}",
-            expected="a",
-            jev_prediction="a",
-            jev_confidence=0.9,
-        )
-        for i in range(8)
-    ]
-    proposer = cli.AnthropicProposer(context_mode="full")
-    prompt = proposer._build_prompt("current rubric", mismatch_cases, agree_cases, "", "full")
-    assert prompt.count("expected=") == 20
-
-
-def test_message_text_ignores_thinking_blocks() -> None:
-    class _Block:
-        def __init__(self, type_: str, text: str = "") -> None:
-            self.type = type_
-            self.text = text
-
-    message = type(
-        "Message",
-        (),
-        {"content": [_Block("thinking"), _Block("text", "hello"), _Block("text", " world")]},
-    )()
-    assert cli._message_text(message) == "hello world"
-
-
-def test_bucket_counts_formatting_and_best_round_pick() -> None:
-    counts = rr.BucketCounts(right_sure=3, right_unsure=4, wrong_sure=1, wrong_unsure=2)
-    assert counts.total == 10
-    assert counts.precision_when_sure == 3 / 4
-    assert "precision-when-sure" in str(counts)
-
-    baseline = rr.BucketCounts(right_sure=1, right_unsure=0, wrong_sure=0, wrong_unsure=0)
+def test_best_round_returns_last_accepted_round() -> None:
+    baseline = rr.BucketCounts(right_sure=1)
     rounds = [
         rr.RoundResult(
-            1, "a", rr.BucketCounts(right_sure=1), "t1", train_buckets=rr.BucketCounts(right_sure=1)
+            round_num=1,
+            candidate_rubric_text="short",
+            held_out_buckets=rr.BucketCounts(),
+            theory="t1",
+            train_buckets=rr.BucketCounts(right_sure=1),
+            accepted=True,
         ),
         rr.RoundResult(
-            2, "b", rr.BucketCounts(right_sure=4), "t2", train_buckets=rr.BucketCounts(right_sure=4)
+            round_num=2,
+            candidate_rubric_text="longer",
+            held_out_buckets=rr.BucketCounts(),
+            theory="t2",
+            train_buckets=rr.BucketCounts(right_sure=2),
+            accepted=True,
         ),
     ]
     winner = rr.best_round(rounds, baseline, "baseline rubric")
@@ -508,23 +502,160 @@ def test_bucket_counts_formatting_and_best_round_pick() -> None:
     assert winner.round_num == 2
 
 
+def test_best_round_picks_best_scored_round_when_none_accepted() -> None:
+    baseline = rr.BucketCounts(right_sure=1)
+    rounds = [
+        rr.RoundResult(
+            round_num=1,
+            candidate_rubric_text="short",
+            held_out_buckets=rr.BucketCounts(),
+            theory="t1",
+            train_buckets=rr.BucketCounts(right_sure=2),
+        ),
+        rr.RoundResult(
+            round_num=2,
+            candidate_rubric_text="longer",
+            held_out_buckets=rr.BucketCounts(),
+            theory="t2",
+            train_buckets=rr.BucketCounts(right_sure=3),
+        ),
+    ]
+    winner = rr.best_round(rounds, baseline, "baseline rubric")
+    assert winner is not None
+    assert winner.round_num == 2
+
+
+def test_best_round_returns_none_when_no_round_beats_baseline() -> None:
+    baseline = rr.BucketCounts(right_sure=1)
+    rounds = [
+        rr.RoundResult(
+            round_num=1,
+            candidate_rubric_text="a much longer rubric text",
+            held_out_buckets=rr.BucketCounts(),
+            theory="t1",
+            train_buckets=rr.BucketCounts(right_sure=1),
+        )
+    ]
+    assert rr.best_round(rounds, baseline, "baseline rubric") is None
+
+
+def test_run_rounds_numbers_rounds_after_a_resume() -> None:
+    """A resumed run continues the round numbering, so the transcript and the
+    proposer's history don't restart at 1 and collide with earlier rounds."""
+    pairs = [rr.UsablePair("p1", "oa1", "ob1", "A1", "B1", "a")]
+    baseline = _eval_result([_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)])
+    proposer = FakeProposer([rr.RubricProposal(theory="t", expected_effect="e", definition="d")])
+    evaluator = FakeEvaluator([baseline, baseline, baseline, baseline])
+
+    rounds = rr.run_rounds(
+        propose_pairs=pairs,
+        held_pairs=pairs,
+        labeled_cases=baseline.cases,
+        current_rubric_text=_BASELINE_RUBRIC,
+        proposer=proposer,
+        evaluator=evaluator,
+        n_rounds=2,
+        baseline_train=baseline,
+        baseline_noise=baseline,
+        noise_floor_delta=0,
+        round_offset=3,
+    )
+
+    assert [r.round_num for r in rounds] == [4, 5]
+
+
+def test_run_rounds_uses_noise_floor_and_on_round_callback() -> None:
+    pairs = [rr.UsablePair("p1", "oa1", "ob1", "A1", "B1", "a")]
+    baseline_cases = [_pair_cases(pair_id="p1", expected="a", prediction="a", sure=True)]
+    baseline_train = _eval_result(baseline_cases)
+    baseline_noise = _eval_result(baseline_cases)
+    proposer = FakeProposer(
+        [rr.RubricProposal(theory="t", expected_effect="e", definition="short")]
+    )
+    evaluator = FakeEvaluator(
+        [
+            baseline_train,
+            baseline_noise,
+            _eval_result(baseline_cases),
+            _eval_result(baseline_cases),
+        ]
+    )
+    seen: list[int] = []
+
+    rounds = rr.run_rounds(
+        propose_pairs=pairs,
+        held_pairs=pairs,
+        labeled_cases=baseline_train.cases,
+        current_rubric_text="""### Location compatibility (slug: location, weight: 6)
+very long baseline body that is deliberately much longer than the candidate draft.
+Fit anchors:
+  Poor: lots of words that make the baseline long.
+  Mixed: lots of words that make the baseline long.
+  Strong: lots of words that make the baseline long.
+Look for: lots of words that make the baseline long.
+""",
+        proposer=proposer,
+        evaluator=evaluator,
+        n_rounds=1,
+        on_round=lambda round_result: seen.append(round_result.round_num),
+    )
+
+    assert rounds[0].accepted is True
+    assert rounds[0].candidate_delta == 0
+    assert seen == [1]
+
+
 # ---------------------------------------------------------------------------
-# Privacy gate: candidate containing salary figure must be rejected
+# Candidate parsing and privacy gate
 # ---------------------------------------------------------------------------
+
+
+def test_apply_candidate_writes_every_field_back_to_the_rubric(tmp_path) -> None:
+    """A candidate reaching rubric.yaml must land as structured fields, not as one
+    blob — the anchors are separate keys the rest of the system reads."""
+    rubric_path = tmp_path / "rubric.yaml"
+    rubric_path.write_text(
+        "dimensions:\n"
+        "- slug: location\n"
+        "  label: Location compatibility\n"
+        "  weight: 6\n"
+        "  definition: old definition\n"
+        "  fit_anchors:\n"
+        "    Poor: old poor\n"
+        "    Mixed: old mixed\n"
+        "    Strong: old strong\n"
+        "  look_for: old look for\n",
+        encoding="utf-8",
+    )
+    candidate = "\n".join(
+        [
+            "### Location compatibility (slug: location, weight: 6)",
+            "new definition",
+            "Fit anchors:",
+            "  Poor: new poor",
+            "  Mixed: new mixed",
+            "  Strong: new strong",
+            "Look for: new look for",
+        ]
+    )
+
+    cli.apply_candidate("location", candidate, rubric_path=rubric_path)
+
+    written = yaml.safe_load(rubric_path.read_text(encoding="utf-8"))
+    dim = written["dimensions"][0]
+    assert dim["definition"] == "new definition"
+    assert dim["fit_anchors"] == {"Poor": "new poor", "Mixed": "new mixed", "Strong": "new strong"}
+    assert dim["look_for"] == "new look for"
 
 
 def test_privacy_gate_rejects_candidate_with_salary_figure() -> None:
-    """A candidate rubric containing a known private pattern raises."""
-    bad_text = "Anchors: below $230,000 is Poor; above is Strong."
     with pytest.raises(rr.PrivacyViolationError, match="230"):
-        rr.validate_candidate(bad_text)
+        rr.validate_candidate("Anchors: below $230,000 is Poor; above is Strong.")
 
 
 def test_privacy_gate_accepts_clean_candidate() -> None:
-    clean_text = textwrap.dedent("""\
-        fit_anchors:
-          Poor: "Relocation required."
-          Mixed: "Remote offered but team is centrally based."
-          Strong: "Distributed-first company."
-    """)
-    rr.validate_candidate(clean_text)  # must not raise
+    rr.validate_candidate("""fit_anchors:
+  Poor: Relocation required.
+  Mixed: Remote offered but team is centrally based.
+  Strong: Distributed-first company.
+""")

@@ -1,1 +1,1 @@
-docs/features/rubric-recalibration/bearing.md
+docs/features/opro-recalibration/bearing.md

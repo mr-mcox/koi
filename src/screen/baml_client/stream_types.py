@@ -23,7 +23,7 @@ class StreamState(BaseModel, typing.Generic[StreamStateValueT]):
     value: StreamStateValueT
     state: typing_extensions.Literal["Pending", "Incomplete", "Complete"]
 # #########################################################################
-# Generated classes (6)
+# Generated classes (7)
 # #########################################################################
 
 class Assertion(BaseModel):
@@ -49,6 +49,15 @@ class IdentificationResult(BaseModel):
     opening_title: typing.Optional[str] = Field(default=None, description='The title of the role as it would appear to applicants (e.g., \'Staff Engineer\' or \'Platform Lead\').')
     opening_notes: typing.Optional[str] = Field(default=None, description='Free-text summary the LLM uses to distinguish openings when more than one is in scope. Not surfaced as a user-visible field.')
 
+class RecalibrationProposal(BaseModel):
+    theory: typing.Optional[str] = Field(default=None, description='One sentence: the pattern this edit is intended to fix.')
+    expected_effect: typing.Optional[str] = Field(default=None, description='What measurable change you expect and in which direction, e.g. \'fewer wrong+sure on expected-tie pairs\'.')
+    definition: typing.Optional[str] = Field(default=None, description='Full replacement definition text. Omit entirely if you are not changing it.')
+    fit_anchor_poor: typing.Optional[str] = Field(default=None, description='Full replacement Poor fit anchor. Omit entirely if you are not changing it.')
+    fit_anchor_mixed: typing.Optional[str] = Field(default=None, description='Full replacement Mixed fit anchor. Omit entirely if you are not changing it.')
+    fit_anchor_strong: typing.Optional[str] = Field(default=None, description='Full replacement Strong fit anchor. Omit entirely if you are not changing it.')
+    look_for: typing.Optional[str] = Field(default=None, description='Full replacement Look for text. Omit entirely if you are not changing it.')
+
 class SearchAction(BaseModel):
     tag: typing.Optional[str] = Field(default=None, description='Always \'search\'.')
     query: typing.Optional[str] = Field(default=None, description='The search query to issue. Must be non-empty.')
@@ -66,7 +75,7 @@ Action: typing_extensions.TypeAlias = typing.Optional[typing.Union["StopAction",
 
 
 # #########################################################################
-# Model rebuilds (6)
+# Model rebuilds (7)
 # #########################################################################
 # Resolve string forward references now that every model above is defined so
 # class declaration order never breaks Pydantic construction (issue #793).
@@ -76,5 +85,6 @@ Assertion.model_rebuild()
 Citation.model_rebuild()
 FetchAction.model_rebuild()
 IdentificationResult.model_rebuild()
+RecalibrationProposal.model_rebuild()
 SearchAction.model_rebuild()
 StopAction.model_rebuild()

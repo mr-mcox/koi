@@ -28,6 +28,9 @@ type_map = {
     "types.IdentificationResult": types.IdentificationResult,
     "stream_types.IdentificationResult": stream_types.IdentificationResult,
 
+    "types.RecalibrationProposal": types.RecalibrationProposal,
+    "stream_types.RecalibrationProposal": stream_types.RecalibrationProposal,
+
     "types.SearchAction": types.SearchAction,
     "stream_types.SearchAction": stream_types.SearchAction,
 

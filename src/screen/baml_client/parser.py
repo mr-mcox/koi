@@ -47,6 +47,12 @@ class LlmResponseParser:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="IdentifyOpening", llm_response=llm_response, mode="request")
         return typing.cast(types.IdentificationResult, __result__)
 
+    def ProposeRubricEdit(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> types.RecalibrationProposal:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="ProposeRubricEdit", llm_response=llm_response, mode="request")
+        return typing.cast(types.RecalibrationProposal, __result__)
+
     
 
 class LlmStreamParser:
@@ -78,5 +84,11 @@ class LlmStreamParser:
     ) -> stream_types.IdentificationResult:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="IdentifyOpening", llm_response=llm_response, mode="stream")
         return typing.cast(stream_types.IdentificationResult, __result__)
+
+    def ProposeRubricEdit(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> stream_types.RecalibrationProposal:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="ProposeRubricEdit", llm_response=llm_response, mode="stream")
+        return typing.cast(stream_types.RecalibrationProposal, __result__)
 
     
