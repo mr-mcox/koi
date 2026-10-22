@@ -163,6 +163,19 @@ class AnthropicProposer:
         mismatch_cases = [c for c in labeled_cases if c.jev_prediction != c.expected]
         agree_cases = [c for c in labeled_cases if c.jev_prediction == c.expected]
         structured_rubric_text = self._structure_rubric_text(current_rubric_text)
+
+        from screen.extract.prompt import PRIVATE_PLACEHOLDERS
+        private_vals = []
+        for name in PRIVATE_PLACEHOLDERS:
+            if name in current_rubric_text:
+                val = os.environ.get(name, "(not set in environment)")
+                private_vals.append(f"{name}: {val}")
+        
+        if private_vals:
+            private_values_text = "\n      ".join(private_vals)
+        else:
+            private_values_text = None
+        
         kwargs = {
             "current_rubric_text": structured_rubric_text,
             "current_cases_text": self._build_cases_text(
@@ -170,6 +183,7 @@ class AnthropicProposer:
             ),
             "history_text": self._build_history_text(prior_rounds, limit=history_limit),
             "scoring_rule_text": self.scoring_rule_text(),
+            "private_values_text": private_values_text,
         }
         generated = self._call(kwargs, retry=retry)
         return core.RubricProposal(
@@ -262,7 +276,10 @@ class AnthropicProposer:
             "   unsure cases and agreements. A change counts only beyond "
             f"{self._brier_floor:.4f},\n"
             "   jev's run-to-run jitter.\n"
-            "3. Shorter rubric text. Add words only if they move net or Brier."
+            "3. Shorter rubric text. When net is tied, brevity trades off against Brier: "
+            "saving 100 characters is worth +0.01 Brier points. Adding bloat requires a "
+            "proportional Brier improvement to justify it. Trimming fat (removing unused "
+            "guidance) while maintaining accuracy is a valid way to win."
         )
 
     @staticmethod
@@ -324,7 +341,8 @@ class AnthropicProposer:
                         f"Expected effect: {round_result.expected_effect or '(not stated)'}",
                         f"Train: {round_result.train_buckets}",
                         f"Train net: {round_result.train_net:.2f}  "
-                        f"mean Brier: {round_result.train_brier:.4f}",
+                        f"mean Brier: {round_result.train_brier:.4f}  "
+                        f"Draft length: {len(round_result.candidate_rubric_text.strip())} chars",
                         f"Accepted: {round_result.accepted}",
                         "Candidate draft:",
                         round_result.candidate_rubric_text,
@@ -513,7 +531,7 @@ def recalibrate(
         )
 
     _print_results(state, costs)
-    _maybe_apply_winner(target, state)
+    _maybe_apply_winner(target, state, costs)
 
 
 def _commit_costs(config) -> core.CommitCosts:
@@ -568,6 +586,7 @@ def _probe_baml_prompt(
                     "current_cases_text": cases_text,
                     "history_text": history_text,
                     "scoring_rule_text": proposer.scoring_rule_text(),
+                    "private_values_text": "(not relevant in probe mode)",
                 },
                 retry=False,
             )
@@ -745,7 +764,36 @@ def _print_results(state: runstate.RunState, costs: core.CommitCosts) -> None:
                 click.echo(f"      - {case.pair_id}: {case.digest_a} / {case.digest_b}")
 
 
-def _maybe_apply_winner(target: str, state: runstate.RunState) -> None:
+def _maybe_apply_winner(target: str, state: runstate.RunState, costs: core.CommitCosts) -> None:
+    # --- Final Readout Summary ---
+    click.echo("\n" + "=" * 40)
+    click.echo("RECALIBRATION RUN SUMMARY")
+    click.echo("=" * 40)
+    click.echo(f"Baseline Score: {_score_line(state.baseline_train.cases, costs)}")
+    click.echo("\nTrajectory:")
+    
+    best_net = costs.net(state.baseline_train.cases)
+    best_brier = core.mean_brier(state.baseline_train.cases)
+    
+    for r in state.rounds:
+        status = "✅ ACCEPTED" if r.accepted else "❌ REJECTED"
+        train_net = r.train_net or 0.0
+        train_brier = r.train_brier or 0.0
+        
+        # truncate theory for readability in summary
+        theory = r.theory or ""
+        if len(theory) > 120:
+            theory = theory[:117] + "..."
+            
+        click.echo(f"  Round {r.round_num}: {status} (net {train_net:+.2f}, brier {train_brier:.4f})")
+        click.echo(f"    Theory: {theory}")
+        
+        if r.accepted:
+            best_net = train_net
+            best_brier = train_brier
+
+    click.echo(f"\nFinal Best Score: net {best_net:+.2f}, brier {best_brier:.4f}")
+    click.echo("=" * 40 + "\n")
     winner = core.best_round(state.rounds)
     if winner is None:
         click.echo(

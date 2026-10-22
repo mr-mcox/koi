@@ -184,13 +184,23 @@ def accepts(
     candidate_text: str,
     current_text: str,
 ) -> bool:
-    """Lexicographic: higher net, then a Brier gain beyond the noise floor, then shorter
-    text. A Brier difference inside the floor counts as a tie."""
+    """Lexicographic: higher net, then a combined Brier and length gain beyond the noise floor.
+    A Brier difference inside the floor counts as a tie unless offset by length."""
+    # 1. Net is supreme. Never trade hard correctness for brevity or Brier.
     if not math.isclose(candidate.net, current.net, abs_tol=1e-9):
         return candidate.net > current.net
+
+    # 2. When net is tied, trade off Brier and Brevity.
+    # 100 characters saved = +0.01 to Brier gain.
     brier_gain = current.brier - candidate.brier
-    if abs(brier_gain) > brier_floor:
-        return brier_gain > 0
+    length_gain = len(current_text.strip()) - len(candidate_text.strip())
+
+    adjusted_brier_gain = brier_gain + (length_gain / 10000.0)
+
+    if abs(adjusted_brier_gain) > brier_floor:
+        return adjusted_brier_gain > 0
+
+    # 3. Final exact tie breaker
     return len(candidate_text.strip()) < len(current_text.strip())
 
 

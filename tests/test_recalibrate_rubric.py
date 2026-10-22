@@ -773,17 +773,39 @@ def test_accepts_orders_net_then_brier_beyond_the_floor_then_brevity() -> None:
     """The regressions: Brier outvoting net, jitter inside the floor counting as a
     win, and a longer text winning a true tie."""
 
-    def accepts(candidate: rr.Score, current: rr.Score, cand_text: str = "x") -> bool:
+    def accepts(
+        candidate: rr.Score, current: rr.Score, cand_text: str = "x", curr_text: str = "xx"
+    ) -> bool:
         return rr.accepts(
-            candidate, current, brier_floor=0.01, candidate_text=cand_text, current_text="xx"
+            candidate, current, brier_floor=0.01, candidate_text=cand_text, current_text=curr_text
         )
 
-    assert accepts(rr.Score(net=1, brier=0.9), rr.Score(net=0, brier=0.1))
-    assert not accepts(rr.Score(net=0, brier=0.1), rr.Score(net=1, brier=0.9))
-    assert accepts(rr.Score(net=0, brier=0.30), rr.Score(net=0, brier=0.32), "xxx")
-    assert not accepts(rr.Score(net=0, brier=0.32), rr.Score(net=0, brier=0.30), "")
-    assert accepts(rr.Score(net=0, brier=0.305), rr.Score(net=0, brier=0.30), "x")
-    assert not accepts(rr.Score(net=0, brier=0.295), rr.Score(net=0, brier=0.30), "xxx")
+    # 1. Net is supreme (net=1 always beats net=0, regardless of Brier or length)
+    assert accepts(rr.Score(net=1, brier=0.9), rr.Score(net=0, brier=0.1), cand_text="x" * 1000)
+    assert not accepts(rr.Score(net=0, brier=0.1), rr.Score(net=1, brier=0.9), cand_text="x")
+
+    # 2. When net is tied, brevity and Brier trade off (100 chars = 0.01 brier).
+    # Baseline brier=0.32 vs 0.30 (candidate is 0.02 worse).
+    # If candidate is 400 chars shorter, length_gain = +400 -> +0.04 to adjusted brier gain.
+    # Total adjusted gain = -0.02 + 0.04 = +0.02.
+    # +0.02 > 0.01 (noise floor), so it wins!
+    assert accepts(
+        rr.Score(net=0, brier=0.32), rr.Score(net=0, brier=0.30), cand_text="x", curr_text="x" * 401
+    )
+
+    # If candidate is 200 chars longer (-0.02 gain) and Brier is 0.05 better (+0.05).
+    # Total adjusted gain = 0.05 - 0.02 = 0.03. > 0.01 floor. Wins!
+    assert accepts(
+        rr.Score(net=0, brier=0.25), rr.Score(net=0, brier=0.30), cand_text="x" * 201, curr_text="x"
+    )
+
+    # Inside the noise floor, it returns False if it's not strictly better
+    assert not accepts(
+        rr.Score(net=0, brier=0.32),
+        rr.Score(net=0, brier=0.30),
+        cand_text="x" * 200,
+        curr_text="x" * 200,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -856,3 +878,47 @@ def test_privacy_gate_accepts_clean_candidate() -> None:
   Mixed: Remote offered but team is centrally based.
   Strong: Distributed-first company.
 """)
+
+
+def test_proposer_injects_private_values_when_present_in_rubric(monkeypatch) -> None:
+    monkeypatch.setenv("SCREEN_COMPENSATION_BASELINE", "$125k")
+
+    class SpyClient:
+        def __init__(self):
+            self.last_kwargs = {}
+
+        def ProposeRubricEdit(self, **kwargs):
+            self.last_kwargs = kwargs
+            return type(
+                "Obj",
+                (),
+                {
+                    "theory": "theory",
+                    "expected_effect": "effect",
+                    "definition": "def",
+                    "fit_anchor_poor": "poor",
+                    "fit_anchor_mixed": "mixed",
+                    "fit_anchor_strong": "strong",
+                    "look_for": "look",
+                },
+            )()
+
+    spy = SpyClient()
+    proposer = cli.AnthropicProposer(
+        costs=rr.CommitCosts.from_thresholds(
+            winner_commit_threshold=0.75, tie_commit_threshold=0.85
+        ),
+        brier_floor=0.01,
+        context_mode="sampled",
+        client=spy,
+    )
+
+    # 1. No placeholder in text -> private_values_text is None
+    rubric_without = "### Compensation (slug: compensation, weight: 2)\ndefinition: No placeholder."
+    proposer.propose(current_rubric_text=rubric_without, labeled_cases=[], prior_rounds=[])
+    assert spy.last_kwargs["private_values_text"] is None
+
+    # 2. Placeholder in text -> private_values_text has the value
+    rubric_with = "### Compensation (slug: compensation, weight: 2)\ndefinition: Has SCREEN_COMPENSATION_BASELINE."
+    proposer.propose(current_rubric_text=rubric_with, labeled_cases=[], prior_rounds=[])
+    assert "SCREEN_COMPENSATION_BASELINE: $125k" in spy.last_kwargs["private_values_text"]

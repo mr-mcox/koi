@@ -20,6 +20,7 @@ function ProposeRubricEdit(
   current_cases_text: string,
   history_text: string,
   scoring_rule_text: string,
+  private_values_text: string,
 ) -> RecalibrationProposal {
   client AnthropicSonnet
   prompt #"
@@ -51,8 +52,13 @@ function ProposeRubricEdit(
     - Each field you return is the complete new value for that field, written as a standalone criterion without references to these cases, pairs, rounds, or the reason for the change.
     - ALL_CAPS names such as SCREEN_COMPENSATION_BASELINE are placeholders filled with a private value when jev runs; keep every placeholder exactly as written.
     - No salary figures or other private values.
+    {% if private_values_text %}
+    - To help you formulate accurate edits, the real private values that will be substituted are provided below. Use this knowledge to understand the operator's logic, but DO NOT put these values into the text itself.
+      {{ private_values_text }}
+    {% endif %}
 
     ## Current rubric
+
     {{ current_rubric_text }}
 
     ## Current cases
