@@ -8,11 +8,11 @@
 class RecalibrationProposal {
   theory string @description("One sentence: the pattern in the cases this edit targets. If you find no wording defect, say so here and leave every rubric field null.")
   expected_effect string @description("What measurable change you expect and in which direction, e.g. 'fewer wrong+sure on expected-tie pairs'.")
-  definition string? @description("Full replacement definition text, or null if unchanged.")
-  fit_anchor_poor string? @description("Poor fit anchor text only — do not include 'Poor:' prefix, just the criterion text.")
-  fit_anchor_mixed string? @description("Mixed fit anchor text only — do not include 'Mixed:' prefix, just the criterion text.")
-  fit_anchor_strong string? @description("Strong fit anchor text only — do not include 'Strong:' prefix, just the criterion text.")
-  look_for string? @description("Full replacement Look for text, or null if unchanged.")
+  definition string? @description("New definition value, or null if unchanged.")
+  fit_anchor_poor string? @description("New fit_anchor_poor value, or null if unchanged.")
+  fit_anchor_mixed string? @description("New fit_anchor_mixed value, or null if unchanged.")
+  fit_anchor_strong string? @description("New fit_anchor_strong value, or null if unchanged.")
+  look_for string? @description("New look_for value, or null if unchanged.")
 }
 
 function ProposeRubricEdit(
@@ -48,13 +48,11 @@ function ProposeRubricEdit(
        answer for that group. Prefer changing a single field.
 
     Rubric text requirements:
-    - Fit anchor fields (Poor, Mixed, Strong): return ONLY the criterion text, without the label prefix. The framework will inject your text into the correct YAML position.
-    - definition and look_for fields: return complete replacement text.
-    - Each changed field is written as a standalone criterion: no reference to these cases, pairs, rounds, or the reason for the change.
-    - ALL_CAPS names such as SCREEN_COMPENSATION_BASELINE are placeholders filled with a private value when jev runs. Keep every placeholder exactly as written, and never replace one with a number or estimate.
+    - Each field you return is the complete new value for that field, written as a standalone criterion without references to these cases, pairs, rounds, or the reason for the change.
+    - ALL_CAPS names such as SCREEN_COMPENSATION_BASELINE are placeholders filled with a private value when jev runs; keep every placeholder exactly as written.
     - No salary figures or other private values.
 
-    ## Current rubric text
+    ## Current rubric
     {{ current_rubric_text }}
 
     ## Current cases

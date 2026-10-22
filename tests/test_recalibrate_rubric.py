@@ -223,6 +223,35 @@ def test_render_candidate_text_round_trips_the_live_rubric_text() -> None:
     assert rr.render_candidate_text(live, proposal) == live
 
 
+def test_structure_rubric_text_uses_the_proposers_own_field_names() -> None:
+    """The regression: rendering the dimension as prose (`Mixed: ...`) invited the
+    proposer to echo the label back into the value, which landed in rubric.yaml as
+    `Mixed: Mixed: ...`."""
+    payload = yaml.safe_load(cli.AnthropicProposer._structure_rubric_text(_BASELINE_RUBRIC))
+    assert set(payload) == {
+        "definition",
+        "fit_anchor_poor",
+        "fit_anchor_mixed",
+        "fit_anchor_strong",
+        "look_for",
+    }
+    live = rr.parse_rubric_fields(rubric_text_for_dimension("location"))
+    assert payload["fit_anchor_mixed"] == live["fit_anchor_mixed"]
+    assert not payload["fit_anchor_mixed"].startswith("Mixed:")
+
+
+def test_structure_rubric_text_rejects_text_without_a_dimension_heading() -> None:
+    with pytest.raises(ValueError, match="does not start with a dimension heading"):
+        cli.AnthropicProposer._structure_rubric_text("old definition\nFit anchors:")
+
+
+def test_structure_rubric_text_rejects_a_slug_absent_from_rubric_yaml() -> None:
+    with pytest.raises(ValueError, match="no dimension with slug 'no-such-slug'"):
+        cli.AnthropicProposer._structure_rubric_text(
+            "### Nope (slug: no-such-slug, weight: 6)\nbody"
+        )
+
+
 def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> None:
     class FakeClient:
         def __init__(self) -> None:

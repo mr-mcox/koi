@@ -13,6 +13,7 @@ Run it as a file path or a dotted module — `-m` will not accept a `.py` suffix
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import subprocess
 import time
@@ -159,8 +160,9 @@ class AnthropicProposer:
     ) -> core.RubricProposal:
         mismatch_cases = [c for c in labeled_cases if c.jev_prediction != c.expected]
         agree_cases = [c for c in labeled_cases if c.jev_prediction == c.expected]
+        structured_rubric_text = self._structure_rubric_text(current_rubric_text)
         kwargs = {
-            "current_rubric_text": current_rubric_text,
+            "current_rubric_text": structured_rubric_text,
             "current_cases_text": self._build_cases_text(
                 mismatch_cases, agree_cases, limit=case_limit
             ),
@@ -205,6 +207,42 @@ class AnthropicProposer:
         raise click.ClickException(
             f"ProposeRubricEdit failed after {attempts} attempts: {last_error}"
         )
+
+    @staticmethod
+    def _structure_rubric_text(rubric_text: str) -> str:
+        """Render the target dimension as the same field names the proposer writes back.
+
+        The proposer returns one value per editable field, so it reads them in that
+        shape rather than as the rendered prose Jev scores against.
+        """
+        header, _, _ = rubric_text.partition("\n")
+        match = re.fullmatch(
+            r"### (?P<label>.+) \(slug: (?P<slug>[^,]+), weight: (?P<weight>\d+)\)",
+            header.strip(),
+        )
+        if not match:
+            raise ValueError(f"rubric text does not start with a dimension heading: {header!r}")
+        target = match.group("slug")
+        data = yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
+        dim = next((d for d in data.get("dimensions", []) if d.get("slug") == target), None)
+        if dim is None:
+            raise ValueError(f"rubric.yaml has no dimension with slug {target!r}")
+
+        anchors = dim.get("fit_anchors", {})
+        payload = {
+            "definition": str(dim.get("definition", "")).strip(),
+            "fit_anchor_poor": str(anchors.get("Poor", "")).strip(),
+            "fit_anchor_mixed": str(anchors.get("Mixed", "")).strip(),
+            "fit_anchor_strong": str(anchors.get("Strong", "")).strip(),
+            "look_for": str(dim.get("look_for", "")).strip(),
+        }
+        return yaml.safe_dump(
+            payload,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+            width=4096,
+        ).rstrip()
 
     def scoring_rule_text(self) -> str:
         """The acceptance rule as the proposer reads it, with this run's numbers."""
