@@ -42,6 +42,13 @@ client<llm> AnthropicSonnet {
       effort "high"
     }
     finish_reason_deny_list ["max_tokens"]
+    // Thinking output is omitted, so the stream can go quiet for minutes before
+    // the first visible token. A 32k-token reply at ~90 tok/s is ~6 min.
+    http {
+      connect_timeout_ms 10000
+      idle_timeout_ms 100000
+      request_timeout_ms 300000
+    }
   }
 }
 

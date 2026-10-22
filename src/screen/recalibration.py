@@ -11,6 +11,7 @@ import math
 import random
 import sqlite3
 import statistics
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -500,6 +501,89 @@ def render_candidate_text(current_rubric_text: str, proposal: RubricProposal) ->
 # ---------------------------------------------------------------------------
 
 
+def _noop_round_start(round_num: int) -> None:
+    return None
+
+
+def _noop_stage_done(round_num: int, stage: str, elapsed: float) -> None:
+    return None
+
+
+def _noop_round(round_result: RoundResult) -> None:
+    return None
+
+
+def _run_round_iteration(
+    *,
+    round_num: int,
+    rubric_text: str,
+    current_train: EvaluationResult,
+    propose_pairs: list[UsablePair],
+    held_pairs: list[UsablePair],
+    proposer: Proposer,
+    evaluator: Evaluator,
+    costs: CommitCosts,
+    brier_floor: float,
+    prior_rounds: list[RoundResult],
+    on_stage_done: Callable[[int, str, float], None] = _noop_stage_done,
+) -> tuple[RoundResult, str, EvaluationResult, Score]:
+    """Run one propose/evaluate step and return the new state plus the record."""
+
+    stage_started = time.monotonic()
+    proposal = proposer.propose(
+        current_rubric_text=rubric_text,
+        labeled_cases=list(current_train.cases),
+        prior_rounds=prior_rounds,
+    )
+    on_stage_done(round_num, "proposal", time.monotonic() - stage_started)
+
+    candidate = render_candidate_text(rubric_text, proposal)
+    validate_candidate(candidate)
+    require_placeholders_kept(rubric_text, candidate)
+
+    stage_started = time.monotonic()
+    candidate_train = evaluator.evaluate(propose_pairs, candidate)
+    on_stage_done(round_num, "train-eval", time.monotonic() - stage_started)
+
+    stage_started = time.monotonic()
+    candidate_held = evaluator.evaluate(held_pairs, candidate)
+    on_stage_done(round_num, "held-eval", time.monotonic() - stage_started)
+
+    delta = candidate_train.diff_against(current_train)
+    candidate_score = Score.of(candidate_train.cases, costs)
+    accepted = accepts(
+        candidate_score,
+        Score.of(current_train.cases, costs),
+        brier_floor=brier_floor,
+        candidate_text=candidate,
+        current_text=rubric_text,
+    )
+    if accepted:
+        rubric_text = candidate
+        current_train = candidate_train
+
+    return (
+        RoundResult(
+            round_num=round_num,
+            candidate_rubric_text=candidate,
+            held_out_buckets=candidate_held.buckets,
+            theory=proposal.theory,
+            expected_effect=proposal.expected_effect,
+            train_buckets=candidate_train.buckets,
+            train_cases=candidate_train.cases,
+            held_out_cases=candidate_held.cases,
+            fixed_cases=delta.fixed,
+            broken_cases=delta.broken,
+            train_net=candidate_score.net,
+            train_brier=candidate_score.brier,
+            accepted=accepted,
+        ),
+        rubric_text,
+        current_train,
+        candidate_score,
+    )
+
+
 def run_rounds(
     *,
     propose_pairs: list[UsablePair],
@@ -512,7 +596,9 @@ def run_rounds(
     n_rounds: int = 3,
     baseline_train: EvaluationResult | None = None,
     round_offset: int = 0,
-    on_round: Callable[[RoundResult], None] | None = None,
+    on_round: Callable[[RoundResult], None] = _noop_round,
+    on_round_start: Callable[[int], None] = _noop_round_start,
+    on_stage_done: Callable[[int, str, float], None] = _noop_stage_done,
 ) -> list[RoundResult]:
     """Run sequential rounds; the proposer always sees the current-best train cases.
 
@@ -522,53 +608,26 @@ def run_rounds(
     rounds: list[RoundResult] = []
     rubric_text = current_rubric_text
     current_train = baseline_train or evaluator.evaluate(propose_pairs, rubric_text)
-    current_score = Score.of(current_train.cases, costs)
 
     for i in range(n_rounds):
-        proposal = proposer.propose(
-            current_rubric_text=rubric_text,
-            labeled_cases=list(current_train.cases),
-            prior_rounds=list(rounds),
-        )
-        candidate = render_candidate_text(rubric_text, proposal)
-        validate_candidate(candidate)
-        require_placeholders_kept(rubric_text, candidate)
-        candidate_train = evaluator.evaluate(propose_pairs, candidate)
-        candidate_held = evaluator.evaluate(held_pairs, candidate)
-        delta = candidate_train.diff_against(current_train)
-        candidate_score = Score.of(candidate_train.cases, costs)
-        accepted = accepts(
-            candidate_score,
-            current_score,
+        round_num = round_offset + i + 1
+        on_round_start(round_num)
+        round_result, rubric_text, current_train, _ = _run_round_iteration(
+            round_num=round_num,
+            rubric_text=rubric_text,
+            current_train=current_train,
+            propose_pairs=propose_pairs,
+            held_pairs=held_pairs,
+            proposer=proposer,
+            evaluator=evaluator,
+            costs=costs,
             brier_floor=brier_floor,
-            candidate_text=candidate,
-            current_text=rubric_text,
+            prior_rounds=list(rounds),
+            on_stage_done=on_stage_done,
         )
-        if accepted:
-            rubric_text = candidate
-            current_train = candidate_train
-            current_score = candidate_score
+        rounds.append(round_result)
 
-        rounds.append(
-            RoundResult(
-                round_num=round_offset + i + 1,
-                candidate_rubric_text=candidate,
-                held_out_buckets=candidate_held.buckets,
-                theory=proposal.theory,
-                expected_effect=proposal.expected_effect,
-                train_buckets=candidate_train.buckets,
-                train_cases=candidate_train.cases,
-                held_out_cases=candidate_held.cases,
-                fixed_cases=delta.fixed,
-                broken_cases=delta.broken,
-                train_net=candidate_score.net,
-                train_brier=candidate_score.brier,
-                accepted=accepted,
-            )
-        )
-
-        if on_round is not None:
-            on_round(rounds[-1])
+        on_round(round_result)
 
     return rounds
 

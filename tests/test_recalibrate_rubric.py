@@ -286,7 +286,12 @@ def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> N
     assert "0.0123" in call["scoring_rule_text"]
 
 
-def test_anthropic_proposer_retries_empty_text_responses() -> None:
+def test_anthropic_proposer_retries_empty_text_responses(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Also guards the failure log's elapsed time: BAML v0 timeout errors don't say
+    which limit fired, so the duration is the only way to tell."""
+
     class FlakyClient:
         def __init__(self) -> None:
             self.calls = 0
@@ -305,8 +310,13 @@ def test_anthropic_proposer_retries_empty_text_responses() -> None:
                 look_for=None,
             )
 
+    ticks = iter([0.0, 312.0, 400.0, 401.0])
     proposer = cli.AnthropicProposer(
-        costs=_COSTS, brier_floor=0.0, context_mode="sampled", client=FlakyClient()
+        costs=_COSTS,
+        brier_floor=0.0,
+        context_mode="sampled",
+        client=FlakyClient(),
+        clock=lambda: next(ticks),
     )
     proposal = proposer.propose(
         current_rubric_text=_BASELINE_RUBRIC,
@@ -315,6 +325,7 @@ def test_anthropic_proposer_retries_empty_text_responses() -> None:
     )
     assert proposal.theory == "theory sentence"
     assert proposal.definition == "definition draft"
+    assert "attempt 1/3 failed after 312s" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +549,22 @@ def test_render_candidate_text_requires_heading() -> None:
     proposal = rr.RubricProposal(theory="t", expected_effect="e", definition="d")
     with pytest.raises(ValueError, match="heading"):
         rr.render_candidate_text("old body only", proposal)
+
+
+def test_render_candidate_text_omits_missing_look_for_and_parse_fields() -> None:
+    rubric = """### Location compatibility (slug: location, weight: 6)
+old definition
+Fit anchors:
+  Poor: old poor
+  Mixed: old mixed
+  Strong: old strong
+"""
+    fields = rr.parse_rubric_fields(rubric)
+    assert "look_for" not in fields
+
+    proposal = rr.RubricProposal(theory="t", expected_effect="e", definition="d")
+    rendered = rr.render_candidate_text(rubric, proposal)
+    assert "Look for:" not in rendered
 
 
 def test_evaluation_result_diff_against() -> None:

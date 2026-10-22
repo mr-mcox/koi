@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
@@ -22,6 +23,7 @@ from typing import Any, Literal
 import click
 import yaml
 from dotenv import load_dotenv
+from baml_py import ClientRegistry
 from typesafe_sdk import TypeSafeClient
 
 from screen import recalibration as core
@@ -36,7 +38,43 @@ from screen.verdict.routing import route_verdict
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 _RUBRIC_PATH = Path(__file__).parent.parent / "rubric.yaml"
+SONNET_MODEL = "claude-sonnet-5"
+SONNET_CONNECT_TIMEOUT_MS = 10_000
+SONNET_IDLE_TIMEOUT_MS = 100_000
+SONNET_REQUEST_TIMEOUT_MS = 900_000
+SONNET_MAX_TOKENS = 32_000
+SONNET_API_KEY_ENV = "ANTHROPIC_API_KEY"
+SONNET_CLIENT_NAME = "AnthropicSonnet"
+SONNET_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
 ContextMode = Literal["sampled", "full", "compare"]
+
+
+SonnetEffort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
+def _sonnet_client_registry(effort: SonnetEffort) -> ClientRegistry:
+    registry = ClientRegistry()
+    api_key = os.environ.get(SONNET_API_KEY_ENV)
+    if not api_key:
+        raise click.ClickException(f"{SONNET_API_KEY_ENV} is unset")
+    registry.add_llm_client(
+        SONNET_CLIENT_NAME,
+        "anthropic",
+        {
+            "model": SONNET_MODEL,
+            "api_key": api_key,
+            "max_tokens": SONNET_MAX_TOKENS,
+            "output_config": {"effort": effort},
+            "http": {
+                "connect_timeout_ms": SONNET_CONNECT_TIMEOUT_MS,
+                "idle_timeout_ms": SONNET_IDLE_TIMEOUT_MS,
+                "request_timeout_ms": SONNET_REQUEST_TIMEOUT_MS,
+            },
+        },
+    )
+    return registry
 
 
 class JevEvaluator:
@@ -97,11 +135,17 @@ class AnthropicProposer:
         brier_floor: float,
         context_mode: ContextMode = "sampled",
         client: Any = baml,
+        sonnet_effort: SonnetEffort = "medium",
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._clock = clock
         self._costs = costs
         self._brier_floor = brier_floor
         self._context_mode = context_mode
-        self._client: Any = client
+        if client is baml:
+            self._client = client.with_options(client_registry=_sonnet_client_registry(sonnet_effort))
+        else:
+            self._client = client
 
     def propose(
         self,
@@ -138,6 +182,7 @@ class AnthropicProposer:
         attempts = 3 if retry else 1
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
+            started = self._clock()
             try:
                 return self._client.ProposeRubricEdit(**kwargs)
             except Exception as exc:
@@ -147,7 +192,8 @@ class AnthropicProposer:
                     click.echo(
                         (
                             f"[recalibrate] ProposeRubricEdit attempt {attempt}/{attempts} "
-                            f"failed: cases={meta['cases_chars']} chars, "
+                            f"failed after {self._clock() - started:.0f}s: "
+                            f"cases={meta['cases_chars']} chars, "
                             f"history={meta['history_chars']} chars, "
                             f"prompt={meta['prompt_chars']} chars, error={exc}"
                         ),
@@ -323,6 +369,13 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
     help="Path to the resumable run state JSON. If omitted, a new timestamped run dir is created.",
 )
 @click.option(
+    "--sonnet-effort",
+    type=click.Choice(list(SONNET_EFFORTS), case_sensitive=False),
+    default="medium",
+    show_default=True,
+    help="Anthropic Sonnet thinking effort for the proposer.",
+)
+@click.option(
     "--probe-baml",
     is_flag=True,
     default=False,
@@ -343,6 +396,7 @@ def recalibrate(
     db_path: Path | None,
     context_mode: ContextMode,
     state_path: Path | None,
+    sonnet_effort: SonnetEffort,
     probe_baml: bool,
     probe_baml_bisects: int,
 ) -> None:
@@ -354,7 +408,13 @@ def recalibrate(
 
     if context_mode == "compare":
         _run_compare_mode(
-            target=target, rounds=rounds, floor=floor, seed=seed, db_path=db_path, config=config
+            target=target,
+            rounds=rounds,
+            floor=floor,
+            seed=seed,
+            db_path=db_path,
+            config=config,
+            sonnet_effort=sonnet_effort,
         )
         return
 
@@ -384,7 +444,10 @@ def recalibrate(
         )
 
     proposer = AnthropicProposer(
-        costs=costs, brier_floor=state.brier_noise_floor, context_mode=context_mode
+        costs=costs,
+        brier_floor=state.brier_noise_floor,
+        context_mode=context_mode,
+        sonnet_effort=sonnet_effort,
     )
     if probe_baml:
         _probe_baml_prompt(state=state, proposer=proposer, max_halvings=probe_baml_bisects)
@@ -403,6 +466,10 @@ def recalibrate(
             n_rounds=rounds,
             baseline_train=state.current_train,
             round_offset=state.rounds_completed,
+            on_round_start=lambda round_num: click.echo(f"  [round {round_num}] starting…"),
+            on_stage_done=lambda round_num, stage, elapsed: click.echo(
+                f"  [round {round_num}] {stage} done in {elapsed:.1f}s"
+            ),
             on_round=lambda result: runstate.record_round(state, result),
         )
 
@@ -539,6 +606,7 @@ def _run_compare_mode(
     seed: int,
     db_path: Path | None,
     config,
+    sonnet_effort: SonnetEffort,
 ) -> None:
     conn = _open_db(db_path)
     pairs, shortfall = core.load_pairs(conn, target=target, floor=floor)
@@ -554,15 +622,26 @@ def _run_compare_mode(
     evaluator = JevEvaluator(provider, config)
     costs = _commit_costs(config)
     rubric_text = unresolved_rubric_text_for_dimension(target)
+    t0 = time.monotonic()
     baseline_train = evaluator.evaluate(propose_pairs, rubric_text)
+    click.echo(f"  baseline train ({time.monotonic() - t0:.1f}s): {baseline_train.buckets}")
+    t0 = time.monotonic()
     baseline_noise = evaluator.evaluate(propose_pairs, rubric_text)
+    click.echo(f"  baseline noise ({time.monotonic() - t0:.1f}s): {baseline_noise.buckets}")
     brier_floor = core.brier_noise_floor(baseline_train, baseline_noise)
+    t0 = time.monotonic()
     baseline_held = evaluator.evaluate(held_pairs, rubric_text)
+    click.echo(f"  baseline held-out ({time.monotonic() - t0:.1f}s): {baseline_held.buckets}")
     click.echo("\n  Comparing sampled and full-context runs…")
     click.echo(f"  baseline train: {baseline_train.buckets}")
     click.echo(f"  baseline held-out: {baseline_held.buckets}")
     for mode in ("sampled", "full"):
-        proposer = AnthropicProposer(costs=costs, brier_floor=brier_floor, context_mode=mode)
+        proposer = AnthropicProposer(
+            costs=costs,
+            brier_floor=brier_floor,
+            context_mode=mode,
+            sonnet_effort=sonnet_effort,
+        )
         click.echo(f"\n  [{mode}] Running {rounds} round(s)…\n")
         results = core.run_rounds(
             propose_pairs=propose_pairs,
@@ -574,6 +653,10 @@ def _run_compare_mode(
             brier_floor=brier_floor,
             n_rounds=rounds,
             baseline_train=baseline_train,
+            on_round_start=lambda round_num: click.echo(f"  [{mode}] [round {round_num}] starting…"),
+            on_stage_done=lambda round_num, stage, elapsed: click.echo(
+                f"  [{mode}] [round {round_num}] {stage} done in {elapsed:.1f}s"
+            ),
         )
         for r in results:
             click.echo(f"  [{mode}] Round {r.round_num}: {r.theory}")
