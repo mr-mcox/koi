@@ -51,13 +51,13 @@ dimensions:
   look_for: "Engineering blog posts on tooling/practice; posting language about AI-tooling expectations; whether tooling is single-vendor-locked or genuinely experimental. Company-wide AI rollout announcements  (e.g., 'we gave everyone Copilot/Cursor') usually point to Mixed, not Strong, unless accompanied by infrastructure for agentic workflows."
   slug: agentic
   weight: 2
-- definition: "Would total compensation likely be higher than the operator's configured baseline (SCREEN_COMPENSATION_BASELINE)? A likelihood judgment, not a flat band comparison — domain coolness handles the \"would justify a below-baseline offer\" case through the weighted average, so this dimension asks only whether the evidence points above or below baseline."
+- definition: "Would total compensation likely be higher than the operator's configured baseline (SCREEN_COMPENSATION_BASELINE)? A likelihood judgment, not a flat band comparison — domain coolness handles the \"would justify a below-baseline offer\" case through the weighted average, so this dimension asks only whether the evidence points above or below baseline. When comparing two evidence digests, if one digest's quoted range has both a higher floor and a higher ceiling than the other's — even by a moderate margin such as $15K or more — prefer that side rather than calling a tie, even if both mention similar equity, bonus, or benefits upside. Only treat two digests as comparable (tie) when their ranges overlap closely with similar floors or ceilings, or when neither side's floor and ceiling are both higher than the other's."
   fit_anchors:
     Poor: Evidence points to total compensation below baseline.
-    Mixed: Evidence is mixed, or points to roughly baseline.
-    Strong: Evidence points to total compensation above baseline.
+    Mixed: Evidence is mixed, or points to roughly baseline, or — when comparing two digests — their ranges overlap closely with similar floors or ceilings, or neither side has both a higher floor and a higher ceiling than the other, making neither clearly stronger.
+    Strong: "Evidence points to total compensation above baseline, especially when its quoted range has both a higher floor and a higher ceiling than a comparison digest's range — even by a moderate margin such as $15K or more — rather than merely overlapping or sharing similar bounds with it."
   label: Compensation
-  look_for: Posted range (best signal); Levels.fyi/comparable benchmarks; recruiter-stated range.
+  look_for: "Posted range (best signal); Levels.fyi/comparable benchmarks; recruiter-stated range; when comparing two digests, whether one range's floor and ceiling are both higher than the other's by a meaningful margin (favor that side) versus closely overlapping with similar bounds (favor tie)."
   slug: compensation
   weight: 2
 - definition: "Genuine personal fascination with the subject matter itself, independent of the business's mission ethics. This is what would justify a below-baseline offer without special-case logic anywhere else, since the weighted average handles the tradeoff naturally."
