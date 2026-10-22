@@ -47,6 +47,12 @@ def test_rubric_dimension_slugs_are_unique(rubric: dict) -> None:  # type: ignor
     assert len(slugs) == len(set(slugs)), f"duplicate dimension slugs: {slugs}"
 
 
+def test_rubric_guard_field_is_boolean_where_present(rubric: dict) -> None:  # type: ignore[type-arg]
+    for d in rubric.get("dimensions", []):
+        if "guard" in d:
+            assert isinstance(d["guard"], bool), f"{d['slug']} guard is not a bool"
+
+
 def test_rubric_has_no_constraints_section(rubric: dict) -> None:  # type: ignore[type-arg]
     """Constraints retired as a target family (constraints-and-rubric.md): every scored
     target is an ordinary weighted dimension now."""

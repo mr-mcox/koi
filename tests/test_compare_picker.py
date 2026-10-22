@@ -469,10 +469,9 @@ def test_boundary_weight_favors_pair_over_tied_alternative_far_from_top_k(
     assert {suggestion.opening_a_id, suggestion.opening_b_id} == {near_a, near_b}
 
 
-def test_boundary_gate_skipped_when_pool_fits_within_top_k(config: ScoringConfig) -> None:
-    """When the whole pool is at or under `top_k`, every opening's `p_top_k` is trivially
-    1.0 and `boundary_weight` would zero out every candidate — the picker must skip that
-    factor rather than returning `None` for a pool that's still worth ordering."""
+def test_boundary_gate_floor_keeps_pair_selectable(config: ScoringConfig) -> None:
+    """When the pool is already inside top-K, the boundary term still has a floor, so
+    the picker can keep ordering a useful pair rather than going dead."""
     a, b = "a", "b"
     assertions = {a: [_assertion("craft_direction")], b: [_assertion("craft_direction")]}
     trivial_p_top_k = {a: 1.0, b: 1.0}
@@ -492,16 +491,16 @@ def test_boundary_gate_skipped_when_pool_fits_within_top_k(config: ScoringConfig
 
 
 def test_dimension_weight_uses_sqrt_not_square(config: ScoringConfig) -> None:
-    """A high-weight dimension (`location`, weight 6) with modest evidence-driven variance
-    should not automatically beat a lower-weight dimension (`craft_direction`) whose variance is
+    """A high-weight dimension (`location`, weight 3) with modest evidence-driven variance
+    should not automatically beat a lower-weight dimension (`domain`) whose variance is
     substantially larger — `weight**2` would let location win here purely on weight;
     `sqrt(weight)` should not."""
     a, b = "a", "b"
     # Both dimensions get one assertion each side, so their raw prior variance is
-    # identical; only the rubric weight differs (location=6, craft_direction=3 per rubric.yaml).
+    # identical; only the rubric weight differs (location=3, domain=1 per rubric.yaml).
     assertions = {
-        a: [_assertion("location"), _assertion("craft_direction")],
-        b: [_assertion("location"), _assertion("craft_direction")],
+        a: [_assertion("location"), _assertion("domain")],
+        b: [_assertion("location"), _assertion("domain")],
     }
     suggestion = select_comparison(
         [a, b],
@@ -513,7 +512,7 @@ def test_dimension_weight_uses_sqrt_not_square(config: ScoringConfig) -> None:
         rng=_rng(),
     )
     assert suggestion is not None
-    # With identical variance and only weight differing, sqrt(6) > sqrt(3) still favors
+    # With identical variance and only weight differing, sqrt(3) > sqrt(1) still favors
     # location — this test documents that sqrt scaling doesn't invert weight ordering,
     # only softens its dominance (see the rebalancing test above for the shrunk case).
     assert suggestion.target == "location"

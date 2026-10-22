@@ -93,12 +93,20 @@ def _seed(conn, digest_a: str, digest_b: str) -> None:  # type: ignore[no-untype
     )
     append_assertions(
         conn,
-        [_assertion("location", "Strong"), _assertion("craft_direction", "Strong")],
+        [
+            _assertion("location", "Strong"),
+            _assertion("craft_direction", "Strong"),
+            _assertion("craft_direction", "Strong"),
+        ],
         opening_id="acme--a",
     )
     append_assertions(
         conn,
-        [_assertion("location", "Strong"), _assertion("craft_direction", "Poor")],
+        [
+            _assertion("location", "Poor"),
+            _assertion("craft_direction", "Strong"),
+            _assertion("craft_direction", "Strong"),
+        ],
         opening_id="widgets--b",
     )
     insert_dimension_digest(

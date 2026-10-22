@@ -300,12 +300,20 @@ def test_eligible_weights_favors_fresh_and_boundary_openings_over_settled_ones(
         ("mediocre1--eng", "mediocre1"),
         ("mediocre2--eng", "mediocre2"),
         ("mediocre3--eng", "mediocre3"),
+        ("mediocre4--eng", "mediocre4"),
+        ("mediocre5--eng", "mediocre5"),
+        ("mediocre6--eng", "mediocre6"),
+        ("mediocre7--eng", "mediocre7"),
+        ("mediocre8--eng", "mediocre8"),
+        ("mediocre9--eng", "mediocre9"),
         ("fresh--eng", "fresh"),
     ]:
         _seed_opening_with_trace(tmp_path, opening_id, company_id)
     _seed_assertions(tmp_path, "top--eng", targets, 10, fit="Strong")
     _seed_assertions(tmp_path, "bottom--eng", targets, 10, fit="Poor")
-    for i in range(4):
+    # 10 mediocre openings + top + fresh = 12 non-bottom candidates, above `top_k` (10):
+    # the mediocre tier genuinely contests the boundary instead of all fitting inside it.
+    for i in range(10):
         _seed_assertions(tmp_path, f"mediocre{i}--eng", targets, 10, fit="Mixed")
     conn = connect(tmp_path / "screen.db")
 
@@ -314,17 +322,14 @@ def test_eligible_weights_favors_fresh_and_boundary_openings_over_settled_ones(
     assert weights["fresh--eng"] > weights["top--eng"]
     assert weights["top--eng"] > weights["mediocre0--eng"]
     assert weights["mediocre0--eng"] > weights["bottom--eng"]
-    assert weights["bottom--eng"] == pytest.approx(0.0, abs=1e-6)
-    assert weights["bottom--eng"] == pytest.approx(0.0, abs=1e-6)
+    assert weights["bottom--eng"] > 0
 
 
-def test_eligible_weights_falls_back_to_uncertainty_when_pool_is_wholly_settled(
+def test_eligible_weights_keep_a_floor_when_pool_is_wholly_settled(
     tmp_path: Path,
 ) -> None:
-    """A pool no larger than `top_k` gives every opening `p_top_k` of 0 or 1, zeroing
-    the boundary term pool-wide — `eligible_weights` falls back to plain
-    `aggregate_uncertainty` rather than returning an all-zero weight no draw could be
-    sampled from."""
+    """A pool no larger than `top_k` still gets a nonzero attention floor, so the
+    draw remains possible even when the boundary signal is maximally settled."""
     config = load_scoring_config()
     all_targets = list(config.dimension_weights)
     _seed_opening_with_trace(tmp_path, "wide--eng", "wide")
@@ -336,6 +341,7 @@ def test_eligible_weights_falls_back_to_uncertainty_when_pool_is_wholly_settled(
     conn.close()
     assert weights["wide--eng"] > weights["narrow--eng"]
     assert weights["wide--eng"] > 0
+    assert weights["narrow--eng"] > 0
 
 
 def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path: Path) -> None:

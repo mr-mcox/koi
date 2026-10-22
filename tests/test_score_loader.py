@@ -7,9 +7,12 @@ from screen.score.loader import load_scoring_config
 def test_loads_real_rubric_and_scoring_yaml() -> None:
     config = load_scoring_config()
     assert config.total_weight == sum(config.dimension_weights.values())
-    assert {"location", "internal_culture"} <= set(config.dimension_weights)
+    assert set(config.dimension_guards) == set(config.dimension_weights)
     assert config.provenance_weight["unexamined"] == 0.0
     assert config.provenance_weight["ratified"] > config.provenance_weight["model_proposed"]
-    assert config.top_k == 5
+    assert config.top_k > 0
+    assert config.guard_downside > 0.0
+    assert 0.0 < config.guard_upside < config.guard_downside
+    assert 0.0 <= config.boundary_weight_floor < 1.0
     assert 0.0 < config.jev_confidence_threshold <= 1.0
     assert config.jev_few_shot_examples > 0

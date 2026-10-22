@@ -21,7 +21,8 @@ dimensions:
   look_for: Posting language distinguishing "design the approach" from "implement to spec"; whether the team owns architecture decisions or inherits them from a platform/vendor; interview questions about how past ambiguous problems were resolved, asked to originate vs. asked to recall.
   notes: "Anchors describe the role's shape only, not operator fit — the over/underqualified judgment emerges from combining this with `craft_direction` in the rollup, not from baking it into these anchors."
   slug: schematic
-  weight: 3
+  weight: 2
+  guard: true
 - definition: "Two-part: is the company's trajectory actually healthy, AND would the operator's specific work be load-bearing to it — not just 'fine, get paid, learn something'. Poor trajectory always dominates regardless of leverage."
   fit_anchors:
     Poor: Trajectory at risk regardless of individual effort — distress-framed cuts, leadership instability, no coherent strategic answer. A sinking ship is a sinking ship whether or not the work would matter.
@@ -40,6 +41,7 @@ dimensions:
   look_for: Revenue mechanics; business model description; user complaints framed around exploitation (dark patterns, addictive design, predatory pricing); comparison against anchor companies.
   slug: mission
   weight: 2
+  guard: true
 - definition: How the work gets done on a daily basis. Does the employer provide resources and momentum for agentic coding (harnesses, provider-agnostic tools,  evaluations), or are they fighting it?
   fit_anchors:
     Poor: '"We write all our code by hand," or actively resistant to agentic workflows. Copilot-tier autocomplete is the ceiling.'
@@ -75,7 +77,8 @@ dimensions:
   label: Location compatibility
   look_for: "Explicit location/remote policy language; whether the team/company is distributed by design or centrally based; travel expectations; whether remote hires exist at the level being applied for; metro/commute distance from the operator's home base; any relocation assistance or flexibility language."
   slug: location
-  weight: 6
+  weight: 3
+  guard: true
 - definition: Stack-ranking, extractive-toward-employees dynamics, or leadership instability. Distinct from `mission` — this captures how the company treats its own people, not its customers or the world.
   fit_anchors:
     Poor: "Forced-ranking, punitive layoffs, or leadership whiplash at Medium/High confidence — heavy enough that no other dimension's strength should be expected to fully offset it."
@@ -84,7 +87,8 @@ dimensions:
   label: Internal culture
   look_for: Layoff framing and cadence; stated performance-management practices (forced ranking, stack ranking); leadership tenure/turnover; employee review sites, weighted for recency and corroboration.
   slug: internal_culture
-  weight: 4
+  weight: 2
+  guard: true
 non_scoring:
 - definition: Warm-path access, referral potential, recruiter source, inbound vs. outbound. Relevant to urgency and application strategy but never to the fit score. Never enters standing (Wall 4).
   label: Obtainability

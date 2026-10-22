@@ -304,9 +304,9 @@ def eligible_weights(conn: sqlite3.Connection, config: ScoringConfig) -> dict[st
         return {}
     uncertainty = {opening.id: opening_weight(conn, opening, config) for opening in eligible}
     ranks = rank_screening_pool(conn, config)
-    p_top_k = {r.opening_id: r.p_top_k for r in ranks.opening_ranks}
+    p_top_k = {r.opening_id: r.p_top_k for r in ranks.opening_ranks_unguarded}
     weighted = {
-        opening_id: unc * boundary_weight(p_top_k[opening_id])
+        opening_id: unc * boundary_weight(p_top_k[opening_id], config.boundary_weight_floor)
         for opening_id, unc in uncertainty.items()
     }
     if sum(weighted.values()) > 0:

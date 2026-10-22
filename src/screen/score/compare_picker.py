@@ -291,7 +291,10 @@ def _best_triple(
             # Pair priority: boundary_weight (relevance to the Top-K pool) only —
             # not the old dead-heat-seeking closeness multiplier.
             boundary = (
-                max(boundary_weight(p_top_k_by_opening[a]), boundary_weight(p_top_k_by_opening[b]))
+                max(
+                    boundary_weight(p_top_k_by_opening[a], config.boundary_weight_floor),
+                    boundary_weight(p_top_k_by_opening[b], config.boundary_weight_floor),
+                )
                 if gate_on_boundary
                 else 1.0
             )

@@ -38,9 +38,26 @@ provenance_weight:
   ratified: 8.0
 
 # Attention allocation. The queue's competitive cutoff: the operator applies to
-# roughly the top K openings each week. K≈5 today and expected to grow with
-# capacity — unmeasured placeholder.
-top_k: 5
+# roughly the top K openings each week. Raised from 5 to 10 (decisions.md S16) so the
+# compare picker spreads scrutiny across the stable top tier instead of fixating on the
+# #5/#6 boundary — unmeasured placeholder, still expected to move with use.
+top_k: 10
+
+# Floor on `boundary_weight(p_top_k)`: even an opening with `p_top_k = 0` still gets a
+# small nonzero chance of attention, so the queue can surface uncertain work instead of
+# starving it. Chosen on the `sqrt` scale, where 0.1 means a hopeless-looking opening
+# still gets ~10% of a sure top-K opening's attention before the uncertainty factor.
+boundary_weight_floor: 0.1
+
+# Guard curve (decisions.md S16). Dimensions flagged `guard: true` in rubric.yaml get
+# this single shared sign-dependent multiplier applied to every sampled draw before
+# weighting: below Mixed (Poor-ward) x downside, above Mixed (Strong-ward) x upside.
+# One dealbreaker-shaped dimension should sink an opening; the same dimension's upside
+# should not buy a sunk opening back. Not per-dimension — a sweep over per-dimension
+# curves (downside 1.5-6, upside .15-.8) changed nothing material about which openings
+# land in the top 10. Unmeasured placeholder, same status as top_k.
+guard_downside_multiplier: 3.0
+guard_upside_multiplier: 0.3
 
 # Research targeting. Per-target
 # action cap while a target is sticky: once the planner picks a primary target, it

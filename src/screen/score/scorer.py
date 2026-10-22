@@ -148,11 +148,24 @@ def _deterministic_quality(
 ) -> float:
     """A tiebreak key only — the mean-weighted quality a sample-free estimate would give this
     opening. Deterministic given the inputs, so it never reintroduces order-dependence."""
-    weighted = sum(
-        weight * dim_stats[slug][opening_id].mean
-        for slug, weight in config.dimension_weights.items()
-    )
+
+    def _term(slug: str, weight: int) -> float:
+        mean = dim_stats[slug][opening_id].mean
+        if config.dimension_guards[slug]:
+            mean = float(_apply_guard(mean, config.guard_downside, config.guard_upside))
+        return weight * mean
+
+    weighted = sum(_term(slug, weight) for slug, weight in config.dimension_weights.items())
     return min(max((weighted / config.total_weight + 1.0) / 2.0, 0.0), 1.0)
+
+
+def _apply_guard(values: np.ndarray | float, downside: float, upside: float) -> np.ndarray | float:
+    """The guard curve (decisions.md S16): Poor-ward values scale by `downside` (>1,
+    a dealbreaker should sink the opening), Strong-ward values scale by `upside` (<1, the
+    same dimension's good news shouldn't buy a sunk opening back). Applied per sample, not
+    to the estimate alone — an estimate-only guard only widens the spread, rewarding
+    unexamined guarded dimensions instead of penalizing confirmed-bad ones."""
+    return np.where(values < 0, values * downside, values * upside)
 
 
 def rank_pool(
@@ -182,8 +195,22 @@ def rank_pool(
         posterior = posteriors.get(slug) if posteriors is not None else None
         draw = _sample_dimension(rng, opening_ids, dim_stats[slug], posterior, samples)
         dimension_trace[slug] = draw
-        weighted += weight * draw
+        guarded_draw = (
+            _apply_guard(draw, config.guard_downside, config.guard_upside)
+            if config.dimension_guards[slug]
+            else draw
+        )
+        weighted += weight * guarded_draw
     overall = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
+
+    # Unguarded trace: compute weighted rollup without any guards applied, from the same
+    # dimension_trace draws. Attention (research/compare-picker) reads this while the queue
+    # sorts on the guarded `overall` (scouting F8, F26, decisions S16).
+    weighted_unguarded = np.zeros((n, samples))
+    for slug, weight in config.dimension_weights.items():
+        draw = dimension_trace[slug]
+        weighted_unguarded += weight * draw
+    overall_unguarded = np.clip((weighted_unguarded / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
 
     deterministic_quality = np.array(
         [_deterministic_quality(dim_stats, config, oid) for oid in opening_ids]
@@ -211,6 +238,25 @@ def rank_pool(
         for i, oid in enumerate(opening_ids)
     ]
 
+    # Unguarded ranks: same computation from overall_unguarded
+    key_unguarded = (
+        overall_unguarded + deterministic_quality[:, None] * 1e-9 + tiebreak_keys[:, None] * 1e-18
+    )
+    order_unguarded = np.argsort(-key_unguarded, axis=0)
+    ranks_unguarded = np.empty_like(order_unguarded)
+    np.put_along_axis(ranks_unguarded, order_unguarded, np.arange(1, n + 1)[:, None], axis=0)
+    opening_ranks_unguarded = [
+        OpeningRank(
+            opening_id=oid,
+            expected_rank=float(np.mean(ranks_unguarded[i])),
+            p_top_k=float(np.mean(ranks_unguarded[i] <= top_k)),
+            rank_q10=float(np.quantile(ranks_unguarded[i], 0.10)),
+            rank_q50=float(np.quantile(ranks_unguarded[i], 0.50)),
+            rank_q90=float(np.quantile(ranks_unguarded[i], 0.90)),
+        )
+        for i, oid in enumerate(opening_ids)
+    ]
+
     current_top_k_indices = [
         opening_ids.index(r.opening_id)
         for r in sorted(opening_ranks, key=lambda r: (-r.p_top_k, r.expected_rank, r.opening_id))[
@@ -226,8 +272,10 @@ def rank_pool(
     return PoolScoreResult(
         opening_ids=opening_ids,
         trace=overall,
+        unguarded_trace=overall_unguarded,
         dimension_trace=dimension_trace,
         top_k=top_k,
         opening_ranks=opening_ranks,
+        opening_ranks_unguarded=opening_ranks_unguarded,
         settledness=settledness,
     )

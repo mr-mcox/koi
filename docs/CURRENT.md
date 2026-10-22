@@ -1,1 +1,1 @@
-docs/features/opro-recalibration/bearing.md
+docs/features/guarded-scoring/bearing.md

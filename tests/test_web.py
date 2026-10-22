@@ -1066,7 +1066,7 @@ def test_index_queue_median_marker_settledness_is_zero_when_fully_outside_top_k(
     assert response.status_code == 200
     body = response.text
     assert re.search(r"--settledness:\s*0\.0\b", body) is not None
-    assert "outside the top 5" in body
+    assert f"outside the top {config.top_k}" in body
 
 
 def test_rate_opening_score_block_renders_median_marker_settledness_and_no_probability(

@@ -23,6 +23,7 @@ def load_scoring_config(
     scoring = yaml.safe_load(scoring_path.read_text(encoding="utf-8"))
 
     dimension_weights = {d["slug"]: int(d["weight"]) for d in rubric["dimensions"]}
+    dimension_guards = {d["slug"]: bool(d.get("guard", False)) for d in rubric["dimensions"]}
     provenance_weight: dict[Provenance, float] = {
         provenance: float(weight) for provenance, weight in scoring["provenance_weight"].items()
     }
@@ -32,7 +33,11 @@ def load_scoring_config(
         samples=int(scoring["samples"]),
         provenance_weight=provenance_weight,
         dimension_weights=dimension_weights,
+        dimension_guards=dimension_guards,
+        guard_downside=float(scoring["guard_downside_multiplier"]),
+        guard_upside=float(scoring["guard_upside_multiplier"]),
         top_k=int(scoring["top_k"]),
+        boundary_weight_floor=float(scoring["boundary_weight_floor"]),
         research_target_action_cap=int(scoring["research_target_action_cap"]),
         comparison_beta=ComparisonBetaParams(
             operator=float(scoring["comparison_beta"]["operator"]),

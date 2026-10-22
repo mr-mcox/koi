@@ -28,13 +28,14 @@ def aggregate_uncertainty(
     return total
 
 
-def boundary_weight(p_top_k: float) -> float:
+def boundary_weight(p_top_k: float, floor: float = 0.0) -> float:
     """How relevant an opening is to the top-K pool.
 
-    Uses `sqrt(p_top_k)` so boundary relevance still grows with top-K probability
+    Uses `sqrt(p_top_k)` so boundary relevance still grows with top-K probability,
     but low-ranked uncertain openings are not starved as hard as a linear rule.
+    A small floor keeps even `p_top_k = 0` openings reachable for attention.
     """
-    return math.sqrt(p_top_k) if p_top_k > 0.0 else 0.0
+    return floor + (1.0 - floor) * math.sqrt(p_top_k) if p_top_k > 0.0 else floor
 
 
 def target_suppression(stall_count: int) -> float:

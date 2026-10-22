@@ -34,7 +34,11 @@ class ScoringConfig:
     samples: int
     provenance_weight: dict[Provenance, float]
     dimension_weights: dict[str, int]
+    dimension_guards: dict[str, bool]
+    guard_downside: float
+    guard_upside: float
     top_k: int
+    boundary_weight_floor: float
     research_target_action_cap: int
     comparison_beta: ComparisonBetaParams
     jev_confidence_threshold: float
@@ -97,7 +101,9 @@ class PoolScoreResult:
 
     opening_ids: list[str]
     trace: np.ndarray = field(compare=False, repr=False)
+    unguarded_trace: np.ndarray = field(compare=False, repr=False)
     dimension_trace: dict[str, np.ndarray] = field(compare=False, repr=False)
     top_k: int
     opening_ranks: list[OpeningRank]
     settledness: float
+    opening_ranks_unguarded: list[OpeningRank]

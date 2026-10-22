@@ -303,6 +303,45 @@ retiring the Uniform language — the Uniform is still the honest statement of w
 readable parameter than a standard deviation of `1/sqrt(3)`. The Uniform defines the prior;
 the Gaussian samples it.
 
+### S16 · Guarded dimensions get a sign-dependent curve; the queue trades S1's wide-unknown favor to attention · `demonstrated` (guarded-scoring/scouting.md) · amends S1 · supersedes S12's linear-only shape
+
+S12 measured that an additive weight *can* sink an opening; it didn't measure the converse
+— a linear weight pays back a sunk dimension's downside with an equal upside elsewhere.
+Operator's read: TRM Labs, Rula, and Affirm ranked in the top 5 on `location`/`internal_culture`
+upside while carrying a dimension the operator would reject on outright (TRM on `mission`,
+Rula on `craft_direction`). "A 'move to San Francisco' should tank a role; 'a bit more remote
+friendly' is a preference, not a hard stop" — the two directions aren't symmetric for a
+dealbreaker-shaped dimension, and a single linear weight can't express that.
+
+Dimensions flagged `guard: true` in `rubric.yaml` (`location`, `mission`, `schematic`,
+`internal_culture` — the operator's named dealbreakers) get one shared sign-dependent
+multiplier (`scoring.yaml`'s `guard_downside_multiplier`/`guard_upside_multiplier`, 3.0/0.3)
+applied to every sampled draw before weighting: Poor-ward scales up, Strong-ward scales down.
+Applied per sample inside `rank_pool`'s rollup, not to the point estimate alone — an
+estimate-only guard only widens spread, which rewards an *unexamined* guarded dimension
+(more spread raises `P(top-K)`) instead of penalizing a *confirmed-bad* one
+(guarded-scoring/scouting.md F9). One shared curve, not a per-dimension one: a sweep over
+per-dimension curves (downside 1.5-6, upside 0.15-0.8) left the same openings in the top 10
+in every draw — the curve's existence matters, its exact shape doesn't, measured.
+
+**This amends S1's property 4** ("a sort favoring a wide-open unknown over well-established
+mediocrity") for the queue specifically. A guard applied to every sample pulls a wide
+unexamined guarded dimension's expectation down near Mixed (`E[guarded] = sigma * phi(0) *
+(upside - downside)`; at the prior's sigma this lands near -0.62, between Mixed and Poor) —
+the queue is no longer indifferent between "known fine" and "not yet looked at" on a guarded
+dimension. Operator's resolution: "look where it might be good, apply where it's known
+good" — the queue sorts on the guarded view; research draws and the compare picker read a
+guards-off `P(top-K)` computed from the same joint draw (`PoolScoreResult.dimension_trace`
+already keeps every dimension's unguarded samples), so S1's property survives in attention
+even though it leaves the queue's own sort key.
+
+**Rejected:** per-dimension curves (no rank change measured, see above); a pass/fail gate
+(S12's predecessor, rejected by three rewrites — a guard is a continuous multiplier, not a
+gate); a heavier linear weight alone (S12 only measured the downside case; the upside
+buy-back is exactly what a bigger linear weight cannot fix, since it scales both directions
+equally); bending the point estimate instead of the sampled draw (rewards spread, see above).
+
+
 ---
 
 ## Evidence model

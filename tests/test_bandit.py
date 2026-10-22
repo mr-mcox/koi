@@ -102,12 +102,12 @@ def test_draw_opening_is_deterministic_given_a_seeded_generator() -> None:
 
 
 def test_boundary_weight_reflects_upside() -> None:
-    """`boundary_weight` uses `sqrt(p_top_k)` to keep frontier relevance while
-    softening the drop-off for lower-ranked openings."""
-    assert boundary_weight(0.5) == pytest.approx(0.7071067811865476)
-    assert boundary_weight(0.0) == pytest.approx(0.0)
-    assert boundary_weight(1.0) == pytest.approx(1.0)
-    assert boundary_weight(0.9) > boundary_weight(0.1)
+    """`boundary_weight` still grows with `p_top_k`, but a floor keeps the zero end
+    reachable."""
+    assert boundary_weight(0.5, 0.1) == pytest.approx(0.1 + 0.9 * 0.7071067811865476)
+    assert boundary_weight(0.0, 0.1) == pytest.approx(0.1)
+    assert boundary_weight(1.0, 0.1) == pytest.approx(1.0)
+    assert boundary_weight(0.9, 0.1) > boundary_weight(0.1, 0.1)
 
 
 def test_target_suppression_is_identity_at_zero() -> None:

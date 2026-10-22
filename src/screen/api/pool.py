@@ -364,7 +364,7 @@ def _prescreen_step(
         companies_by_opening,
     ) = _screening_pool_inputs(conn, config)
     pool_result = rank_screening_pool(conn, config, openings=openings)
-    p_top_k_by_opening = {r.opening_id: r.p_top_k for r in pool_result.opening_ranks}
+    p_top_k_by_opening = {r.opening_id: r.p_top_k for r in pool_result.opening_ranks_unguarded}
     picked_at = time.monotonic()
     suggestion = select_comparison(
         [o.id for o in openings],

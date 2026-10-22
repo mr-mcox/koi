@@ -6,6 +6,7 @@ uncommitted, gitignored `data/` directory sticking around in its current shape.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 
 import numpy as np
@@ -119,6 +120,105 @@ def test_rank_pool_kill_dimension_sinks_an_otherwise_best_opening(
     by_id = {r.opening_id: r for r in result.opening_ranks}
 
     assert by_id["killed"].p_top_k < 0.1
+
+
+@pytest.mark.parametrize("guarded_target", ["mission", "schematic", "internal_culture"])
+def test_rank_pool_kill_on_any_guarded_dimension_sinks_an_otherwise_best_opening(
+    config: ScoringConfig, guarded_target: str
+) -> None:
+    """Every guarded dimension (scouting F5), not just `location`, sinks an
+    otherwise-Strong opening on a confident Poor."""
+    killed_assertions = [a for a in PARTIALLY_RESEARCHED if a.target != guarded_target] + [
+        _assertion(guarded_target, "Poor", "ratified")
+    ]
+    killed = PoolInput(opening_id="killed", assertions=killed_assertions)
+    clean = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
+    result = rank_pool([killed, clean], config, top_k=1)
+    by_id = {r.opening_id: r for r in result.opening_ranks}
+
+    assert by_id["killed"].p_top_k < 0.1
+
+
+def test_guarded_dimension_dampens_upside_relative_to_unguarded_same_weight(
+    config: ScoringConfig,
+) -> None:
+    """An equal upside gap (Mixed -> Strong) should move `overall` less on a guarded
+    dimension than on an unguarded one of the same weight — the upside flattener
+    (scouting F2, F4). `trajectory` (unguarded, weight 2) is the comparator for
+    `mission` (guarded, weight 2)."""
+    mixed = [a for a in PARTIALLY_RESEARCHED if a.target not in {"mission", "trajectory"}] + [
+        _assertion("mission", "Mixed", "ratified"),
+        _assertion("trajectory", "Mixed", "ratified"),
+    ]
+    strong_mission = [a for a in mixed if a.target != "mission"] + [
+        _assertion("mission", "Strong", "ratified")
+    ]
+    strong_trajectory = [a for a in mixed if a.target != "trajectory"] + [
+        _assertion("trajectory", "Strong", "ratified")
+    ]
+
+    result = rank_pool(
+        [
+            PoolInput(opening_id="baseline", assertions=mixed),
+            PoolInput(opening_id="mission_up", assertions=strong_mission),
+            PoolInput(opening_id="trajectory_up", assertions=strong_trajectory),
+        ],
+        config,
+        top_k=1,
+    )
+    mean_overall = {
+        oid: float(np.mean(result.trace[i])) for i, oid in enumerate(result.opening_ids)
+    }
+    mission_gap = mean_overall["mission_up"] - mean_overall["baseline"]
+    trajectory_gap = mean_overall["trajectory_up"] - mean_overall["baseline"]
+
+    assert 0 < mission_gap < trajectory_gap
+
+
+def test_rank_pool_with_all_guards_off_matches_plain_linear_rollup(
+    config: ScoringConfig,
+) -> None:
+    """A rubric with no guards ranks identically to the pre-guard linear rollup
+    (scouting F9: guards must be able to fall away to nothing, not just shrink)."""
+    unguarded = dataclasses.replace(
+        config, dimension_guards=dict.fromkeys(config.dimension_weights, False)
+    )
+    pool = [
+        PoolInput(opening_id="strong", assertions=PARTIALLY_RESEARCHED),
+        PoolInput(opening_id="poor", assertions=POORLY_RESEARCHED),
+    ]
+    guarded_off_result = rank_pool(pool, unguarded, top_k=1)
+
+    weighted = np.zeros((2, config.samples))
+    for slug, weight in config.dimension_weights.items():
+        weighted += weight * guarded_off_result.dimension_trace[slug]
+    expected_overall = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
+
+    np.testing.assert_allclose(guarded_off_result.trace, expected_overall)
+
+
+def test_rank_pool_returns_unguarded_ranks_from_same_draw(config: ScoringConfig) -> None:
+    """The same joint Monte Carlo draw yields both guarded and unguarded rank readouts,
+    so attention can read the guards-off view without resampling."""
+    guarded_opening = PoolInput(
+        opening_id="guarded",
+        assertions=[
+            _assertion("craft_direction", "Strong"),
+            _assertion("schematic", "Strong"),
+            _assertion("trajectory", "Strong"),
+            _assertion("mission", "Poor"),
+            _assertion("agentic", "Strong"),
+            _assertion("compensation", "Strong"),
+            _assertion("domain", "Strong"),
+            _assertion("location", "Strong"),
+            _assertion("internal_culture", "Strong"),
+        ],
+    )
+    clean_opening = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
+    result = rank_pool([guarded_opening, clean_opening], config, top_k=1)
+    guarded = {r.opening_id: r for r in result.opening_ranks}
+    unguarded = {r.opening_id: r for r in result.opening_ranks_unguarded}
+    assert guarded["guarded"].p_top_k < unguarded["guarded"].p_top_k
 
 
 def test_rank_pool_posterior_seam_reproduces_supplied_correlation(
