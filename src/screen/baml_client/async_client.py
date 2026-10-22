@@ -142,7 +142,7 @@ class BamlAsyncClient:
                 "page_content": page_content,
             })
             return typing.cast(types.IdentificationResult, __result__.cast_to(types, types, stream_types, False, __runtime__))
-    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: str,
+    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
         baml_options: BamlCallOptions = {},
     ) -> types.RecalibrationProposal:
         # Check if on_tick is provided
@@ -214,7 +214,7 @@ class BamlStreamClient:
           lambda x: typing.cast(types.IdentificationResult, x.cast_to(types, types, stream_types, False, __runtime__)),
           __ctx__,
         )
-    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: str,
+    def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.BamlStream[stream_types.RecalibrationProposal, types.RecalibrationProposal]:
         __ctx__, __result__ = self.__options.merge_options(baml_options).create_async_stream(function_name="ProposeRubricEdit", args={
@@ -262,7 +262,7 @@ class BamlHttpRequestClient:
             "page_content": page_content,
         }, mode="request")
         return __result__
-    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: str,
+    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = await self.__options.merge_options(baml_options).create_http_request_async(function_name="ProposeRubricEdit", args={
@@ -305,7 +305,7 @@ class BamlHttpStreamRequestClient:
             "page_content": page_content,
         }, mode="stream")
         return __result__
-    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: str,
+    async def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = await self.__options.merge_options(baml_options).create_http_request_async(function_name="ProposeRubricEdit", args={

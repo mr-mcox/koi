@@ -20,7 +20,7 @@ function ProposeRubricEdit(
   current_cases_text: string,
   history_text: string,
   scoring_rule_text: string,
-  private_values_text: string,
+  private_values_text: string?,
 ) -> RecalibrationProposal {
   client AnthropicSonnet
   prompt #"
