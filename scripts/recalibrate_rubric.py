@@ -144,7 +144,9 @@ class AnthropicProposer:
         self._brier_floor = brier_floor
         self._context_mode = context_mode
         if client is baml:
-            self._client = client.with_options(client_registry=_sonnet_client_registry(sonnet_effort))
+            self._client = client.with_options(
+                client_registry=_sonnet_client_registry(sonnet_effort)
+            )
         else:
             self._client = client
 
@@ -207,7 +209,6 @@ class AnthropicProposer:
         raise click.ClickException(
             f"ProposeRubricEdit failed after {attempts} attempts: {last_error}"
         )
-
     @staticmethod
     def _structure_rubric_text(rubric_text: str) -> str:
         """Render the target dimension as the same field names the proposer writes back.
@@ -215,19 +216,19 @@ class AnthropicProposer:
         The proposer returns one value per editable field, so it reads them in that
         shape rather than as the rendered prose Jev scores against.
         """
-        header, _, _ = rubric_text.partition("\n")
+        text = rubric_text.lstrip("\n")
+        header, _, _ = text.partition("\n")
         match = re.fullmatch(
             r"### (?P<label>.+) \(slug: (?P<slug>[^,]+), weight: (?P<weight>\d+)\)",
             header.strip(),
         )
         if not match:
             raise ValueError(f"rubric text does not start with a dimension heading: {header!r}")
-        target = match.group("slug")
         data = yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
+        target = match.group("slug")
         dim = next((d for d in data.get("dimensions", []) if d.get("slug") == target), None)
         if dim is None:
             raise ValueError(f"rubric.yaml has no dimension with slug {target!r}")
-
         anchors = dim.get("fit_anchors", {})
         payload = {
             "definition": str(dim.get("definition", "")).strip(),
@@ -691,7 +692,9 @@ def _run_compare_mode(
             brier_floor=brier_floor,
             n_rounds=rounds,
             baseline_train=baseline_train,
-            on_round_start=lambda round_num: click.echo(f"  [{mode}] [round {round_num}] starting…"),
+            on_round_start=lambda round_num: click.echo(
+                f"  [{mode}] [round {round_num}] starting…"
+            ),
             on_stage_done=lambda round_num, stage, elapsed: click.echo(
                 f"  [{mode}] [round {round_num}] {stage} done in {elapsed:.1f}s"
             ),

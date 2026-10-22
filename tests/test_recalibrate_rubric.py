@@ -240,6 +240,14 @@ def test_structure_rubric_text_uses_the_proposers_own_field_names() -> None:
     assert not payload["fit_anchor_mixed"].startswith("Mixed:")
 
 
+def test_structure_rubric_text_accepts_a_leading_blank_line() -> None:
+    payload = yaml.safe_load(cli.AnthropicProposer._structure_rubric_text("\n" + _BASELINE_RUBRIC))
+    assert (
+        payload["fit_anchor_mixed"]
+        == rr.parse_rubric_fields(rubric_text_for_dimension("location"))["fit_anchor_mixed"]
+    )
+
+
 def test_structure_rubric_text_rejects_text_without_a_dimension_heading() -> None:
     with pytest.raises(ValueError, match="does not start with a dimension heading"):
         cli.AnthropicProposer._structure_rubric_text("old definition\nFit anchors:")
