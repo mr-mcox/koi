@@ -801,10 +801,7 @@ def _maybe_apply_winner(target: str, state: runstate.RunState, costs: core.Commi
             "rubric.yaml unchanged."
         )
         return
-    diff = apply_candidate(target, winner.candidate_rubric_text)
-    click.echo("\n--- rubric.yaml diff ---")
-    click.echo(diff or "(no structural change — definition was functionally identical)")
-    click.echo("--- end diff ---")
+    apply_candidate(target, winner.candidate_rubric_text)
     click.echo("\nrubric.yaml updated (not committed). Review with `git diff rubric.yaml`.")
 
 
