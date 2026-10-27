@@ -591,3 +591,17 @@ a:hover { color: var(--accent); }
 .archive-stage-pursuing { background: var(--fit-mixed); color: var(--ink); }
 .archive-stage-applied { background: oklch(90% 0.05 210); color: var(--ink); }
 .archive-stage-closed { background: var(--paper-dim); color: var(--ink-muted); border: 1px solid var(--rule); }
+
+/* Submit-time refusal on the intake form (W7: declined hosts). Sits above the
+   queue list, in the fit-poor blue-teal rather than a red that the palette
+   doesn't carry — this is "won't", not "broke". */
+.intake-queue-rejected {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--fit-poor);
+  border-left-width: 3px;
+  border-radius: 3px;
+  background: var(--paper-dim);
+  color: var(--ink);
+  font-size: 0.9rem;
+}

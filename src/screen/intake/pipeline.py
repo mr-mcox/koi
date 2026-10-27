@@ -49,11 +49,17 @@ from screen.types import Assertion, Company, IdentificationResult, Opening
 
 class IntakePipelineError(RuntimeError):
     """Raised by any pipeline stage. `stage` names which one, so a caller
-    processing many URLs (the queue worker) can record it and continue."""
+    processing many URLs (the queue worker) can record it and continue.
 
-    def __init__(self, stage: str, message: str) -> None:
+    `permanent` is True when re-running the URL provably cannot succeed. It is
+    advisory: the queue still offers a retry, because calling a posting dead
+    is the operator's judgment, not the pipeline's.
+    """
+
+    def __init__(self, stage: str, message: str, *, permanent: bool = False) -> None:
         super().__init__(f"{stage}: {message}")
         self.stage = stage
+        self.permanent = permanent
 
 
 def db_path_for(data_dir: Path) -> Path:
@@ -88,25 +94,37 @@ def persist_company_and_opening(
 
 
 def fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
-    """Run the URL -> research trace step. On transport failure, record the
-    partial research trace and re-raise as an `IntakePipelineError`."""
+    """Run the URL -> research trace step. On fetch failure, record the
+    partial research trace and re-raise as an `IntakePipelineError`.
+
+    Goes through `fetch`, not `extract`: a failed extraction is an HTTP 200
+    with empty results, which `extract` returns and `fetch` raises on. `fetch`
+    also carries the retry.
+    """
     research_trace_id = derive_research_trace_id(url)
     research_trace_path = research_trace_path_for(data_dir, research_trace_id)
     started = datetime.now(UTC)
     request_payload = {"urls": [url]}
     try:
-        response = client.extract([url])
+        hit = client.fetch(url)
     except BrowserError as exc:
         event = ResearchTraceEvent(
             ts=started,
             tool="tavily_extract",
             request=request_payload,
-            response={"error": str(exc), "details": exc.details},
+            response={"error": str(exc), "details": exc.details, "results": []},
         )
         record_event(research_trace_path, event)
-        raise IntakePipelineError("fetch_url", f"intake failed for {url}: {exc}") from exc
+        raise IntakePipelineError(
+            "fetch_url",
+            f"intake failed for {url}: {exc}",
+            permanent=exc.permanent,
+        ) from exc
     event = ResearchTraceEvent(
-        ts=started, tool="tavily_extract", request=request_payload, response=dict(response)
+        ts=started,
+        tool="tavily_extract",
+        request=request_payload,
+        response={"results": [dict(hit)], "failed_results": []},
     )
     record_event(research_trace_path, event)
     return research_trace_path

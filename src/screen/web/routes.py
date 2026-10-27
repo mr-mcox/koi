@@ -37,6 +37,7 @@ from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_record_for_target
 from screen.extract.prompt import rubric_text_for_baml
+from screen.intake.admission import declined_host_for, declined_submission_message
 from screen.research.batch import eta_text
 from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.compare_probability import pre_comparison_probability
@@ -985,10 +986,24 @@ def post_intake_queue(
     """Enqueue one URL for the background intake worker. The insert commits
     before this returns (bearing: queuing is blocking, minimizing lost work) —
     the worker (started once in the app lifespan) picks it up on its own,
-    including a URL added while it's mid-batch."""
+    including a URL added while it's mid-batch.
+
+    A declined host (W7) is refused here, the only place it is checked."""
+    declined = declined_host_for(url)
+    if declined is not None:
+        return templates.TemplateResponse(
+            request,
+            "_intake_queue_panel.html",
+            {
+                "items": list_intake_queue(conn),
+                "submit_error": declined_submission_message(declined),
+            },
+        )
     enqueue_intake_url(conn, url)
     items = list_intake_queue(conn)
-    return templates.TemplateResponse(request, "_intake_queue_list.html", {"items": items})
+    return templates.TemplateResponse(
+        request, "_intake_queue_panel.html", {"items": items, "submit_error": None}
+    )
 
 
 @router.post("/intake-queue/{item_id}/retry", response_class=HTMLResponse)
@@ -1006,7 +1021,9 @@ def intake_queue(request: Request, conn: Conn) -> HTMLResponse:
     """The intake queue page: submit a URL, see every queued/running/done/failed
     row and its failure reason — the only intake surface (CLI retired)."""
     items = list_intake_queue(conn)
-    return templates.TemplateResponse(request, "intake_queue.html", {"items": items})
+    return templates.TemplateResponse(
+        request, "intake_queue.html", {"items": items, "submit_error": None}
+    )
 
 
 # Static files: CSS, later HTMX assets, etc.

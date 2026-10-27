@@ -2,12 +2,12 @@
 {% block title %}Intake{% endblock %}
 {% block content %}
   <h1>Intake</h1>
-  <form class="intake-queue-form" hx-post="/intake-queue" hx-target="#intake-queue-list" hx-swap="innerHTML">
+  <form class="intake-queue-form" hx-post="/intake-queue" hx-target="#intake-queue-panel" hx-swap="innerHTML">
     <input type="url" name="url" placeholder="https://..." required />
     <button type="submit">Add to queue</button>
   </form>
-  <ul id="intake-queue-list" class="intake-queue">
-    {% include "_intake_queue_list.html" %}
-  </ul>
+  <div id="intake-queue-panel">
+    {% include "_intake_queue_panel.html" %}
+  </div>
   <p><a class="back-to-queue" href="/">Back to queue</a></p>
 {% endblock %}

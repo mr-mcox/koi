@@ -14,6 +14,7 @@ from screen.digest.fakes import FakeDigester
 from screen.digest.protocol import DigesterProtocol
 from screen.extract.fakes import FakeExtractor
 from screen.extract.protocol import ExtractorProtocol
+from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.batch import (
     BatchEngine,
@@ -26,6 +27,7 @@ from screen.research.batch import (
     eligible_weights,
     eta_text,
     read_page_content,
+    record_event,
     resume_opening,
     run_batch,
     run_dispatch,
@@ -687,3 +689,26 @@ def test_run_dispatch_uses_default_digester_when_none_provided(tmp_path: Path) -
     call_args, call_kwargs = digester_calls[0]
     assert call_args[0] is conn
     assert call_kwargs["opening_id"] == opening.id
+
+
+def test_read_page_content_handles_unicode_line_separator_in_page_text(
+    tmp_path: Path,
+) -> None:
+    """Regression: `splitlines()` also breaks on U+2028/U+0085, which scraped
+    text can contain unescaped — present in 18 of the 164 live traces.
+    """
+    trace_path = tmp_path / "research_traces" / "separators.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    url = "https://example.com/separator"
+    event = ResearchTraceEvent(
+        ts=datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC),
+        tool="tavily_extract",
+        request={"urls": [url]},
+        response={"results": [{"url": url, "raw_content": "Line one.\u2028Line two."}]},
+    )
+    record_event(trace_path, event)
+
+    assert "\u2028" in trace_path.read_text(encoding="utf-8")
+    page_content, found_url = read_page_content(trace_path)
+    assert page_content == "Line one.\u2028Line two."
+    assert found_url == url

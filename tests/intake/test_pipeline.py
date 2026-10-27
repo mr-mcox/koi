@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -17,8 +18,13 @@ from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake import pipeline as pipeline_module
 from screen.intake.fakes import FakeTavily
+from screen.intake.research_trace_id import derive_research_trace_id
 from screen.research.actions import FetchAction, StopAction
-from screen.research.batch import RunDispatchDeps
+from screen.research.batch import (
+    RunDispatchDeps,
+    read_page_content,
+    research_trace_path_for,
+)
 from screen.research.fakes import FakeBrowser, FakePlanner
 from tests.helpers import canned_assertion, fake_identifier
 
@@ -63,8 +69,11 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
 
 
 def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Path) -> None:
-    """When `extract` returns failed_results, the pipeline writes the partial event
-    and exits non-zero. Error type classification is not built yet."""
+    """Regression: a failed Tavily extraction is an HTTP 200 with empty
+    `results`. Recording that as a page deferred the error three stages, to
+    "no tavily_extract event with raw_content" — a message naming a file
+    instead of a cause.
+    """
     url = "https://nowhere.example/"
     fake = FakeTavily(
         fixtures={
@@ -75,7 +84,7 @@ def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Pat
         }
     )
 
-    with pytest.raises(pipeline_module.IntakePipelineError):
+    with pytest.raises(pipeline_module.IntakePipelineError) as excinfo:
         pipeline_module.intake_url(
             url,
             data_dir=tmp_path,
@@ -83,11 +92,53 @@ def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Pat
             identifier_factory=fake_identifier,
         )
 
+    assert excinfo.value.stage == "fetch_url"
     research_traces = list(tmp_path.rglob("*.jsonl"))
     assert len(research_traces) == 1
-    lines = research_traces[0].read_text(encoding="utf-8").splitlines()
+    lines = research_traces[0].read_text(encoding="utf-8").split("\n")
     parsed = json.loads(lines[0])
-    assert parsed["response"]["failed_results"]
+    assert parsed["response"]["details"]["failed_results"]
+
+
+def test_pipeline_retries_a_transient_fetch_failure(tmp_path: Path) -> None:
+    """Regression: intake called `extract` directly, bypassing the retry the
+    research path already had.
+    """
+    url = "https://example.com/job/1"
+
+    class _FlakyClient:
+        """Tavily SDK stand-in: fails the first extraction, then succeeds."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def extract(self, **_kwargs: object) -> dict[str, object]:
+            self.calls += 1
+            if self.calls == 1:
+                return {
+                    "results": [],
+                    "failed_results": [{"url": url, "error": "Failed to fetch url"}],
+                }
+            return {
+                "results": [{"url": url, "raw_content": "Synthetic posting body."}],
+                "failed_results": [],
+            }
+
+    sdk = _FlakyClient()
+    browser = TavilyBrowser(
+        api_key="test",
+        client=cast(Any, sdk),
+        sleep=lambda _s: None,
+    )
+
+    pipeline_module.fetch_url(url, browser, tmp_path)
+
+    assert sdk.calls == 2
+    content, recorded_url = read_page_content(
+        research_trace_path_for(tmp_path, derive_research_trace_id(url))
+    )
+    assert content == "Synthetic posting body."
+    assert recorded_url == url
 
 
 def test_pipeline_records_partial_research_trace_on_search_client_error(tmp_path: Path) -> None:

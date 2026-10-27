@@ -7,8 +7,18 @@ throughout the intake test suite.
 
 from typing import Any
 
-from screen.browser import BrowserError, BrowserProtocol, SearchHit, TavilyBrowser
+from screen.browser import (
+    BrowserError,
+    BrowserProtocol,
+    SearchHit,
+    TavilyBrowser,
+    failures_are_permanent,
+)
 from screen.intake.fakes import FakeTavily
+
+
+def _no_sleep(_seconds: float) -> None:
+    """Collapses the retry backoff so tests don't pay it."""
 
 
 class _SpyTavilyClient:
@@ -166,21 +176,21 @@ def test_tavily_browser_fetch_retries_once_on_failure() -> None:
             },
         ]
     )
-    client = TavilyBrowser(api_key="x", client=spy)
+    client = TavilyBrowser(api_key="x", client=spy, sleep=_no_sleep)
     hit = client.fetch("https://example.com/job/1")
     assert hit["raw_content"] == "ok"
     assert len(spy.extract_calls) == 2
 
 
 def test_tavily_browser_fetch_raises_after_max_attempts() -> None:
-    """A persistent failure (dead link, 404) fails the same way on both
-    attempts — retrying doesn't mask it, it still raises."""
+    """A persistent but unclassifiable failure exhausts both attempts and
+    still raises — retrying doesn't mask it."""
     fail_response = {
         "results": [],
-        "failed_results": [{"url": "https://example.com/job/1", "error": "404 page not found"}],
+        "failed_results": [{"url": "https://example.com/job/1", "error": "Failed to fetch url"}],
     }
     spy = _SpyTavilyClient(responses=[dict(fail_response), dict(fail_response)])
-    client = TavilyBrowser(api_key="x", client=spy)
+    client = TavilyBrowser(api_key="x", client=spy, sleep=_no_sleep)
     raised = False
     try:
         client.fetch("https://example.com/job/1")
@@ -188,3 +198,54 @@ def test_tavily_browser_fetch_raises_after_max_attempts() -> None:
         raised = True
     assert raised
     assert len(spy.extract_calls) == 2
+
+
+def test_tavily_browser_fetch_does_not_retry_a_404() -> None:
+    """A 404 spends one call, not two — retrying a dead link can't help."""
+    spy = _SpyTavilyClient(
+        responses=[
+            {
+                "results": [],
+                "failed_results": [
+                    {"url": "https://example.com/job/1", "error": "404 page not found"}
+                ],
+            }
+        ]
+    )
+    client = TavilyBrowser(api_key="x", client=spy, sleep=_no_sleep)
+    try:
+        client.fetch("https://example.com/job/1")
+        raise AssertionError("expected BrowserError")
+    except BrowserError as exc:
+        assert exc.permanent
+    assert len(spy.extract_calls) == 1
+
+
+def test_tavily_browser_fetch_backs_off_between_attempts() -> None:
+    """The retry waits before trying again — the failures it recovers from
+    arrive in bursts, so an immediate retry would sample the same bad window.
+    """
+    fail_response = {
+        "results": [],
+        "failed_results": [{"url": "https://example.com/job/1", "error": "Failed to fetch url"}],
+    }
+    spy = _SpyTavilyClient(responses=[dict(fail_response), dict(fail_response)])
+    slept: list[float] = []
+    client = TavilyBrowser(api_key="x", client=spy, retry_backoff_seconds=1.5, sleep=slept.append)
+    try:
+        client.fetch("https://example.com/job/1")
+    except BrowserError:
+        pass
+    assert slept == [1.5]
+
+
+def test_failures_are_permanent_requires_every_failure_to_be_permanent() -> None:
+    """One unrecognized error among the failures keeps the fetch retryable."""
+    assert not failures_are_permanent(
+        [{"error": "404 page not found"}, {"error": "Failed to fetch url"}]
+    )
+
+
+def test_failures_are_permanent_is_false_for_no_failures() -> None:
+    """An empty failure list is not evidence of a dead link."""
+    assert not failures_are_permanent([])

@@ -1,0 +1,6 @@
+{% if submit_error %}
+<p class="intake-queue-rejected" role="alert">{{ submit_error }}</p>
+{% endif %}
+<ul id="intake-queue-list" class="intake-queue">
+  {% include "_intake_queue_list.html" %}
+</ul>

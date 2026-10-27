@@ -109,7 +109,9 @@ def read_page_content(research_trace_path: Path) -> tuple[str, str]:
     """Return (raw_content, url) from the first tavily_extract event."""
     if not research_trace_path.exists():
         raise ResearchTraceMissingError(f"research trace missing at {research_trace_path}")
-    for raw_line in research_trace_path.read_text(encoding="utf-8").splitlines():
+    # `split`, not `splitlines`: the latter also breaks on U+2028 and kin,
+    # which scraped text contains and `model_dump_json` leaves unescaped.
+    for raw_line in research_trace_path.read_text(encoding="utf-8").split("\n"):
         if not raw_line:
             continue
         event = ResearchTraceEvent.model_validate_json(raw_line)

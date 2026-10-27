@@ -597,6 +597,32 @@ is the only argument that could ever justify auto-close.
 change" (rubric feedback) take different answers; one generic status enum measured nothing.
 Priority and disposition are independent axes.
 
+### W7 · Hosts that decline automation are refused at submit · `adopted` (operator, 2026-10-27)
+
+Aggregator sites behind bot protection (first: `hiringcafe.com`) answer any non-browser
+client with a challenge; an extractor gets through only by drawing an egress IP the
+challenge lets pass. Measured in the live store: 62 successes against 13 failures on the
+same host, interleaved within the same minute, the same URL failing then succeeding
+seconds later. The failure is a coin flip on the block, not a property of the posting.
+
+Such a host is refused at the submit handler, and nowhere else. The operator is told to
+supply the employer's own ATS link (Greenhouse, Lever, Ashby, Workday), which an
+aggregator posting almost always has and which intake wants anyway. The list lives in
+`intake/admission.py`.
+
+*Rejected:* retry-until-it-works. The measured recovery rate invites it and the cost model
+permits it (Tavily bills only successful extractions, so retries are free) — which is why
+the restraint is a decision rather than a budget.
+
+*Rejected:* a second check at the browser seam, as a backstop for URLs arriving by another
+route. Measurement killed it: across 164 live traces and ~534 extractions, every
+`hiringcafe` fetch preceded the first `decide_plan` — i.e. was an intake fetch or an
+operator retry. The research planner has never once followed an aggregator link, so the
+backstop guarded nothing and split one policy across two enforcement points.
+
+*Rejected:* a per-host success-rate threshold that auto-declines. It turns a politeness
+question into a measurement question, and re-admits a host the moment its block loosens.
+
 ---
 
 ## Deleted, with reasons

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from screen.api.app import create_app
 from screen.digest.fakes import FakeDigester
+from screen.intake.admission import DECLINED_HOSTS
 from screen.store.db import connect
 from screen.store.repo import (
     claim_next_pending_intake_url,
@@ -111,3 +112,44 @@ def test_post_retry_is_a_no_op_on_a_pending_row(client: TestClient, db_path: Pat
     assert response.status_code == 200
     reopened = connect(db_path)
     assert list_intake_queue(reopened)[0].status == "pending"
+
+
+def test_post_intake_queue_refuses_a_declined_host_without_queuing(
+    client: TestClient, db_path: Path
+) -> None:
+    """No row, no worker pass, no Retry button that could never succeed."""
+    declined_host = DECLINED_HOSTS[0]
+
+    response = client.post(
+        "/intake-queue", data={"url": f"https://{declined_host}/job/some-posting"}
+    )
+
+    assert response.status_code == 200
+    assert "declines automated access" in response.text
+
+    conn = connect(db_path)
+    assert list_intake_queue(conn) == []
+
+
+def test_post_intake_queue_refusal_names_the_substitute_link(client: TestClient) -> None:
+    """A refusal that only says no relocates the dead end instead of
+    clearing it — the employer's own ATS has the same job, two clicks away.
+    """
+    response = client.post(
+        "/intake-queue", data={"url": f"https://{DECLINED_HOSTS[0]}/job/some-posting"}
+    )
+
+    assert "Greenhouse" in response.text
+
+
+def test_post_intake_queue_still_accepts_an_ordinary_host(
+    client: TestClient, db_path: Path
+) -> None:
+    """The decline list is a named exception, not a posture."""
+    response = client.post("/intake-queue", data={"url": "https://example.com/jobs/1"})
+
+    assert response.status_code == 200
+    assert "declines automated access" not in response.text
+
+    conn = connect(db_path)
+    assert [i.url for i in list_intake_queue(conn)] == ["https://example.com/jobs/1"]
