@@ -7,8 +7,8 @@ alongside ties."""
 
 from __future__ import annotations
 
-from screen.score.compare import Comparison
-from screen.score.rubric_gate import rubric_similarity_verdict
+from screen.compare.rubric_gate import rubric_similarity_verdict
+from screen.score.pairwise import Comparison
 from screen.verdict.protocol import RubricVerdict
 
 

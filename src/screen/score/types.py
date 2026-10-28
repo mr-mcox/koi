@@ -66,7 +66,7 @@ class PoolInput:
 @dataclass(frozen=True)
 class DimensionPosterior:
     """One dimension's joint posterior over a set of openings, produced by a batch
-    pairwise fit (`screen.score.compare.fit_pairwise`).
+    pairwise fit (`screen.score.pairwise.fit_pairwise`).
 
     `opening_ids` gives `means`/`covariance`'s row order. For covered openings, this
     posterior replaces the independent assertion-derived prior entirely: a comparison

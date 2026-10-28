@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from screen.api.pool import _outcome_for_pair
+from screen.compare.prescreen import _outcome_for_pair
 from screen.pool import _to_score_comparison, rank_screening_pool
-from screen.score.compare import Comparison as ScoreComparison
 from screen.score.loader import load_scoring_config
+from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.types import ScoringConfig
 from screen.store.db import connect
 from screen.store.repo import upsert_company, upsert_opening

@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from screen.score.compare import Comparison as ScoreComparison
-from screen.score.compare import dimension_posteriors
+from screen.score.pairwise import Comparison as ScoreComparison
+from screen.score.pairwise import dimension_posteriors
 from screen.score.scorer import rank_pool, stats_for_target
 from screen.score.types import PoolInput, PoolScoreResult, ScoringConfig
 from screen.store.repo import (

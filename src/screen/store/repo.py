@@ -223,8 +223,8 @@ def active_provisional_comparisons(conn: sqlite3.Connection) -> list[Comparison]
     provisional — the review surface's input. An operator ruling made after a
     provisional row on the same (pair, target) is that provisional row's override: it
     does not appear here once overridden, mirroring the picker's own exclusion rule
-    (`compare_picker._provisionally_settled_pairs`) and the fit's dedup-to-latest
-    (`compare._latest_per_pair`)."""
+    (`compare.picker._provisionally_settled_pairs`) and the fit's dedup-to-latest
+    (`score.pairwise._latest_per_pair`)."""
     rows = conn.execute("SELECT * FROM comparisons ORDER BY created_at").fetchall()
     comparisons = [c for c in (comparison_from_row(dict(row)) for row in rows) if c is not None]
     latest: dict[tuple[frozenset[str], str], Comparison] = {}

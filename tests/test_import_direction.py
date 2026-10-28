@@ -2,8 +2,9 @@
 
 docs/architecture/README.md names one of these as a girder (`research/` never
 imports `intake/`); the rest are the layering that keeps it true — the trace
-substrate below both, and the pool ranking below the web layer so research can
-rank without importing a route module.
+substrate below both, the pool ranking below the web layer so research can
+rank without importing a route module, and the comparison workflow above the pool
+ranking it reads.
 
 A layer may import its own layer and anything below it, never above. Adding a
 module to `screen/` without placing it here fails the test rather than silently
@@ -22,7 +23,7 @@ LAYERS: list[set[str]] = [
     {"baml_client", "types", "paths", "env", "browser", "store"},
     {"research_trace", "score", "verdict", "extract", "digest"},
     {"pool", "recalibration", "recalibration_run"},
-    {"research", "intake"},
+    {"research", "intake", "compare"},
     {"api", "web"},
     {"wiring"},
 ]

@@ -12,7 +12,7 @@ import math
 import numpy as np
 import pytest
 
-from screen.score.compare import Comparison, dimension_posteriors, fit_pairwise
+from screen.score.pairwise import Comparison, dimension_posteriors, fit_pairwise
 from screen.score.types import ComparisonBetaParams
 
 _BETA = ComparisonBetaParams(operator=0.5, provisional=1.0)

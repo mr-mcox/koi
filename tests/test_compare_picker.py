@@ -12,14 +12,14 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from screen.score.compare import Comparison
-from screen.score.compare_picker import (
+from screen.compare.picker import (
     ComparisonSuggestion,
     _dimension_posterior,
     _p_a_gt_b,
     select_comparison,
 )
 from screen.score.loader import load_scoring_config
+from screen.score.pairwise import Comparison
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation, Fit
 

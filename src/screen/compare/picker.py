@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from screen.score.bandit import boundary_weight
-from screen.score.compare import COMPANY_LEVEL_TARGETS, Comparison, fit_pairwise
+from screen.score.pairwise import COMPANY_LEVEL_TARGETS, Comparison, fit_pairwise
 from screen.score.scorer import stats_for_target
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Fit

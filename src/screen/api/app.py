@@ -19,8 +19,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from screen.api.pool import CompareCache, CompareProgress, CompareState
 from screen.api.routes import router as api_router
+from screen.compare.prescreen import CompareCache, CompareProgress, CompareState
 from screen.digest.protocol import DigesterProtocol
 from screen.extract.prompt import RubricText
 from screen.intake.worker import run_intake_worker

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from screen.score.compare import Comparison as ScoreComparison
-from screen.score.compare_picker import _settled_pairs, select_comparison
+from screen.compare.picker import _settled_pairs, select_comparison
+from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation
 

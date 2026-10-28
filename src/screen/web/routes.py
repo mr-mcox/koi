@@ -24,21 +24,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import app_deps, get_db
-from screen.api.pool import (
+from screen.compare.picker import ComparisonSuggestion
+from screen.compare.prescreen import (
     CompareCache,
     CompareProgress,
     CompareState,
     run_prescreen_in_background,
     run_speculative_prescreen_in_background,
 )
+from screen.compare.probability import pre_comparison_probability
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_record_for_target
 from screen.intake.admission import declined_host_for, declined_submission_message
 from screen.pool import latest_ruling_by_assertion, rank_screening_pool
 from screen.research.batch import eta_text
-from screen.score.compare_picker import ComparisonSuggestion
-from screen.score.compare_probability import pre_comparison_probability
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import stats_for_target
 from screen.score.types import FIT_VALUES, OpeningRank, ScoringConfig

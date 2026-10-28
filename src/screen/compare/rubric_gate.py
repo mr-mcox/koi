@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from screen.score.compare import Comparison
+from screen.score.pairwise import Comparison
 from screen.verdict.protocol import FewShotExample, RubricVerdict, VerdictProvider
 
 

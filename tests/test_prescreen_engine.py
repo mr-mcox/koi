@@ -8,14 +8,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.api.pool import (
+from screen.compare.picker import ComparisonSuggestion
+from screen.compare.prescreen import (
     CompareCache,
     CompareProgress,
     CompareState,
     run_prescreen,
     run_speculative_prescreen,
 )
-from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (

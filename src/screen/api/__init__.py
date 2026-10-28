@@ -1,6 +1,6 @@
 """FastAPI backend package. Import `screen.api.app` directly (`from screen.api.app
-import app, create_app`) — this file stays empty so importing `screen.api.pool` never
-pulls in `screen.api.app`'s own import chain, which reaches back into
+import app, create_app`) — this file stays empty so importing a sibling such as `screen.api.deps`
+never pulls in `screen.api.app`'s own import chain, which reaches back into
 `screen.research.batch` via `screen.intake.pipeline`.
 """
 

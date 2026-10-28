@@ -32,7 +32,8 @@ strand a summary here.
   change, not a dependency change
 - **Dependency direction runs one way** — `intake/` may import `research/`, never the
   reverse; neither imports `api/` or `web/`. The research trace (`research_trace/`) and
-  pool ranking (`pool.py`) sit below both so nothing has to reach up for them ·
+  pool ranking (`pool.py`) sit below both so nothing has to reach up for them; the
+  comparison workflow (`compare/`) sits above the pool ranking and below `api/`/`web/` ·
   `tests/test_import_direction.py`
 - **Private config stays private** — no real company name, salary, résumé content, or
   collected evidence in a committed file → [AGENTS.md](../../AGENTS.md) §Privacy ·

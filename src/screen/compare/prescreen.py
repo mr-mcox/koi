@@ -17,12 +17,12 @@ from uuid import uuid4
 
 import numpy as np
 
+from screen.compare.picker import ComparisonSuggestion, select_comparison
+from screen.compare.probability import pre_comparison_probability
+from screen.compare.rubric_gate import rubric_similarity_verdict
 from screen.extract.prompt import RubricText
 from screen.pool import rank_screening_pool, screening_pool_inputs
-from screen.score.compare import Comparison as ScoreComparison
-from screen.score.compare_picker import ComparisonSuggestion, select_comparison
-from screen.score.compare_probability import pre_comparison_probability
-from screen.score.rubric_gate import rubric_similarity_verdict
+from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.scorer import stats_for_target
 from screen.score.types import ScoringConfig
 from screen.store.db import connect

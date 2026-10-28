@@ -18,7 +18,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from screen.api.pool import CompareCache
+from screen.compare.picker import ComparisonSuggestion
+from screen.compare.prescreen import CompareCache
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.research.actions import SearchAction, StopAction
@@ -26,7 +27,6 @@ from screen.research.batch import BatchEngine
 from screen.research.fakes import FakeBrowser
 from screen.research_trace.replay import replay_research_trace
 from screen.research_trace.trace_io import research_trace_path_for
-from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.mappers import assertion_ruling_to_row

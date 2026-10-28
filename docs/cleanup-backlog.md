@@ -20,6 +20,7 @@ wave before starting the next, because later waves move files the earlier ones e
 | 4 | I, J | Touch nearly every file; run each alone |
 | any | K | Operator decision, not code |
 | any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
+| after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
 
 ---
 
@@ -140,19 +141,19 @@ Two branches that the move left under the per-file coverage gate got tests rathe
 exemptions: `resume_opening` with no remaining budget, and the speculative prescreen's
 iteration bound (which gained a `max_iterations` parameter mirroring `run_prescreen`'s).
 
-## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *open, after E*
+## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *done*
 
-`score/` holds two clusters: scoring (`scorer`, `bandit`, `loader`, `types`) and
-pairwise comparison (`compare`, `compare_picker`, `compare_probability`, `rubric_gate`).
-`api/pool.py` is mostly the comparison prescreen engine (`CompareCache`, `CompareState`,
-`run_prescreen`, speculation), not HTTP code.
+`screen/compare/` holds the comparison workflow: `picker.py` (was
+`score/compare_picker.py`), `probability.py` (was `score/compare_probability.py`),
+`rubric_gate.py` (was `score/rubric_gate.py`) and `prescreen.py` (was `api/pool.py`).
+`api/` is now HTTP only (`app`, `deps`, `routes`, `main`).
 
-- Create `screen/compare/` from those four modules plus the prescreen engine.
-- Leave `api/` with only HTTP concerns (`app`, `deps`, `routes`, `main`).
-- Target 3–7 files per folder.
-
-Touches: `score/`, `api/pool.py`, `web/routes.py`, `research/batch.py`, the compare and
-prescreen tests.
+The pairwise fit (`score/compare.py`) stayed in `score/`, renamed `score/pairwise.py`.
+`screen/pool.py` consumes it to rank the pool, and the prescreen engine reads that
+ranked pool, so moving the fit into `compare/` would have made `compare` and `pool`
+import each other. Moving `pool.py` into `compare/` instead would have filed pool
+ranking, which research uses too, under comparison. `tests/test_import_direction.py`
+places `compare` in the layer above `pool`, so the pool ranking can't import it.
 
 ## G. Split `web/routes.py` by feature and type the app's mutable state — *open, after E*
 
@@ -161,7 +162,7 @@ batch, and intake queue. It also holds compare business rules (staleness rejecti
 speculation promotion, suggestion legality) that belong with F's compare package.
 
 - Split the routes into one module per feature under `web/`.
-- Move the compare decisions into `compare/`.
+- Move the compare decisions into `compare/` (F created it).
 - Replace the untyped `app.state.batch_status` dict and `progress: MutableMapping` in
   `research/batch.py` with a typed dataclass (the unused `BatchProgress` in
   `research/batch.py` is a starting point), and expose the mutable state the way
@@ -220,7 +221,7 @@ information is being lost — it just isn't used.
 `Comparison.opening_a_digest_version`/`opening_b_digest_version` hold the
 `DimensionDigest.id` shown at judgment time. Both recording paths populate them (the
 operator form via the hidden fields in `compare.html`, the Jev provisional path in
-`api/pool.py`), `dimension_digests` is append-only with no update or delete, and
+`compare/prescreen.py`), `dimension_digests` is append-only with no update or delete, and
 `repo.get_dimension_digest_by_id` resolves a superseded version correctly.
 
 Nothing calls it. `recalibration.load_pairs` instead calls
@@ -242,3 +243,47 @@ mislabeled, and the mismatch grows with evidence accumulated since the judgment.
 
 Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
 `store/migrations/0010_create_comparisons.sql`, the recalibration tests.
+
+## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *open, after G*
+
+The per-file gate in `scripts/check.py` is 95% line and branch. That slack lets a file
+carry untested lines without anyone deciding whether they are dead, defensive, or real
+logic missing a test. At 100%, every uncovered line ends in one of three places: a test
+that catches a nameable regression, deletion, or an explicit exclusion with a reason. The
+`omit` list then becomes the single reviewable statement of what touches the outside world.
+
+Gate changes:
+- `COVERAGE_TIER_PERCENT = 100` in `scripts/check.py`.
+- Allow `# pragma: no cover` only with a reason on the same line
+  (`# pragma: no cover — <why>`); add a `check.py` gate that rejects a bare pragma, the
+  same way it rejects `type: ignore`. Use it for lines a test can't reach without
+  testing the harness: `assert_never` exhaustiveness guards, true thread-timing windows,
+  and the live-default half of an injectable constructor (`client if client is not None
+  else TavilyClient(...)`).
+- Add `src/screen/baml_client/` to `[tool.coverage.run] omit`. `check.py` already exempts
+  it from the per-file gate, but it still dilutes the reported total (88% vs. near 100%
+  for first-party code).
+- Remove `browser.py` from `EXEMPT_FILES`. The file-wide exemption hides pure logic:
+  `search()`'s Tavily field mapping (`content` → `raw_content`/`snippet`, `title`),
+  `fetch()`'s retry and permanent-failure path, and `_fetch_once`'s
+  results/failed/empty branches. The constructor already takes `client=` and `sleep=`,
+  so a fake client covers all of it; only the default `TavilyClient(...)` construction is
+  live.
+
+Gaps to close (as of 670cd18; line numbers will move under F and G). For each, decide
+test or delete:
+- `extract/prompt.py` `PromptRubric.resolve()`: never called. Delete unless a
+  recalibration path is meant to use it.
+- `types.py` `id` `default_factory`: never fires because every caller supplies an id.
+  Drop the default, or test the path that relies on it.
+- `compare/picker.py` `if pair_priority <= 0.0: continue`: reachable only with
+  `boundary_weight_floor == 0`. Delete if the config forbids 0; otherwise test it.
+- `recalibration_run.py` `brier_noise_floor`: property never read in tests.
+- `web/routes.py`: the Jev "tie" gloss, the speculation-already-in-flight guard, and the
+  "opening already seen" `continue` in the provisional-comparison loop.
+- `compare/prescreen.py`: the speculative walk taking a non-commit step and continuing.
+- `research/baml_planner.py`: the 0-hit search summary.
+- `research/batch.py`: the fallback to raw uncertainty when every boundary weight is zero.
+
+Touches: `scripts/check.py`, `pyproject.toml`, `browser.py`, the files above, their
+tests.

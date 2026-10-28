@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from screen.score.compare_probability import pre_comparison_probability
+from screen.compare.probability import pre_comparison_probability
 
 
 def test_identical_priors_are_fifty_fifty() -> None:
