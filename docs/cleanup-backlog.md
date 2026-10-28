@@ -98,7 +98,7 @@ Touches: `rubric.yaml`, `types.py`, `extract/prompt.py`, `research/batch.py`, `b
 `baml_client/`, `web/routes.py`, `tests/test_extract_prompt.py`, `tests/test_rubric.py`,
 `tests/test_types.py`, `docs/architecture/`.
 
-## D. Put both research turn budgets in `scoring.yaml` — *open, needs operator decision*
+## D. Put both research turn budgets in `scoring.yaml` — *done* in 70140c8
 
 Intake runs a fixed number of research turns, and every later batch pass runs a fixed
 block. The two numbers live in different places:
