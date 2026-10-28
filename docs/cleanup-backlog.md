@@ -74,7 +74,7 @@ Touches: `intake/cli.py`, `__main__.py`, `wiring.py`, `store/repo.py`, `digest/s
 `run`, `pyproject.toml`, `scripts/check.py`, `tests/cli/`, `tests/helpers.py`,
 `tests/test_wiring.py`, AGENTS.md, README.md, `docs/architecture/decisions.md`.
 
-## C. Drop obtainability and the non-scoring target concept — *open*
+## C. Drop obtainability and the non-scoring target concept — *done* in cc980c3
 
 `non_scoring:obtainability` is the only non-scoring target and hasn't proven useful. The
 scorer already ignores it (it only iterates `dimension_weights`), but the research

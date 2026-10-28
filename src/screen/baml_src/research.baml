@@ -114,7 +114,6 @@ test DecidePlan_FetchesWhenContextRevealedUrl {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -136,7 +135,6 @@ test DecidePlan_FetchesOneWhenMultipleUrlsAvailable {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -160,7 +158,6 @@ test DecidePlan_FetchesRelevantUrlAmongNoise {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -183,7 +180,6 @@ test DecidePlan_AvoidsFetchWhenOnlyLowValueUrlsAvailable {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -204,7 +200,6 @@ test DecidePlan_SearchContextWithUncoveredTarget {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -229,7 +224,6 @@ test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "mission"
@@ -251,7 +245,6 @@ test DecidePlan_StopsWhenPrimaryTargetLeadIsMinedOut {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
@@ -274,7 +267,6 @@ test DecidePlan_SearchQueryGroundedInCompanyName {
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Constraint slugs: location, internal_culture.
-Non-scoring slug: non_scoring:obtainability.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"

@@ -2,7 +2,7 @@
 Bare ids below: `E*`/`S*` are `docs/architecture/decisions.md`,
 `D*` are `docs/architecture/prototype-decisions.md`.
 `extra="forbid"` on every model enforces Wall 1/2 (no scoring fields).
-The closed `Target` Literal enforces Wall 3 (no unknown targets).
+The closed `Target` Literal rejects unknown rubric targets.
 `tests/test_types.py` pins all three properties at the test level.
 """
 
@@ -86,13 +86,7 @@ _SCORING_TARGETS = [
     "internal_culture",
 ]
 
-# Non-scoring targets carry the `non_scoring:` namespace prefix so the
-# same word can never be confused with a scoring slug (Wall 3).
-_NON_SCORING_TARGETS = [
-    "non_scoring:obtainability",
-]
-
-# Wall 3: closed vocabulary; any value outside this set is rejected at
+# Closed vocabulary; any value outside this set is rejected at
 # validation time, not by scorer logic.
 Target = Literal[
     "craft_direction",
@@ -104,7 +98,6 @@ Target = Literal[
     "domain",
     "location",
     "internal_culture",
-    "non_scoring:obtainability",
 ]
 
 # Fit values mirror the rubric's Poor / Mixed / Strong vocabulary.
@@ -154,7 +147,7 @@ class Assertion(BaseModel):
     null for assertions from before the feature (backward compatible). The scorer
     uses confidence to scale variance: higher confidence narrows the distribution,
     lower widens it (floor at 0.3 via max(confidence, 0.3)).
-    No scoring fields (Wall 1/2). `target` is a closed Literal (Wall 3).
+    No scoring fields (Wall 1/2). `target` is a closed Literal.
     Assertions are append-only; this model is frozen (Wall 6 on the type).
     """
 

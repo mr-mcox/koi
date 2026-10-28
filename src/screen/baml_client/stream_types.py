@@ -27,7 +27,7 @@ class StreamState(BaseModel, typing.Generic[StreamStateValueT]):
 # #########################################################################
 
 class Assertion(BaseModel):
-    target: typing.Optional[str] = Field(default=None, description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or \'non_scoring:obtainability\'. See the rubric text for the complete closed vocabulary.')
+    target: typing.Optional[str] = Field(default=None, description='The rubric slug this claim pertains to. Must be one of the scoring dimension slugs. See the rubric text for the complete closed vocabulary.')
     chunk: typing.Optional[str] = Field(default=None, description='The verbatim span from the page content that grounded this claim. Must be non-empty.')
     citations: typing.List["Citation"] = Field(description='One or more citations. Always non-empty. For a job posting the URL is the posting URL and the quote is the span supporting the claim.')
     created_at: typing.Optional[str] = Field(default=None, description='ISO 8601 UTC timestamp of extraction, e.g. \'2026-08-26T12:00:00Z\'.')
