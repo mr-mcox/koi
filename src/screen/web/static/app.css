@@ -6,7 +6,7 @@
  * cool blue-teal for "poor", the koi-orange accent family for "strong" — with a
  * genuinely neutral, low-chroma light midpoint for "mixed" (not a blend of the
  * two endpoints, which is how diverging scales avoid a muddy middle).
- * `--accent-hue` is set per company/opening (routes.py `_accent_hues`, a stable
+ * `--accent-hue` is set per company/opening (web/common.py `accent_hues`, a stable
  * hash of the id, styling only) and stays inside the koi-orange band —
  * decorative variation, never a second signal.
  */

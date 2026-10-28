@@ -14,6 +14,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.batch import (
     BatchEngine,
+    BatchProgress,
     ResumeResult,
     eligible_weights,
     eta_text,
@@ -98,7 +99,7 @@ def test_batch_runs_across_openings_in_screening_stage(tmp_path: Path) -> None:
     _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     total, touched = run_batch(
         conn,
         tmp_path,
@@ -111,7 +112,7 @@ def test_batch_runs_across_openings_in_screening_stage(tmp_path: Path) -> None:
     assert total > 0
     assert "acme--eng" in touched
     assert "widgets--eng" in touched
-    assert progress["spent"] == total
+    assert progress.spent == total
 
 
 def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) -> None:
@@ -121,7 +122,7 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     times = iter([0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0])
     total, _touched = run_batch(
         conn,
@@ -136,9 +137,30 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
     assert total == 4
     # Every clock tick advances by 2s, so however many opportunities the block splits
     # into, each measures the same 2s/turn rate and the EMA holds at 2.0.
-    assert progress["rate"] == pytest.approx(2.0)
-    assert progress["eta_seconds"] is None
-    assert progress["running"] is False
+    assert progress.rate == pytest.approx(2.0)
+    assert progress.eta_seconds is None
+    assert progress.running is False
+
+
+def test_batch_progress_records_no_rate_when_no_time_elapsed(tmp_path: Path) -> None:
+    """A clock that doesn't advance yields no sample; dividing it in would report a
+    zero rate and promise the batch is about to finish."""
+    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    conn = connect(tmp_path / "screen.db")
+    engine = _build_engine(tmp_path)
+    progress = BatchProgress()
+    total, _touched = run_batch(
+        conn,
+        tmp_path,
+        4,
+        progress,
+        planner_factory=engine.planner_factory,
+        deps=engine.deps_factory(),
+        now_fn=lambda: 5.0,
+    )
+    conn.close()
+    assert total > 0
+    assert progress.rate is None
 
 
 def test_eta_text_formats_seconds_and_minutes() -> None:
@@ -384,10 +406,10 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     engine.run(tmp_path / "screen.db", 2, progress)
-    assert progress["running"] is False
-    assert progress["spent"] == 2
+    assert progress.running is False
+    assert progress.spent == 2
 
 
 def test_batch_engine_prints_a_draw_trace_line_per_spent_turn(
@@ -399,7 +421,7 @@ def test_batch_engine_prints_a_draw_trace_line_per_spent_turn(
     call site, so this is the only place left that can print it."""
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
     engine = _build_engine(tmp_path)
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     engine.run(tmp_path / "screen.db", 2, progress)
 
     out = capsys.readouterr().out
@@ -426,7 +448,7 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     engine.run(tmp_path / "screen.db", 1, progress)
     fresh_conn = connect(tmp_path / "screen.db")
     persisted = assertions_for_opening(fresh_conn, "acme--eng")
@@ -460,9 +482,9 @@ def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
-    progress: dict[str, object] = {}
+    progress = BatchProgress()
     engine.run(tmp_path / "screen.db", 3, progress)
-    assert progress["touched"] == ["acme--eng"]
+    assert progress.touched == ["acme--eng"]
     fresh_conn = connect(tmp_path / "screen.db")
     assert len(assertions_for_opening(fresh_conn, "acme--eng")) == 1
     fresh_conn.close()
@@ -497,7 +519,7 @@ def test_batch_engine_prints_opportunity_summary(
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
-    engine.run(tmp_path / "screen.db", 2, {})
+    engine.run(tmp_path / "screen.db", 2, BatchProgress())
     out = capsys.readouterr().out
     assert out.count("drew acme--eng") == 1
     assert "assertions 0->1" in out

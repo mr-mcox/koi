@@ -141,7 +141,7 @@ Two branches that the move left under the per-file coverage gate got tests rathe
 exemptions: `resume_opening` with no remaining budget, and the speculative prescreen's
 iteration bound (which gained a `max_iterations` parameter mirroring `run_prescreen`'s).
 
-## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *done*
+## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *done* at 9d6d35e
 
 `screen/compare/` holds the comparison workflow: `picker.py` (was
 `score/compare_picker.py`), `probability.py` (was `score/compare_probability.py`),
@@ -155,26 +155,33 @@ import each other. Moving `pool.py` into `compare/` instead would have filed poo
 ranking, which research uses too, under comparison. `tests/test_import_direction.py`
 places `compare` in the layer above `pool`, so the pool ranking can't import it.
 
-## G. Split `web/routes.py` by feature and type the app's mutable state — *open, after E*
+## G. Split `web/routes.py` by feature and type the app's mutable state — *done* in [#2](https://github.com/mr-mcox/koi/pull/2)
 
-`web/routes.py` is about 1,000 lines covering five features: queue/rating, compare, archive,
-batch, and intake queue. It also holds compare business rules (staleness rejection,
-speculation promotion, suggestion legality) that belong with F's compare package.
+`web/routes.py` now only aggregates one router per feature: `queue.py` (queue, rating,
+assertion rulings, prune-stale), `compare.py`, `archive.py` (stage changes and the
+archive), `batch.py` and `intake_queue.py`. What more than one of them renders with
+(templates, `BoundaryGlyph`, accent hues, `dimension_groups`, static files) is in
+`web/common.py`.
 
-- Split the routes into one module per feature under `web/`.
-- Move the compare decisions into `compare/` (F created it).
-- Replace the untyped `app.state.batch_status` dict and `progress: MutableMapping` in
-  `research/batch.py` with a typed dataclass (the unused `BatchProgress` in
-  `research/batch.py` is a starting point), and expose the mutable state the way
-  `api/deps.app_deps` exposes `AppDeps`.
-- Split `tests/test_web.py` (about 2,400 lines) to match.
+The compare decisions live in `compare/session.py`: `CompareSession` bundles the
+prescreen's state, cache, progress and in-flight speculation, alongside the cache
+legality and staleness rules, the speculation claim, and `record_operator_write` (the
+version bump plus speculation promotion). `web/compare.py` only renders and schedules.
 
-Touches: `web/`, `api/app.py`, `api/deps.py`, `research/batch.py`, `tests/test_web.py`.
+`research/batch.py` takes a typed `BatchProgress` instead of a `MutableMapping`. Both
+live under `api/app.AppState` at `app.state.live`, read through `api/deps.app_state`
+the way `app_deps` reads `AppDeps`.
+
+`_jev_read_label` was deleted: the compare template never rendered Jev's read (a test
+asserts it stays hidden). `tests/test_web.py` and `tests/test_intake_queue_web.py` are
+now `tests/web/` (one file per feature, with shared fixtures in `conftest.py` and
+builders in `helpers.py`).
 
 ## H. Mirror the test tree to `src/` and consolidate builders — *open, after F and G*
 
 `tests/` holds 56 files flat.
-- Move tests into folders mirroring `src/screen/`.
+- Move tests into folders mirroring `src/screen/` (`tests/web/` and `tests/store/`
+  already do).
 - Drop the redundant `test_store_` filename prefixes.
 - Add `__init__.py` to `tests/intake/` to match its sibling folders.
 - Replace the 17 per-file `_assertion` builders and the `_seed_opening*` variants with
@@ -279,11 +286,14 @@ test or delete:
 - `compare/picker.py` `if pair_priority <= 0.0: continue`: reachable only with
   `boundary_weight_floor == 0`. Delete if the config forbids 0; otherwise test it.
 - `recalibration_run.py` `brier_noise_floor`: property never read in tests.
-- `web/routes.py`: the Jev "tie" gloss, the speculation-already-in-flight guard, and the
-  "opening already seen" `continue` in the provisional-comparison loop.
+- `web/compare.py`: the "opening already seen" `continue` in the provisional-comparison
+  loop.
 - `compare/prescreen.py`: the speculative walk taking a non-commit step and continuing.
 - `research/baml_planner.py`: the 0-hit search summary.
 - `research/batch.py`: the fallback to raw uncertainty when every boundary weight is zero.
+  With `boundary_weight_floor > 0` every weight is positive, so the fallback fires only
+  when every uncertainty is already zero and returns the same zeros; the docstring's
+  "a pool no larger than `top_k`" example is also wrong under `sqrt(p_top_k)`.
 
 Touches: `scripts/check.py`, `pyproject.toml`, `browser.py`, the files above, their
 tests.

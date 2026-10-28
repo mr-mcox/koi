@@ -1,5 +1,5 @@
 """Unit coverage for `rank_screening_pool`'s DB assembly and the stored-comparison
-outcome mapping — `tests/test_web.py::test_index_queue_reorders_after_comparison`
+outcome mapping — `tests/web/test_queue.py::test_index_queue_reorders_after_comparison`
 covers the end-to-end HTTP path; this covers the branches that path alone doesn't
 reach (tie/b outcomes, the explicit `openings` override). The comparison pre-screen
 orchestration itself (`run_prescreen`) lives in `tests/test_prescreen_engine.py`."""
@@ -71,7 +71,7 @@ def test_rank_screening_pool_defaults_to_live_screening_stage(
     tmp_path: Path, config: ScoringConfig
 ) -> None:
     """No `openings` override means the screening-stage pool, read fresh from the DB —
-    the shape both `web.routes` and `api.routes`'s `/queue` rely on."""
+    the shape both `web.queue` and `api.routes`'s `/queue` rely on."""
     conn = connect(tmp_path / "screen.db")
     upsert_company(conn, Company(id="acme", name="Acme", created_at=_NOW))
     upsert_opening(
