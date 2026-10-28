@@ -272,7 +272,6 @@ def rank_pool(
     return PoolScoreResult(
         opening_ids=opening_ids,
         trace=overall,
-        unguarded_trace=overall_unguarded,
         dimension_trace=dimension_trace,
         top_k=top_k,
         opening_ranks=opening_ranks,

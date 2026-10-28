@@ -19,6 +19,7 @@ wave before starting the next, because later waves move files the earlier ones e
 | 3 | H | Moves every test file; run it alone |
 | 4 | I, J | Touch nearly every file; run each alone |
 | any | K | Operator decision, not code |
+| any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 
 ---
 
@@ -28,9 +29,10 @@ Code that nothing in production reaches, kept alive only by its tests:
 - `ResearchTraceLockedError` (`intake/research_trace_io.py`) is never raised. Delete it
   and its `issubclass` test in `tests/test_research_trace.py`.
 - `PoolScore.unguarded_trace` (`score/types.py`) is written by `score/scorer.py` and never read.
-- `_prior_variance` (`score/compare_picker.py`) and `get_dimension_digest_by_id`
-  (`store/repo.py`) are called only from tests. Delete each with its tests unless a
-  production caller is planned.
+- `_prior_variance` (`score/compare_picker.py`) is called only from tests. Delete it
+  with its tests.
+- `get_dimension_digest_by_id` (`store/repo.py`) is also called only from tests, but
+  keep it: it is the unwired half of the recalibration audit path, and item L calls it.
 - `scripts/check.py` lists `src/screen/embed/fastembed_embedder.py`, which doesn't exist,
   in `OMIT_FROM_COVERAGE`. Have `check.py` read the omit list from `pyproject.toml`
   instead of duplicating it.
@@ -206,3 +208,35 @@ Commit 6deb320 removed the hardcoded baseline from the tracked files, but earlie
 still contain it. Purging means rewriting `main` and force-pushing, which breaks
 existing clones and forks. Because the repo is public, the figure may already have been
 copied. Do this only on the operator's explicit go-ahead.
+
+## L. Recalibration should read the digest the operator actually saw — *open*
+
+Capture is complete and the history is intact; only the read path is unwired, so no
+information is being lost — it just isn't used.
+
+`Comparison.opening_a_digest_version`/`opening_b_digest_version` hold the
+`DimensionDigest.id` shown at judgment time. Both recording paths populate them (the
+operator form via the hidden fields in `compare.html`, the Jev provisional path in
+`api/pool.py`), `dimension_digests` is append-only with no update or delete, and
+`repo.get_dimension_digest_by_id` resolves a superseded version correctly.
+
+Nothing calls it. `recalibration.load_pairs` instead calls
+`get_dimension_digest(conn, opening_id, target)`, which returns the *latest* digest, and
+`scripts/backtest_jev_routing.py` does the same. Dispatch warms digests after every pass,
+so a recalibration round run after new evidence replays Jev against a digest the operator
+never saw while `expected` is their ruling against an older one. Those cases are
+mislabeled, and the mismatch grows with evidence accumulated since the judgment.
+
+- `load_pairs`: resolve each side by the recorded version via `get_dimension_digest_by_id`.
+- Fall back to the latest digest only when the version is `NULL` — comparisons recorded
+  before the field was threaded through. For those the pairing is unrecoverable.
+- Return the fallback count alongside `shortfall` and surface it in the run record
+  (`recalibration_run.py`), so a round built mostly on substituted digests says so rather
+  than passing as clean evidence.
+- Same resolution in `scripts/backtest_jev_routing.py`'s `_load_cases`.
+- `migrations/0010_create_comparisons.sql` still calls the two columns "nullable
+  placeholders … until then both stay NULL". They are populated; fix the comment.
+
+Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
+`store/migrations/0010_create_comparisons.sql`, the recalibration tests.
+

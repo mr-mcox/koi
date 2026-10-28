@@ -1,12 +1,12 @@
 """Backend-only pair/dimension picker for operator pairwise comparisons.
 `select_comparison` scores every candidate `(opening, opening, dimension)` triple as
-`closeness_overall × boundary_weight × sqrt(weight_d) × var_diff_d × jitter`
-(picker-variance-share.md, its Amendment). `closeness_overall` and `boundary_weight`
-identify a pair whose overall rank is both genuinely contested and near the top-K
-boundary — both use the full rubric weight (squared, since dimensions are independent),
-because that's the real weighted rollup. `sqrt(weight_d)` and `var_diff_d` then choose
-which dimension to ask about *within* that pair: dimension choice deliberately uses a
-gentler weight exponent than pair choice, because "is this pair's rank in doubt"
+`boundary_weight × sqrt(weight_d) × var_diff_d × jitter`, after a hard skip of pairs
+whose overall outcome is already settled. `boundary_weight` identifies a pair whose
+overall rank is near the top-K boundary; it uses the full rubric weight (squared, since
+dimensions are independent), because that's the real weighted rollup. `sqrt(weight_d)`
+and `var_diff_d` then choose which dimension to ask about *within* that pair: dimension
+choice deliberately uses a gentler weight exponent than pair choice, because "is this
+pair's rank in doubt"
 legitimately scales with the full rubric weight but "what do I know least about here"
 should not — any exponent ≥ 1 there let the highest-weight dimension dominate
 regardless of how little of it was left to learn, confirmed against live data. A small
@@ -31,9 +31,9 @@ from screen.types import Assertion, Fit
 _MIN_PAIR = 2
 _PAIR_SKIP_THRESHOLD = 0.05
 """P(A > B) floor/ceiling: pairs outside [_PAIR_SKIP_THRESHOLD, 1 - _PAIR_SKIP_THRESHOLD]
-are skipped before boundary_weight and before reaching Jev. Stops overwhelmingly decided
-pairs from burning Jev calls, restoring the pre-screen chain length that the old
-closeness-as-multiplier provided for free."""
+are skipped before boundary_weight and before reaching Jev, so overwhelmingly decided
+pairs don't burn Jev calls. It is an exclusion gate, not a multiplier: a
+strong-vs-unknown pair still passes as long as its overall uncertainty spans the band."""
 
 
 @dataclass(frozen=True)
@@ -128,23 +128,6 @@ def _auto_ties(
         for i, a in enumerate(ids)
         for b in ids[i + 1 :]
     ]
-
-
-def _prior_variance(
-    target: str,
-    opening_id: str,
-    assertions_by_opening: dict[str, list[Assertion]],
-    rulings_by_opening: dict[str, dict[str, Fit]] | None,
-    config: ScoringConfig,
-) -> float:
-    """An opening's prior variance on `target`, before any comparison evidence."""
-    stats = stats_for_target(
-        assertions_by_opening.get(opening_id, []),
-        config,
-        target,
-        rulings_by_opening.get(opening_id) if rulings_by_opening else None,
-    )
-    return (stats.half_width / 3.0**0.5) ** 2
 
 
 _DimensionPosterior = tuple[dict[str, float], dict[str, dict[str, float]]]
@@ -265,31 +248,16 @@ def _best_triple(
 ) -> tuple[float, ComparisonSuggestion] | None:
     """`(pair, dimension)` with the highest jittered priority. A pair's priority is
     `boundary_weight(max(p_top_k))` — pairs where neither opening's top-K membership
-    could still move score near zero. Pairs where the overall outcome is overwhelmingly
-    settled (P(A > B) outside [0.05, 0.95]) are hard-skipped before `boundary_weight`
-    and before reaching Jev — cheap math, not a Jev call, restoring the pre-screen
-    chain length that `closeness`-as-multiplier previously provided for free. The gate
-    is not the old dead-heat-seeking `closeness` — it is a floor, not a multiplier, so
-    a strong-vs-unknown pair (high upside variance, boundary-relevant) still makes it
-    through even if the current expected outcome is lopsided, as long as uncertainty
-    spans the 5-95% band."""
+    could still move score near zero. Pairs whose overall outcome is already settled are
+    skipped first, by `_PAIR_SKIP_THRESHOLD`."""
     best_score = -1.0
     best: ComparisonSuggestion | None = None
     for i, a in enumerate(opening_ids):
         for b in opening_ids[i + 1 :]:
             mean_diff, var_diff = _overall_diff(a, b, posteriors, config)
-            # Hard skip pairs that are overwhelmingly settled overall — a cheap
-            # exclusion gate, not the old closeness multiplier. The threshold
-            # (5% tail on each side) stops obviously decided pairs from reaching
-            # Jev, restoring the pre-screen chain length that closeness-as-
-            # multiplier previously provided for free. It is a floor, not a
-            # multiplier: a strong-vs-unknown pair still makes it through as long
-            # as overall uncertainty spans the 5-95% band.
             p_a_gt_b = _p_a_gt_b(mean_diff, var_diff)
             if p_a_gt_b < _PAIR_SKIP_THRESHOLD or p_a_gt_b > 1.0 - _PAIR_SKIP_THRESHOLD:
                 continue
-            # Pair priority: boundary_weight (relevance to the Top-K pool) only —
-            # not the old dead-heat-seeking closeness multiplier.
             boundary = (
                 max(
                     boundary_weight(p_top_k_by_opening[a], config.boundary_weight_floor),

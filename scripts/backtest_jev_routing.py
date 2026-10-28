@@ -256,7 +256,7 @@ def main() -> int:
         f"file:{os.path.abspath(args.db_path)}?mode=ro", uri=True, check_same_thread=False
     )
     conn.row_factory = sqlite3.Row
-    provider = JevVerdictProvider(TypeSafeClient())
+    provider = JevVerdictProvider(scoring_config, TypeSafeClient())
 
     # Warm the provider/client once so the concurrency below only does I/O, not lazy init.
     _ = provider

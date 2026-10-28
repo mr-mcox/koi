@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
@@ -22,27 +23,18 @@ EXEMPT_BUDGET = 1
 
 GENERATED_CODE_DIR = "src/screen/baml_client/"
 
-# Files that coverage.run omits — they never appear in coverage data, so
-# the discipline gate can't compute their tier. Symmetric with
-# pyproject.toml [tool.coverage.run] omit.
-OMIT_FROM_COVERAGE: list[str] = [
-    # Process entry points: load `.env` and build the production app at import time.
-    "src/screen/__main__.py",
-    "src/screen/api/main.py",
-    # Live BAML adapter: calls external LLM service, no unit test coverage by design.
-    # Symmetric with pyproject.toml [tool.coverage.run] omit.
-    "src/screen/extract/baml_extractor.py",
-    "src/screen/digest/baml_digester.py",
-    # Live embedding adapter: calls a local ONNX model runtime, no unit test coverage
-    # by design — tests inject a fake embedder via the Embedder Protocol.
-    "src/screen/embed/fastembed_embedder.py",
-    # Live verdict adapter: calls the paid TypeSafe (Jev) API, no unit test coverage by
-    # design — tests inject a fake VerdictProvider via the Protocol.
-    "src/screen/verdict/jev_verdict_provider.py",
-    # Live assertion classifier: calls the paid TypeSafe (Jev) API, no unit test coverage
-    # by design — tests inject a fake AssertionClassifier via the Protocol.
-    "src/screen/verdict/jev_assertion_classifier.py",
-]
+
+def _omit_from_coverage() -> list[str]:
+    """The `[tool.coverage.run] omit` list, read from pyproject rather than restated.
+
+    Omitted files never appear in coverage data, so the discipline gate can't compute
+    their tier and must skip them. Keeping one copy means the two can't drift.
+    """
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return list(pyproject["tool"]["coverage"]["run"]["omit"])
+
+
+OMIT_FROM_COVERAGE: list[str] = _omit_from_coverage()
 
 EXEMPT_FILES: dict[str, str] = {
     "src/screen/browser.py": (

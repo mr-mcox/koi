@@ -17,7 +17,6 @@ from screen.score.compare_picker import (
     ComparisonSuggestion,
     _dimension_posterior,
     _p_a_gt_b,
-    _prior_variance,
     select_comparison,
 )
 from screen.score.loader import load_scoring_config
@@ -185,17 +184,6 @@ def test_picker_prefers_more_ambiguous_pair(config: ScoringConfig) -> None:
     assert suggestion is not None
     assert suggestion.target == "craft_direction"
     assert "c" in (suggestion.opening_a_id, suggestion.opening_b_id)
-
-
-def test_domain_prior_variance_matches_any_other_dimension(config: ScoringConfig) -> None:
-    """Domain's prior variance is derived the same way as every other dimension — no
-    permanently-wide special case left over from the old exemption. Same assertion
-    pattern, same resulting variance, regardless of which dimension it's for."""
-    a = "acme--a"
-    assertions = {a: [_assertion("domain"), _assertion("craft_direction")]}
-    domain_var = _prior_variance("domain", a, assertions, None, config)
-    craft_var = _prior_variance("craft_direction", a, assertions, None, config)
-    assert domain_var == craft_var
 
 
 def test_repeated_tie_drops_pair_below_a_fresh_pair(config: ScoringConfig) -> None:

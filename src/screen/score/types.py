@@ -101,7 +101,6 @@ class PoolScoreResult:
 
     opening_ids: list[str]
     trace: np.ndarray = field(compare=False, repr=False)
-    unguarded_trace: np.ndarray = field(compare=False, repr=False)
     dimension_trace: dict[str, np.ndarray] = field(compare=False, repr=False)
     top_k: int
     opening_ranks: list[OpeningRank]

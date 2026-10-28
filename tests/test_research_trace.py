@@ -2,11 +2,7 @@
 
 from pathlib import Path
 
-from screen.intake.research_trace_io import (
-    ResearchTraceLockedError,
-    append_line,
-    read_research_trace,
-)
+from screen.intake.research_trace_io import append_line, read_research_trace
 
 
 def test_append_line_creates_file_when_absent(tmp_path: Path) -> None:
@@ -54,10 +50,6 @@ def test_read_research_trace_empty_file_returns_empty(tmp_path: Path) -> None:
 def test_read_research_trace_nonexistent_returns_empty(tmp_path: Path) -> None:
     path = tmp_path / "missing.jsonl"
     assert list(read_research_trace(path)) == []
-
-
-def test_research_trace_locked_error_is_runtime_error() -> None:
-    assert issubclass(ResearchTraceLockedError, RuntimeError)
 
 
 def test_append_line_idempotent_on_existing_empty_file(tmp_path: Path) -> None:

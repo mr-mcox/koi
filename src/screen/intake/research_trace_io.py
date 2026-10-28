@@ -10,11 +10,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 
-class ResearchTraceLockedError(RuntimeError):
-    """Raised when a non-append operation is attempted on a non-empty
-    research trace file."""
-
-
 def read_research_trace(path: Path) -> Iterator[str]:
     """Yield existing research trace lines one at a time.
 
