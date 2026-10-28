@@ -25,9 +25,9 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import AssertionRuling, Company, Opening
-from screen.verdict.classification_protocol import AssertionClassification, AssertionClassifier
+from screen.verdict.classification_protocol import AssertionClassification
 from screen.verdict.fakes import FakeAssertionClassifier
-from tests.helpers import canned_assertion, env_for
+from tests.helpers import canned_assertion, fake_cli_deps
 
 
 def _seed_opening(db_path: Path, opening_id: str, company_id: str, *, chunk: str = "x") -> str:
@@ -108,24 +108,21 @@ def _seed_opening_with_multiple_assertions(
     return [a.id for a in assertions]
 
 
-def test_backfill_updates_fit_and_confidence_in_place(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_updates_fit_and_confidence_in_place(tmp_path: Path) -> None:
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -136,7 +133,7 @@ def test_backfill_updates_fit_and_confidence_in_place(
 
 
 def test_backfill_reclassifies_every_assertion_in_an_opening_not_just_the_first(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """Regression test: `any()` over a side-effecting generator short-circuits on the
     first `True`, which previously meant only the first assertion in each opening ever
@@ -148,26 +145,25 @@ def test_backfill_reclassifies_every_assertion_in_an_opening_not_just_the_first(
         "acme",
         ["craft_direction", "trajectory", "mission"],
     )
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Poor", confidence=0.60, is_relevant=True, relevance_confidence=0.9
-                ),
-                AssertionClassification(
-                    fit="Mixed", confidence=0.70, is_relevant=True, relevance_confidence=0.9
-                ),
-                AssertionClassification(
-                    fit="Strong", confidence=0.80, is_relevant=True, relevance_confidence=0.9
-                ),
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Poor", confidence=0.60, is_relevant=True, relevance_confidence=0.9
+            ),
+            AssertionClassification(
+                fit="Mixed", confidence=0.70, is_relevant=True, relevance_confidence=0.9
+            ),
+            AssertionClassification(
+                fit="Strong", confidence=0.80, is_relevant=True, relevance_confidence=0.9
+            ),
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -183,24 +179,21 @@ def test_backfill_reclassifies_every_assertion_in_an_opening_not_just_the_first(
     assert by_target["mission"].confidence == pytest.approx(0.80)
 
 
-def test_backfill_drops_confidently_irrelevant_assertion(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_drops_confidently_irrelevant_assertion(tmp_path: Path) -> None:
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -208,9 +201,7 @@ def test_backfill_drops_confidently_irrelevant_assertion(
     assert assertions_for_opening(conn, "acme--eng") == []
 
 
-def test_backfill_never_drops_an_assertion_the_operator_has_ruled_on(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_never_drops_an_assertion_the_operator_has_ruled_on(tmp_path: Path) -> None:
     """A confidently-irrelevant verdict from Jev must not delete an assertion that
     carries an operator ruling — the ruling can't be re-pointed at nothing."""
     assertion_id = _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
@@ -220,20 +211,19 @@ def test_backfill_never_drops_an_assertion_the_operator_has_ruled_on(
         AssertionRuling(assertion_id=assertion_id, fit="Strong", created_at=datetime.now(UTC)),
     )
     conn.close()
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -242,26 +232,20 @@ def test_backfill_never_drops_an_assertion_the_operator_has_ruled_on(
     assert assertion.id == assertion_id
 
 
-def test_backfill_dry_run_reports_without_writing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_dry_run_reports_without_writing(tmp_path: Path) -> None:
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
         cli_module.backfill_jev_classification,
         ["--dry-run"],
-        env=env_for(tmp_path),
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
         catch_exceptions=False,
     )
 
@@ -273,9 +257,7 @@ def test_backfill_dry_run_reports_without_writing(
     assert assertion.confidence is None
 
 
-def test_backfill_invalidates_cached_digest_for_touched_opening(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_invalidates_cached_digest_for_touched_opening(tmp_path: Path) -> None:
     """A stale cached digest's staleness check assumes assertion_count only grows (Wall 6);
     a backfill drop can shrink it, so the digest must be recomputed as a new version rather
     than left to look falsely fresh (append-only history, not an erased cache row)."""
@@ -290,20 +272,19 @@ def test_backfill_invalidates_cached_digest_for_touched_opening(
         computed_at=datetime.now(UTC),
     )
     conn.close()
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
+            )
+        ]
     )
-    monkeypatch.setattr(cli_module, "_build_digester", lambda: FakeDigester(["fresh digest text"]))
+    digester = FakeDigester(["fresh digest text"])
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier, digester=digester),
+        catch_exceptions=False,
     )
     assert result.exit_code == 0, f"CLI failed: {result.output}"
     conn = connect(tmp_path / "screen.db")
@@ -313,49 +294,44 @@ def test_backfill_invalidates_cached_digest_for_touched_opening(
     assert record.assertion_count == 0
 
 
-def test_backfill_reports_opening_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_backfill_reports_opening_count(tmp_path: Path) -> None:
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
     _seed_opening(tmp_path / "screen.db", "widgets--eng", "widgets")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert "2/2 opening" in result.output
 
 
 def test_backfill_dry_run_does_not_delete_a_confidently_irrelevant_assertion(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """`--dry-run` reports a would-be drop but leaves the row in place."""
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
-                )
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Mixed", confidence=0.5, is_relevant=False, relevance_confidence=0.9
+            )
+        ]
     )
 
     result = CliRunner().invoke(
         cli_module.backfill_jev_classification,
         ["--dry-run"],
-        env=env_for(tmp_path),
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
         catch_exceptions=False,
     )
 
@@ -365,9 +341,7 @@ def test_backfill_dry_run_does_not_delete_a_confidently_irrelevant_assertion(
     assert len(assertions_for_opening(conn, "acme--eng")) == 1
 
 
-def test_backfill_leaves_an_already_current_assertion_untouched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_leaves_an_already_current_assertion_untouched(tmp_path: Path) -> None:
     """An assertion Jev now returns the same fit/confidence for (e.g. a re-run of an
     already-backfilled opening) is neither dropped nor rewritten, and its opening doesn't
     count toward `openings_touched` — the command is idempotent."""
@@ -376,23 +350,22 @@ def test_backfill_leaves_an_already_current_assertion_untouched(
     )
     _seed_opening_with_assertion(tmp_path / "screen.db", "settled--eng", "settled", already_current)
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(
-        cli_module,
-        "_build_assertion_classifier",
-        lambda: FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Mixed", confidence=0.65, is_relevant=True, relevance_confidence=0.9
-                ),
-                AssertionClassification(
-                    fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
-                ),
-            ]
-        ),
+    classifier = FakeAssertionClassifier(
+        [
+            AssertionClassification(
+                fit="Mixed", confidence=0.65, is_relevant=True, relevance_confidence=0.9
+            ),
+            AssertionClassification(
+                fit="Poor", confidence=0.72, is_relevant=True, relevance_confidence=0.9
+            ),
+        ]
     )
 
     result = CliRunner().invoke(
-        cli_module.backfill_jev_classification, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_jev_classification,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", classifier=classifier),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -401,10 +374,3 @@ def test_backfill_leaves_an_already_current_assertion_untouched(
     [settled] = assertions_for_opening(conn, "settled--eng")
     assert settled.fit == "Mixed"
     assert settled.confidence == pytest.approx(0.65)
-
-
-def test_build_assertion_classifier_returns_protocol_instance() -> None:
-    """The production factory is safe to call and satisfies `AssertionClassifier`, even
-    though the test suite above replaces it with a fake (mirrors
-    `test_default_factories_return_protocol_instances` in test_research_batch.py)."""
-    assert isinstance(cli_module._build_assertion_classifier(), AssertionClassifier)

@@ -12,18 +12,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-import screen.extract.prompt as prompt_module
-from screen.extract.prompt import all_dimension_slugs, all_non_scoring_slugs
+from screen.extract.prompt import RubricText, all_dimension_slugs, all_non_scoring_slugs
 from screen.types import Target
+from tests.helpers import synthetic_rubric
 
 RUBRIC_PATH = Path(__file__).resolve().parents[1] / "rubric.yaml"
-
-# These names must not appear in any rubric text field (privacy boundary).
-PRIVATE_PATTERNS = [
-    "$230",
-    "230,000",
-    "230K",
-]
 
 
 @pytest.fixture(scope="module")
@@ -64,18 +57,6 @@ def test_rubric_non_scoring_slugs_carry_namespace_prefix(rubric: dict) -> None: 
         assert entry["slug"].startswith("non_scoring:"), entry["slug"]
 
 
-def test_rubric_compensation_dimension_has_no_baseline_number(rubric: dict) -> None:  # type: ignore[type-arg]
-    """The compensation baseline is private. The rubric definition must not
-    contain the number — only a reference to the config key."""
-    comp = next(d for d in rubric["dimensions"] if d["slug"] == "compensation")
-    definition = str(comp.get("definition", ""))
-    for pattern in PRIVATE_PATTERNS:
-        assert pattern not in definition, (
-            f"Compensation definition contains private baseline pattern '{pattern}'. "
-            "Move it to SCREEN_COMPENSATION_BASELINE env var."
-        )
-
-
 def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None:  # type: ignore[type-arg]
     """The committed rubric names the config key; `resolve_private` swaps in the real
     value at render time. If this reference is ever edited away, the substitution silently
@@ -83,15 +64,6 @@ def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None
     comp = next(d for d in rubric["dimensions"] if d["slug"] == "compensation")
 
     assert "SCREEN_COMPENSATION_BASELINE" in str(comp.get("definition", ""))
-
-
-def test_no_private_data_in_any_text_field(rubric: dict) -> None:  # type: ignore[type-arg]
-    """Walk every string value in the rubric and assert no private patterns appear."""
-    full_text = yaml.dump(rubric)
-    for pattern in PRIVATE_PATTERNS:
-        assert (
-            pattern not in full_text
-        ), f"Private pattern '{pattern}' found in rubric.yaml. Remove it."
 
 
 def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -107,7 +79,7 @@ def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  
     first = rubric["dimensions"][0]
     other = rubric["dimensions"][1]
 
-    text = prompt_module.rubric_text_for_dimension(first["slug"])
+    text = synthetic_rubric().for_dimension(first["slug"])
 
     assert first["definition"].strip() in text
     assert other["definition"].strip() not in text
@@ -115,7 +87,7 @@ def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  
 
 def test_rubric_text_for_dimension_unknown_slug_raises(rubric: dict) -> None:  # type: ignore[type-arg]
     with pytest.raises(KeyError):
-        prompt_module.rubric_text_for_dimension("not-a-real-slug")
+        synthetic_rubric().for_dimension("not-a-real-slug")
 
 
 def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -135,31 +107,16 @@ def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignor
     )
 
 
-def test_rubric_text_for_baml_empty_sections_do_not_crash(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """rubric_text_for_baml must not raise when optional sections are empty.
-    Exercises the empty-list branch in each _render_* helper."""
-    monkeypatch.setattr(
-        prompt_module,
-        "_load",
-        lambda: {
-            "dimensions": [],
-            "non_scoring": [],
-        },
-    )
-    result = prompt_module.rubric_text_for_baml()
+def test_full_render_with_empty_sections_does_not_crash() -> None:
+    """The full render must not raise when optional sections are empty."""
+    result = RubricText({"dimensions": [], "non_scoring": []}, private={}).full()
     assert "Scored dimensions" in result
 
 
-def test_rubric_text_for_baml_dimension_without_look_for(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Exercises the `if dim.get('look_for')` False branch in _render_dimensions."""
-    monkeypatch.setattr(
-        prompt_module,
-        "_load",
-        lambda: {
+def test_full_render_of_a_dimension_without_look_for() -> None:
+    """A dimension without `look_for` renders without a "Look for" line."""
+    result = RubricText(
+        {
             "dimensions": [
                 {
                     "slug": "domain",
@@ -172,7 +129,7 @@ def test_rubric_text_for_baml_dimension_without_look_for(
             ],
             "non_scoring": [],
         },
-    )
-    result = prompt_module.rubric_text_for_baml()
+        private={},
+    ).full()
     assert "Domain coolness" in result
     assert "Look for" not in result

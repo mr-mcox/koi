@@ -12,7 +12,7 @@ current assertions and operator rulings, never a stored history.
 import math
 from typing import assert_never
 
-from screen.baml_client.sync_client import b
+from screen.baml_client.sync_client import BamlSyncClient, b
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
@@ -125,8 +125,9 @@ class BAMLPlanner:
     the full dispatcher loop.
     """
 
-    def __init__(self, config: ScoringConfig | None = None) -> None:
+    def __init__(self, config: ScoringConfig | None = None, client: BamlSyncClient = b) -> None:
         self._config = config
+        self._client = client
 
     def plan(self, state: LoopState) -> list[Action]:
         primary_target = state.primary_target
@@ -134,7 +135,7 @@ class BAMLPlanner:
             primary_target = select_primary_target(state, self._config)
         if primary_target is None:
             primary_target = "craft_direction"
-        generated = b.DecidePlan(
+        generated = self._client.DecidePlan(
             company_name=state.company_name,
             opening_title=state.opening_title,
             rubric_text=state.rubric_text,

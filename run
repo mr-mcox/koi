@@ -16,13 +16,13 @@ shift || true
 case "$cmd" in
   serve)
     echo "Queue: http://localhost:${PORT}/" >&2
-    exec uv run uvicorn screen.api.app:app --port "$PORT" "$@"
+    exec uv run uvicorn screen.api.main:app --port "$PORT" "$@"
     ;;
   backfill-digests)
-    exec uv run python -c "from screen.intake.cli import backfill_digests; backfill_digests()" "$@"
+    exec uv run python -m screen backfill-digests "$@"
     ;;
   backfill-jev-classification)
-    exec uv run python -c "from screen.intake.cli import backfill_jev_classification; backfill_jev_classification()" "$@"
+    exec uv run python -m screen backfill-jev-classification "$@"
     ;;
   *)
     echo "usage: ./run [serve|backfill-digests|backfill-jev-classification]" >&2

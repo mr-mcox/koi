@@ -66,7 +66,9 @@ discarded; its learnings and decisions were kept. That inheritance lives in `doc
   test passes a literal. monkeypatch is acceptable only when the seam is fixed (a third-party
   class with no injection point, a `CliRunner.invoke` that won't swap a module global) and
   refactoring for testability would distort the implementation; document the reason inline
-  and revisit when a DI hook appears.
+  and revisit when a DI hook appears. Live adapters and environment reads belong in
+  `screen/wiring.py` only — never as a default argument deeper in, where a test that
+  forgets to override it reaches a paid service.
 - **Tests catch named regressions; invented tests are removed.** A test that passes against
   a deliberately broken version of its subject is a test of the harness, not of the
   behavior. The check is mechanical: when reviewing a test, name one regression it would
@@ -104,7 +106,7 @@ untracked config or the data directory, not in git.
 
 `./run` (operator-only — do not invoke it in an agent session) points the CLI/API at
 `data/live/`, the DB holding the operator's real ratings. Everything an agent runs —
-`uv run python -m screen <url>`, `uv run uvicorn screen.api.app:app`, the test suite —
+`uv run python -m screen <command>`, `uv run uvicorn screen.api.main:app`, the test suite —
 defaults to `./data` instead (or a `tmp_path` in tests), a disposable scratch DB safe to
 delete. Never set `SCREEN_DATA_DIR` to `data/live` or otherwise target it.
 

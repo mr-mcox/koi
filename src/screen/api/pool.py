@@ -17,7 +17,7 @@ from uuid import uuid4
 import numpy as np
 
 from screen.api.scoring import latest_ruling_by_assertion, pool_for_screening
-from screen.extract.prompt import rubric_text_for_dimension
+from screen.extract.prompt import RubricText
 from screen.score.compare import Comparison as ScoreComparison
 from screen.score.compare_picker import ComparisonSuggestion, select_comparison
 from screen.score.compare_probability import pre_comparison_probability
@@ -184,6 +184,7 @@ def _consult_jev_for_suggestion(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     rng: np.random.Generator,
 ) -> tuple[StoredComparison | None, RubricVerdict | None]:
     """Jev's live short-circuit for one suggested pair: the operator-suggested pair goes
@@ -205,7 +206,7 @@ def _consult_jev_for_suggestion(
     gate = rubric_similarity_verdict(
         suggestion.opening_a_id,
         suggestion.opening_b_id,
-        rubric_text=rubric_text_for_dimension(suggestion.target),
+        rubric_text=rubric.for_dimension(suggestion.target),
         digest_a=digest_a.digest,
         digest_b=digest_b.digest,
         few_shot_examples=few_shot_examples,
@@ -342,6 +343,7 @@ def _prescreen_step(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     compare_state: CompareState,
     compare_cache: CompareCache,
     progress: CompareProgress,
@@ -400,6 +402,7 @@ def _prescreen_step(
         rulings_by_opening,
         config,
         verdict_provider=verdict_provider,
+        rubric=rubric,
         rng=rng,
     )
     _prescreen_log.info(
@@ -472,6 +475,7 @@ def run_prescreen(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     compare_state: CompareState | None = None,
     compare_cache: CompareCache | None = None,
     progress: CompareProgress,
@@ -497,6 +501,7 @@ def run_prescreen(
                 conn,
                 config,
                 verdict_provider=verdict_provider,
+                rubric=rubric,
                 compare_state=compare_state,
                 compare_cache=compare_cache,
                 progress=progress,
@@ -520,6 +525,7 @@ def run_speculative_prescreen(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     compare_state: CompareState,
     compare_cache: CompareCache,
 ) -> None:
@@ -550,6 +556,7 @@ def run_speculative_prescreen(
                 conn,
                 config,
                 verdict_provider=verdict_provider,
+                rubric=rubric,
                 compare_state=compare_state,
                 compare_cache=compare_cache,
                 progress=CompareProgress(),
@@ -579,6 +586,7 @@ def run_speculative_prescreen_in_background(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     compare_state: CompareState,
     compare_cache: CompareCache,
 ) -> None:
@@ -590,6 +598,7 @@ def run_speculative_prescreen_in_background(
             conn,
             config,
             verdict_provider=verdict_provider,
+            rubric=rubric,
             compare_state=compare_state,
             compare_cache=compare_cache,
         )
@@ -602,6 +611,7 @@ def run_prescreen_in_background(
     config: ScoringConfig,
     *,
     verdict_provider: VerdictProvider,
+    rubric: RubricText,
     compare_state: CompareState,
     compare_cache: CompareCache,
     progress: CompareProgress,
@@ -615,6 +625,7 @@ def run_prescreen_in_background(
             conn,
             config,
             verdict_provider=verdict_provider,
+            rubric=rubric,
             compare_state=compare_state,
             compare_cache=compare_cache,
             progress=progress,

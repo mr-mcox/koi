@@ -18,13 +18,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from screen.api.app import create_app
 from screen.api.pool import CompareCache
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake.research_trace_replay import replay_research_trace
 from screen.research.actions import SearchAction, StopAction
-from screen.research.batch import BatchEngine, RunDispatchDeps, research_trace_path_for
+from screen.research.batch import BatchEngine, research_trace_path_for
 from screen.research.fakes import FakeBrowser
 from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.loader import load_scoring_config
@@ -52,6 +51,7 @@ from screen.types import (
     Target,
 )
 from screen.verdict.protocol import FewShotExample, RubricVerdict
+from tests.helpers import fake_dispatch_deps, make_app
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -93,7 +93,7 @@ def client(db_path: Path) -> Iterator[TestClient]:
     exercise `/compare` exactly as before the pre-screen kernel existed;
     `tests/test_api_pool.py` and `tests/test_prescreen_engine.py` cover the kernel
     itself."""
-    app = create_app(
+    app = make_app(
         db_path,
         digester=FakeDigester(["Synthetic digest."]),
         verdict_provider=_NeverConfidentVerdictProvider(),
@@ -195,7 +195,7 @@ def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Pat
     )
     conn.close()
     digester = FakeDigester(["unused"])
-    app = create_app(db_path, digester=digester)
+    app = make_app(db_path, digester=digester)
 
     with TestClient(app) as test_client:
         response = test_client.get("/openings/acme--eng/rate")
@@ -685,7 +685,7 @@ def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
         ) -> RubricVerdict:
             return RubricVerdict(outcome="tie", confidence=0.62)
 
-    app = create_app(
+    app = make_app(
         db_path,
         digester=FakeDigester(["Synthetic digest."]),
         verdict_provider=_UncertainTie(),
@@ -1708,7 +1708,7 @@ def _pausable_engine(gate: threading.Event) -> BatchEngine:
     shared_planner = PausablePlanner(gate)
     return BatchEngine(
         planner_factory=lambda: shared_planner,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={"paused query": []}),
             extractor=FakeExtractor([[_assertion("craft_direction", "Strong")]]),
             digester=FakeDigester(["Synthetic digest."]),
@@ -1720,9 +1720,10 @@ def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
     """POST /batch schedules the work in a background task and returns immediately,
     before the slow planner even finishes its first `plan()` call."""
     _seed_live_opening(db_path, "acme--eng")
-    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
     gate = threading.Event()
-    app.state.batch_engine = _pausable_engine(gate)
+    app = make_app(
+        db_path, digester=FakeDigester(["Synthetic digest."]), batch_engine=_pausable_engine(gate)
+    )
 
     with _live_server(app) as base, httpx.Client() as client:
         t0 = time.time()
@@ -1768,9 +1769,10 @@ def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> N
     """Two rapid POST /batch requests only run one batch; the second gets a clear error."""
     _seed_live_opening(db_path, "acme--eng")
     _seed_live_opening(db_path, "widgets--eng")
-    app = create_app(db_path, digester=FakeDigester(["Synthetic digest."]))
     gate = threading.Event()
-    app.state.batch_engine = _pausable_engine(gate)
+    app = make_app(
+        db_path, digester=FakeDigester(["Synthetic digest."]), batch_engine=_pausable_engine(gate)
+    )
 
     with _live_server(app) as base, httpx.Client() as client:
         first = client.post(f"{base}/batch", data={"batch_size": "3"})

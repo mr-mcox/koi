@@ -1,6 +1,7 @@
 """Backtest Jev's routing policy on operator comparisons.
 and can optionally print the individual mismatches for a chosen threshold pair.
 """
+
 # ruff: noqa: I001, E402
 
 from __future__ import annotations
@@ -13,9 +14,10 @@ from collections import Counter
 from dataclasses import dataclass
 from itertools import product
 from typesafe_sdk import TypeSafeClient
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from screen.extract.prompt import rubric_text_for_dimension
+from screen.extract.prompt import RubricText
 from screen.score.loader import load_scoring_config
 from screen.store.repo import comparisons_for_target, get_dimension_digest
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
@@ -84,7 +86,9 @@ def _parse_args() -> argparse.Namespace:
         )
     )
     parser.add_argument("db_path", nargs="?", default="data/live/screen.db")
-    parser.add_argument("--target", action="append", dest="targets", help="dimension slug to evaluate")
+    parser.add_argument(
+        "--target", action="append", dest="targets", help="dimension slug to evaluate"
+    )
     parser.add_argument("--max-workers", type=int, default=10)
     parser.add_argument("--limit-per-target", type=int, default=None)
     parser.add_argument(
@@ -96,13 +100,19 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _load_cases(
-    conn: sqlite3.Connection, targets: list[str], provider: JevVerdictProvider, limit_per_target: int | None
+    conn: sqlite3.Connection,
+    targets: list[str],
+    provider: JevVerdictProvider,
+    limit_per_target: int | None,
+    rubric: RubricText,
 ) -> tuple[list[Case], list[TargetLoadStats]]:
     cases: list[Case] = []
     stats: list[TargetLoadStats] = []
     for target in targets:
-        rubric_text = rubric_text_for_dimension(target)
-        comparisons = [c for c in comparisons_for_target(conn, target) if c.provenance == "operator"]
+        rubric_text = rubric.for_dimension(target)
+        comparisons = [
+            c for c in comparisons_for_target(conn, target) if c.provenance == "operator"
+        ]
         considered = len(comparisons)
         if limit_per_target is not None:
             comparisons = comparisons[:limit_per_target]
@@ -136,7 +146,9 @@ def _load_cases(
     return cases, stats
 
 
-def _evaluate_thresholds(cases: list[Case], tie_threshold: float, winner_threshold: float) -> ThresholdResult:
+def _evaluate_thresholds(
+    cases: list[Case], tie_threshold: float, winner_threshold: float
+) -> ThresholdResult:
     predicted_counts: Counter[str] = Counter()
     actual_counts: Counter[str] = Counter(case.expected for case in cases)
     correct_by_outcome: Counter[str] = Counter()
@@ -201,7 +213,11 @@ def _format_result(result: ThresholdResult) -> str:
 def _print_target_load_stats(stats: list[TargetLoadStats]) -> None:
     print("Loaded comparisons by target")
     for stat in stats:
-        skipped_label = f", skipped_missing={stat.skipped_missing_digests}" if stat.skipped_missing_digests else ""
+        skipped_label = (
+            f", skipped_missing={stat.skipped_missing_digests}"
+            if stat.skipped_missing_digests
+            else ""
+        )
         print(
             f"  {stat.target:18} considered={stat.considered:4d} loaded={stat.loaded:4d}{skipped_label}"
         )
@@ -245,12 +261,16 @@ def main() -> int:
     # Warm the provider/client once so the concurrency below only does I/O, not lazy init.
     _ = provider
 
-    cases, load_stats = _load_cases(conn, targets, provider, args.limit_per_target)
+    cases, load_stats = _load_cases(
+        conn, targets, provider, args.limit_per_target, RubricText.load(os.environ)
+    )
     if not cases:
         print("No operator comparisons found.")
         return 0
 
-    print(f"Evaluated {len(cases)} operator comparisons across {len({case.target for case in cases})} targets")
+    print(
+        f"Evaluated {len(cases)} operator comparisons across {len({case.target for case in cases})} targets"
+    )
     print()
     _print_target_load_stats(load_stats)
 
@@ -272,7 +292,9 @@ def main() -> int:
 
     print("Sweep: asymmetric thresholds")
     for tie_threshold, winner_threshold in product(TIE_THRESHOLDS, WINNER_THRESHOLDS):
-        result = _evaluate_thresholds(cases, tie_threshold=tie_threshold, winner_threshold=winner_threshold)
+        result = _evaluate_thresholds(
+            cases, tie_threshold=tie_threshold, winner_threshold=winner_threshold
+        )
         print(_format_result(result))
 
     return 0

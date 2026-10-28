@@ -37,6 +37,10 @@ branch = true
 source = ["src/screen"]
 data_file = "coverage/.coverage"
 omit = [
+    # Process entry points: load `.env` and build the production app at import time.
+    # `tests/test_wiring.py` covers the assembly they call.
+    "src/screen/__main__.py",
+    "src/screen/api/main.py",
     # Live BAML adapter: calls external LLM service, no unit test coverage by design.
     "src/screen/extract/baml_extractor.py",
     "src/screen/digest/baml_digester.py",

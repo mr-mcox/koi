@@ -7,7 +7,6 @@ via `fastapi.BackgroundTasks` without a Click dependency.
 from __future__ import annotations
 
 import dataclasses
-import os
 import sqlite3
 import time
 from collections.abc import Callable, MutableMapping
@@ -19,21 +18,18 @@ from typing import cast
 import numpy as np
 
 from screen.api.pool import rank_screening_pool
-from screen.browser import BrowserProtocol, TavilyBrowser
-from screen.digest.baml_digester import BAMLDigester
+from screen.browser import BrowserProtocol
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.service import update_digests_for_opening
-from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import (
+    RubricText,
     all_dimension_slugs,
     all_non_scoring_slugs,
-    rubric_text_for_baml,
 )
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
 from screen.intake.research_trace_io import append_line
 from screen.intake.research_trace_replay import TraceReplay, replay_research_trace
-from screen.research.baml_planner import BAMLPlanner
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
@@ -51,12 +47,9 @@ from screen.store.repo import (
 )
 from screen.types import Assertion, Fit, Opening
 
-# The intake pipeline's one dispatch call before an opening ever reaches the batch
-# loop (`identify_research_trace`) has no prior turn budget to resume from and no
-# batch-size cap to inherit; this bounds that single first pass. Every other caller
-# (`resume_opening`) passes its own `turn_budget` derived from the batch's remaining
-# size, so this constant is reached only once per opening, ever.
-_INTAKE_FIRST_PASS_TURN_BUDGET = 5
+# Bounds the single dispatch pass intake runs before an opening reaches the batch loop;
+# batch passes size their own budgets from what remains of the batch.
+INTAKE_FIRST_PASS_TURN_BUDGET = 5
 
 
 class NoSuchOpeningError(RuntimeError):
@@ -74,23 +67,6 @@ class ResumeResult:
 class ResearchTraceMissingError(RuntimeError):
     """Raised when an opening's research trace file is missing or has no
     tavily_extract event with raw_content."""
-
-
-def build_client() -> BrowserProtocol:
-    api_key = os.environ.get("TAVILY_API_KEY", "")
-    return TavilyBrowser(api_key=api_key or "test-stub-key")
-
-
-def build_extractor() -> ExtractorProtocol:
-    return BAMLExtractor()
-
-
-def build_digester() -> DigesterProtocol:
-    return BAMLDigester()
-
-
-def build_planner(config: ScoringConfig | None = None) -> PlannerProtocol:
-    return BAMLPlanner(config=config)
 
 
 def _noop_on_event(_event: object) -> None:
@@ -135,13 +111,13 @@ class RunDispatchDeps:
     """`run_dispatch`'s collaborators, bundled the way `DispatchDeps` bundles
     the dispatch loop's own effect ports — so a new one touches this type
     instead of `run_dispatch`'s signature and every call site that relays it.
-    Each field defaults to the production implementation; tests override
-    only the ones they're faking."""
+    Production instances come from `screen.wiring`."""
 
-    planner: PlannerProtocol = field(default_factory=build_planner)
-    browser: BrowserProtocol = field(default_factory=build_client)
-    extractor: ExtractorProtocol = field(default_factory=build_extractor)
-    digester: DigesterProtocol = field(default_factory=build_digester)
+    planner: PlannerProtocol
+    browser: BrowserProtocol
+    extractor: ExtractorProtocol
+    digester: DigesterProtocol
+    rubric: RubricText
     on_event: Callable[..., None] = field(default=_noop_on_event)
     update_digests: Callable[..., None] = field(default=update_digests_for_opening)
 
@@ -156,9 +132,9 @@ def run_dispatch(
     page_content: str,
     company_name: str,
     opening_title: str,
-    turn_budget: int | None = None,
+    turn_budget: int,
+    deps: RunDispatchDeps,
     resume: TraceReplay | None = None,
-    deps: RunDispatchDeps | None = None,
 ) -> str:
     """Build LoopState from in-memory values and run one dispatch cycle.
     Returns the stop reason. No disk re-read: assertions list comes from the
@@ -168,13 +144,10 @@ def run_dispatch(
 
     `resume` carries the turns/urls/queries already spent on a prior pass
     (from `replay_research_trace`); omitted for a fresh pass, which starts
-    at zero. `deps` carries the collaborators (planner, browser, etc.);
-    omitted fields fall back to the production implementation. `turn_budget`
-    omitted falls back to `_INTAKE_FIRST_PASS_TURN_BUDGET` (or `SCREEN_TURN_BUDGET`) —
-    only the very first, unbatched pass at intake time relies on this; every
-    batch-driven call passes its own block size explicitly.
+    at zero. `turn_budget` is the total turns the trace may reach, prior passes
+    included.
     """
-    rubric = rubric_text_for_baml()
+    rubric = deps.rubric.full()
     scoring_config = load_scoring_config()
     targets = all_dimension_slugs() + all_non_scoring_slugs()
     replay = (
@@ -182,7 +155,6 @@ def run_dispatch(
         if resume is not None
         else TraceReplay(turns_used=0, visited_urls=[], prior_queries=[], target_stalls={})
     )
-    d = deps if deps is not None else RunDispatchDeps()
     state = LoopState(
         opening_id=opening_id,
         company_id=company_id,
@@ -192,11 +164,7 @@ def run_dispatch(
         url=url,
         rubric_text=rubric,
         assertions=assertions,
-        turn_budget=(
-            turn_budget
-            if turn_budget is not None
-            else int(os.environ.get("SCREEN_TURN_BUDGET", _INTAKE_FIRST_PASS_TURN_BUDGET))
-        ),
+        turn_budget=turn_budget,
         turns_used=replay.turns_used,
         visited_urls=replay.visited_urls,
         prior_queries=replay.prior_queries,
@@ -210,19 +178,19 @@ def run_dispatch(
 
     summary = dispatch(
         state,
-        planner=d.planner,
+        planner=deps.planner,
         deps=DispatchDeps(
-            browser=d.browser,
-            extractor=d.extractor,
-            on_event=d.on_event,
+            browser=deps.browser,
+            extractor=deps.extractor,
+            on_event=deps.on_event,
             on_assertions=_persist_assertions,
         ),
         scoring_config=scoring_config,
     )
-    d.update_digests(
+    deps.update_digests(
         conn,
         opening_id=opening_id,
-        digester=d.digester,
+        digester=deps.digester,
         rubric_text=rubric,
         now=datetime.now(UTC),
     )
@@ -235,7 +203,7 @@ def resume_opening(
     opening: Opening,
     turns_requested: int,
     *,
-    deps: RunDispatchDeps | None = None,
+    deps: RunDispatchDeps,
 ) -> ResumeResult:
     """Resume one opening's research from its trace, spending `turns_requested` more
     turns (the caller caps this by the per-target action cap and the remaining batch
@@ -252,9 +220,8 @@ def resume_opening(
         return ResumeResult(turns_spent=0, stopped_reason="no remaining budget")
 
     assertions = assertions_for_opening(conn, opening.id)
-    d = deps if deps is not None else RunDispatchDeps()
     dispatch_deps = dataclasses.replace(
-        d, on_event=lambda event: record_event(research_trace_path, event)
+        deps, on_event=lambda event: record_event(research_trace_path, event)
     )
     stopped_reason = run_dispatch(
         conn,
@@ -505,9 +472,9 @@ def run_batch(
     batch_size: int,
     progress: MutableMapping[str, object] | None = None,
     *,
+    deps: RunDispatchDeps,
     config: ScoringConfig | None = None,
     planner_factory: Callable[[], PlannerProtocol] | None = None,
-    deps: RunDispatchDeps | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
     now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
@@ -536,7 +503,6 @@ def run_batch(
     touched: list[str] = []
     stalled: set[str] = set()
     total_spent = 0
-    batch_deps = deps if deps is not None else RunDispatchDeps()
     _begin_progress(progress, batch_size, now_fn)
     while total_spent < batch_size:
         weights = {
@@ -558,7 +524,7 @@ def run_batch(
             touched=touched,
             progress=progress,
             planner_factory=planner_factory,
-            deps=batch_deps,
+            deps=deps,
         )
         if spent == 0:
             stalled.add(opening_id)
@@ -597,10 +563,11 @@ def eta_text(seconds: float) -> str:
 
 @dataclass
 class BatchEngine:
-    """Seam for the web route: holds the factories so tests can inject fakes."""
+    """Runs a research batch off the request thread. `planner_factory` supplies a fresh
+    planner per draw; `deps_factory` the batch's other collaborators."""
 
-    planner_factory: Callable[[], PlannerProtocol] = field(default=build_planner)
-    deps_factory: Callable[[], RunDispatchDeps] = field(default=RunDispatchDeps)
+    planner_factory: Callable[[], PlannerProtocol]
+    deps_factory: Callable[[], RunDispatchDeps]
 
     def run(
         self,

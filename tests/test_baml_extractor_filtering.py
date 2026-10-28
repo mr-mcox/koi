@@ -43,10 +43,10 @@ class _FakeClassifier:
 
     def __init__(self, by_chunk: dict[str, AssertionClassification]) -> None:
         self._by_chunk = by_chunk
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[tuple[str, str]] = []
 
-    def classify(self, rubric_text: str, chunk: str, target: str) -> AssertionClassification:
-        self.calls.append((rubric_text, chunk, target))
+    def classify(self, chunk: str, target: str) -> AssertionClassification:
+        self.calls.append((chunk, target))
         return self._by_chunk[chunk]
 
 
@@ -62,7 +62,7 @@ def test_confidently_irrelevant_assertion_is_dropped() -> None:
         }
     )
 
-    result = classify_and_filter([irrelevant], "rubric text", classifier)
+    result = classify_and_filter([irrelevant], classifier)
 
     assert result == []
 
@@ -81,7 +81,7 @@ def test_relevant_wrong_discipline_assertion_is_kept_as_poor() -> None:
         }
     )
 
-    result = classify_and_filter([backend_quote], "rubric text", classifier)
+    result = classify_and_filter([backend_quote], classifier)
 
     assert len(result) == 1
     assert result[0].fit == "Poor"
@@ -100,7 +100,7 @@ def test_low_confidence_irrelevant_verdict_is_kept_not_dropped() -> None:
         }
     )
 
-    result = classify_and_filter([ambiguous], "rubric text", classifier)
+    result = classify_and_filter([ambiguous], classifier)
 
     assert len(result) == 1
 
@@ -115,7 +115,7 @@ def test_provenance_is_always_model_proposed_regardless_of_classification() -> N
         }
     )
 
-    result = classify_and_filter([extracted], "rubric text", classifier)
+    result = classify_and_filter([extracted], classifier)
 
     assert result[0].provenance == "model_proposed"
 
@@ -142,7 +142,7 @@ def test_craft_direction_generic_culture_quote_dropped_backend_quote_kept_poor()
         }
     )
 
-    result = classify_and_filter([generic, backend], "rubric text", classifier)
+    result = classify_and_filter([generic, backend], classifier)
 
     assert len(result) == 1
     assert result[0].chunk == "Our platform team runs a Java SOA backend with REST services."

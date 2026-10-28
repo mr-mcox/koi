@@ -1,22 +1,18 @@
 from unittest.mock import MagicMock
 
-import pytest
-
-from screen.intake import baml_identifier
 from screen.intake.baml_identifier import BAMLIdentifier
 from screen.types import IdentificationResult
 
 
-def test_baml_identifier_calls_sync_client_and_coerces(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_baml_identifier_calls_sync_client_and_coerces() -> None:
     """BAMLIdentifier delegates to the generated sync client and returns the canonical type."""
     generated = MagicMock()
     generated.company_name = "Acme Health"
     generated.opening_title = "Staff Platform Engineer"
     generated.opening_notes = "platform ownership, ECS/EKS, Terraform"
     fake_b = MagicMock(IdentifyOpening=MagicMock(return_value=generated))
-    monkeypatch.setattr(baml_identifier, "b", fake_b)
 
-    identifier = BAMLIdentifier()
+    identifier = BAMLIdentifier(client=fake_b)
     result = identifier.identify_opening("page content")
 
     assert isinstance(result, IdentificationResult)

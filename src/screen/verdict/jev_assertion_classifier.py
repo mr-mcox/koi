@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typesafe_sdk import Choice, ChoiceAnswer, TypeSafeClient
 
-from screen.extract.prompt import fit_anchors_for_dimension, rubric_text_for_dimension
+from screen.extract.prompt import RubricText, fit_anchors_for_dimension
 from screen.verdict.classification_protocol import AssertionClassification, AssertionFit
 
 
@@ -42,21 +42,17 @@ class JevAssertionClassifier:
     `state` for Jev to calibrate on.
     """
 
-    def __init__(self, client: TypeSafeClient | None = None) -> None:
+    def __init__(self, rubric: RubricText, client: TypeSafeClient | None = None) -> None:
+        self._rubric = rubric
         self._explicit_client = client
         self._client: TypeSafeClient | None = None
 
-    def classify(
-        self,
-        rubric_text: str,
-        chunk: str,
-        target: str,
-    ) -> AssertionClassification:
+    def classify(self, chunk: str, target: str) -> AssertionClassification:
         if self._client is None:
             self._client = self._explicit_client or TypeSafeClient()
 
         state = {
-            "rubric": rubric_text_for_dimension(target),
+            "rubric": self._rubric.for_dimension(target),
             "chunk": chunk,
             "target": target,
         }

@@ -17,7 +17,7 @@ import re
 import sqlite3
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -30,13 +30,15 @@ from typesafe_sdk import TypeSafeClient
 from screen import recalibration as core
 from screen import recalibration_run as runstate
 from screen.baml_client.sync_client import b as baml
-from screen.extract.prompt import resolve_private, unresolved_rubric_text_for_dimension
+from screen.extract.prompt import (
+    PRIVATE_PLACEHOLDERS,
+    RubricText,
+    unresolved_rubric_text_for_dimension,
+)
 from screen.score.loader import load_scoring_config
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import JevRuling, NoulJudgment
 from screen.verdict.routing import route_verdict
-
-load_dotenv(Path(__file__).parent.parent / ".env")
 
 _RUBRIC_PATH = Path(__file__).parent.parent / "rubric.yaml"
 SONNET_MODEL = "claude-sonnet-5"
@@ -87,7 +89,7 @@ class JevEvaluator:
         self,
         provider: Any,
         config,
-        resolve: Callable[[str], str] = resolve_private,
+        resolve: Callable[[str], str],
     ) -> None:
         self._provider = provider
         self._config = config
@@ -134,12 +136,14 @@ class AnthropicProposer:
         *,
         costs: core.CommitCosts,
         brier_floor: float,
+        private_values: Mapping[str, str],
         context_mode: ContextMode = "sampled",
         client: Any = baml,
         sonnet_effort: SonnetEffort = "medium",
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._clock = clock
+        self._private_values = private_values
         self._costs = costs
         self._brier_floor = brier_floor
         self._context_mode = context_mode
@@ -164,18 +168,17 @@ class AnthropicProposer:
         agree_cases = [c for c in labeled_cases if c.jev_prediction == c.expected]
         structured_rubric_text = self._structure_rubric_text(current_rubric_text)
 
-        from screen.extract.prompt import PRIVATE_PLACEHOLDERS
         private_vals = []
         for name in PRIVATE_PLACEHOLDERS:
             if name in current_rubric_text:
-                val = os.environ.get(name, "(not set in environment)")
+                val = self._private_values.get(name, "(not set in environment)")
                 private_vals.append(f"{name}: {val}")
-        
+
         if private_vals:
             private_values_text = "\n      ".join(private_vals)
         else:
             private_values_text = None
-        
+
         kwargs = {
             "current_rubric_text": structured_rubric_text,
             "current_cases_text": self._build_cases_text(
@@ -223,6 +226,7 @@ class AnthropicProposer:
         raise click.ClickException(
             f"ProposeRubricEdit failed after {attempts} attempts: {last_error}"
         )
+
     @staticmethod
     def _structure_rubric_text(rubric_text: str) -> str:
         """Render the target dimension as the same field names the proposer writes back.
@@ -476,7 +480,9 @@ def recalibrate(
         return
 
     run_dir = state_path.parent if state_path else runstate.default_run_dir(target)
-    evaluator = JevEvaluator(JevVerdictProvider(config, TypeSafeClient()), config)
+    evaluator = JevEvaluator(
+        JevVerdictProvider(config, TypeSafeClient()), config, RubricText.load(os.environ).resolve
+    )
     costs = _commit_costs(config)
 
     if (run_dir / "state.json").exists():
@@ -503,6 +509,7 @@ def recalibrate(
     proposer = AnthropicProposer(
         costs=costs,
         brier_floor=state.brier_noise_floor,
+        private_values=os.environ,
         context_mode=context_mode,
         sonnet_effort=sonnet_effort,
     )
@@ -520,6 +527,7 @@ def recalibrate(
             evaluator=evaluator,
             costs=costs,
             brier_floor=state.brier_noise_floor,
+            private_values=os.environ,
             n_rounds=rounds,
             baseline_train=state.current_train,
             round_offset=state.rounds_completed,
@@ -677,7 +685,7 @@ def _run_compare_mode(
     propose_pairs, held_pairs = core.split_pairs(pairs, seed=seed)
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
     provider = JevVerdictProvider(config, TypeSafeClient())
-    evaluator = JevEvaluator(provider, config)
+    evaluator = JevEvaluator(provider, config, RubricText.load(os.environ).resolve)
     costs = _commit_costs(config)
     rubric_text = unresolved_rubric_text_for_dimension(target)
     t0 = time.monotonic()
@@ -697,6 +705,7 @@ def _run_compare_mode(
         proposer = AnthropicProposer(
             costs=costs,
             brier_floor=brier_floor,
+            private_values=os.environ,
             context_mode=mode,
             sonnet_effort=sonnet_effort,
         )
@@ -709,6 +718,7 @@ def _run_compare_mode(
             evaluator=evaluator,
             costs=costs,
             brier_floor=brier_floor,
+            private_values=os.environ,
             n_rounds=rounds,
             baseline_train=baseline_train,
             on_round_start=lambda round_num: click.echo(
@@ -771,23 +781,25 @@ def _maybe_apply_winner(target: str, state: runstate.RunState, costs: core.Commi
     click.echo("=" * 40)
     click.echo(f"Baseline Score: {_score_line(state.baseline_train.cases, costs)}")
     click.echo("\nTrajectory:")
-    
+
     best_net = costs.net(state.baseline_train.cases)
     best_brier = core.mean_brier(state.baseline_train.cases)
-    
+
     for r in state.rounds:
         status = "✅ ACCEPTED" if r.accepted else "❌ REJECTED"
         train_net = r.train_net or 0.0
         train_brier = r.train_brier or 0.0
-        
+
         # truncate theory for readability in summary
         theory = r.theory or ""
         if len(theory) > 120:
             theory = theory[:117] + "..."
-            
-        click.echo(f"  Round {r.round_num}: {status} (net {train_net:+.2f}, brier {train_brier:.4f})")
+
+        click.echo(
+            f"  Round {r.round_num}: {status} (net {train_net:+.2f}, brier {train_brier:.4f})"
+        )
         click.echo(f"    Theory: {theory}")
-        
+
         if r.accepted:
             best_net = train_net
             best_brier = train_brier
@@ -891,4 +903,5 @@ def apply_candidate(slug: str, candidate_text: str, *, rubric_path: Path | None 
 
 
 if __name__ == "__main__":
+    load_dotenv(Path(__file__).parent.parent / ".env")
     recalibrate()

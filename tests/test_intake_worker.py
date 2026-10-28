@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-import screen.intake.worker as worker_module
 from screen.intake.pipeline import IntakePipelineError
 from screen.intake.worker import process_next_intake_url, run_intake_worker
 from screen.store.db import connect
@@ -23,14 +22,14 @@ from screen.store.repo import enqueue_intake_url, list_intake_queue
 
 def test_process_next_intake_url_returns_none_when_queue_empty(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    assert process_next_intake_url(conn, tmp_path, intake_fn=lambda url: "unused") is None
+    assert process_next_intake_url(conn, lambda url: "unused") is None
 
 
 def test_process_next_intake_url_marks_success_as_done(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
     enqueue_intake_url(conn, "https://example.com/jobs/1")
 
-    item = process_next_intake_url(conn, tmp_path, intake_fn=lambda url: "stopped: done")
+    item = process_next_intake_url(conn, lambda url: "stopped: done")
 
     assert item is not None
     assert item.status == "done"
@@ -44,7 +43,7 @@ def test_process_next_intake_url_marks_failure_and_records_stage(tmp_path: Path)
     def _fail(url: str) -> str:
         raise IntakePipelineError("fetch_url", "simulated transport failure")
 
-    item = process_next_intake_url(conn, tmp_path, intake_fn=_fail)
+    item = process_next_intake_url(conn, _fail)
 
     assert item is not None
     assert item.status == "failed"
@@ -65,7 +64,7 @@ def test_process_next_intake_url_catches_any_exception_not_just_pipeline_error(
     def _fail(url: str) -> str:
         raise ValueError("unexpected shape from a later stage")
 
-    item = process_next_intake_url(conn, tmp_path, intake_fn=_fail)
+    item = process_next_intake_url(conn, _fail)
 
     assert item is not None
     assert item.status == "failed"
@@ -84,8 +83,8 @@ def test_process_next_intake_url_continues_after_a_failure(tmp_path: Path) -> No
             raise IntakePipelineError("fetch_url", "simulated failure")
         return "stopped: done"
 
-    first = process_next_intake_url(conn, tmp_path, intake_fn=_intake_fn)
-    second = process_next_intake_url(conn, tmp_path, intake_fn=_intake_fn)
+    first = process_next_intake_url(conn, _intake_fn)
+    second = process_next_intake_url(conn, _intake_fn)
 
     assert first is not None and first.status == "failed"
     assert second is not None and second.status == "done"
@@ -104,38 +103,20 @@ def test_process_next_intake_url_picks_up_a_row_enqueued_mid_processing(
         enqueue_intake_url(conn, "https://example.com/jobs/2")
         return "stopped: done"
 
-    first = process_next_intake_url(conn, tmp_path, intake_fn=_intake_fn)
-    second = process_next_intake_url(conn, tmp_path, intake_fn=lambda url: "stopped: done")
+    first = process_next_intake_url(conn, _intake_fn)
+    second = process_next_intake_url(conn, lambda url: "stopped: done")
 
     assert first is not None and first.url == "https://example.com/jobs/1"
     assert second is not None and second.url == "https://example.com/jobs/2"
     assert {row.status for row in list_intake_queue(conn)} == {"done"}
 
 
-def test_process_next_intake_url_uses_intake_url_by_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With no `intake_fn` override, the real pipeline entry point is called."""
-    calls: list[str] = []
-    monkeypatch.setattr(worker_module, "intake_url", lambda url: calls.append(url) or "done")
-    conn = connect(tmp_path / "screen.db")
-    enqueue_intake_url(conn, "https://example.com/jobs/1")
-
-    process_next_intake_url(conn, tmp_path)
-
-    assert calls == ["https://example.com/jobs/1"]
-
-
-async def test_run_intake_worker_drains_then_polls_when_idle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_run_intake_worker_drains_then_polls_when_idle(tmp_path: Path) -> None:
     """The loop drains every pending row without sleeping, then sleeps once the
     queue is empty — both branches of the idle check exercised in one run."""
     conn = connect(tmp_path / "screen.db")
     enqueue_intake_url(conn, "https://example.com/jobs/1")
     enqueue_intake_url(conn, "https://example.com/jobs/2")
-    monkeypatch.setattr(worker_module, "intake_url", lambda url: "stopped: done")
-
     sleep_calls = 0
 
     async def _fake_sleep(seconds: float) -> None:
@@ -143,18 +124,14 @@ async def test_run_intake_worker_drains_then_polls_when_idle(
         sleep_calls += 1
         raise asyncio.CancelledError
 
-    monkeypatch.setattr(worker_module.asyncio, "sleep", _fake_sleep)
-
     with pytest.raises(asyncio.CancelledError):
-        await run_intake_worker(conn, tmp_path)
+        await run_intake_worker(conn, lambda url: "stopped: done", sleep=_fake_sleep)
 
     assert sleep_calls == 1
     assert {row.status for row in list_intake_queue(conn)} == {"done"}
 
 
-async def test_run_intake_worker_does_not_block_the_event_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_run_intake_worker_does_not_block_the_event_loop(tmp_path: Path) -> None:
     """A slow, blocking `intake_fn` (real network + DB I/O, not an awaitable) must
     not freeze the event loop — other coroutines (e.g. FastAPI serving a
     concurrent request) need to keep making progress while one URL is in
@@ -169,8 +146,6 @@ async def test_run_intake_worker_does_not_block_the_event_loop(
         time.sleep(block_seconds)
         return "stopped: done"
 
-    monkeypatch.setattr(worker_module, "intake_url", _slow_intake_fn)
-
     tick_times: list[float] = []
 
     async def _ticker() -> None:
@@ -181,7 +156,7 @@ async def test_run_intake_worker_does_not_block_the_event_loop(
     loop = asyncio.get_running_loop()
     start = loop.time()
     ticker_task = asyncio.create_task(_ticker())
-    worker_task = asyncio.create_task(run_intake_worker(conn, tmp_path))
+    worker_task = asyncio.create_task(run_intake_worker(conn, _slow_intake_fn))
     await asyncio.sleep(block_seconds * 1.5)  # outlasts the blocking call
     worker_task.cancel()
     ticker_task.cancel()

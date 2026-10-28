@@ -7,7 +7,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
 
 from screen.digest.fakes import FakeDigester
@@ -20,7 +19,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Company, Opening
-from tests.helpers import canned_assertion, env_for
+from tests.helpers import canned_assertion, fake_cli_deps
 
 
 def _seed_opening(db_path: Path, opening_id: str, company_id: str) -> None:
@@ -43,16 +42,16 @@ def _seed_opening(db_path: Path, opening_id: str, company_id: str) -> None:
     conn.close()
 
 
-def test_backfill_digests_warms_every_opening(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_digests_warms_every_opening(tmp_path: Path) -> None:
     """Running `backfill-digests` warms the cache for every opening in the DB, not just one."""
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
     _seed_opening(tmp_path / "screen.db", "widgets--eng", "widgets")
-    monkeypatch.setattr(cli_module, "_build_digester", lambda: FakeDigester(["digest"]))
 
     result = CliRunner().invoke(
-        cli_module.backfill_digests, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_digests,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", digester=FakeDigester(["digest"])),
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0, f"CLI failed: {result.output}"
@@ -61,15 +60,15 @@ def test_backfill_digests_warms_every_opening(
     assert get_dimension_digest(conn, "widgets--eng", "craft_direction") is not None
 
 
-def test_backfill_digests_reports_opening_count(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_backfill_digests_reports_opening_count(tmp_path: Path) -> None:
     """CLI output names how many openings were warmed, for operator visibility."""
     _seed_opening(tmp_path / "screen.db", "acme--eng", "acme")
-    monkeypatch.setattr(cli_module, "_build_digester", lambda: FakeDigester(["digest"]))
 
     result = CliRunner().invoke(
-        cli_module.backfill_digests, [], env=env_for(tmp_path), catch_exceptions=False
+        cli_module.backfill_digests,
+        [],
+        obj=fake_cli_deps(tmp_path / "screen.db", digester=FakeDigester(["digest"])),
+        catch_exceptions=False,
     )
 
     assert "1 opening" in result.output

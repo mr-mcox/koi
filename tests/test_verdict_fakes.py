@@ -28,15 +28,15 @@ def test_fake_classifier_returns_results_in_order() -> None:
     c1 = _classification(fit="Poor")
     c2 = _classification(fit="Mixed")
     fake = FakeAssertionClassifier([c1, c2])
-    assert fake.classify("rubric", "chunk1", "craft_direction") == c1
-    assert fake.classify("rubric", "chunk2", "craft_direction") == c2
+    assert fake.classify("chunk1", "craft_direction") == c1
+    assert fake.classify("chunk2", "craft_direction") == c2
 
 
 def test_fake_classifier_repeats_last_when_exhausted() -> None:
     c = _classification(fit="Strong")
     fake = FakeAssertionClassifier([c])
-    fake.classify("rubric", "chunk", "craft_direction")
-    assert fake.classify("rubric", "chunk", "craft_direction") == c
+    fake.classify("chunk", "craft_direction")
+    assert fake.classify("chunk", "craft_direction") == c
 
 
 def test_fake_classifier_satisfies_protocol() -> None:

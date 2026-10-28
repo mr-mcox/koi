@@ -11,7 +11,6 @@ from pathlib import Path
 from screen.digest.fakes import FakeDigester
 from screen.intake.pipeline import run_dispatch
 from screen.research.actions import StopAction
-from screen.research.batch import RunDispatchDeps
 from screen.research.fakes import FakePlanner
 from screen.store.db import connect
 from screen.store.repo import (
@@ -21,7 +20,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Company, Opening
-from tests.helpers import canned_assertion
+from tests.helpers import canned_assertion, fake_dispatch_deps
 
 
 def _seed_opening(conn: sqlite3.Connection) -> None:
@@ -57,7 +56,8 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
         page_content="content",
         company_name="Example Co",
         opening_title="Eng",
-        deps=RunDispatchDeps(planner=planner, digester=digester),
+        turn_budget=5,
+        deps=fake_dispatch_deps(planner=planner, digester=digester),
     )
 
     assert digester.calls == 2

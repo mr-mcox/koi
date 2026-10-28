@@ -4,30 +4,28 @@
 and how to open a connection with foreign keys enabled and migrations applied.
 `repo.py` remains a flat module of SQL operations that accept a `sqlite3.Connection`;
 this keeps the two concerns separate.
-"""
 
-from __future__ import annotations
+`create_app` takes every external collaborator as an `AppDeps`; the production app is
+assembled in `screen.wiring` and served from `screen.api.main`.
+"""
 
 import asyncio
 import contextlib
 import logging
 import sqlite3
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI
 
 from screen.api.pool import CompareCache, CompareProgress, CompareState
 from screen.api.routes import router as api_router
-from screen.digest.baml_digester import BAMLDigester
 from screen.digest.protocol import DigesterProtocol
-from screen.env import load_env
+from screen.extract.prompt import RubricText
 from screen.intake.worker import run_intake_worker
-from screen.paths import data_dir
 from screen.research.batch import BatchEngine
-from screen.score.loader import load_scoring_config
 from screen.store.db import connect as db_connect
-from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import VerdictProvider
 from screen.web.routes import router as web_router
 from screen.web.routes import static_files
@@ -40,17 +38,20 @@ class Database:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
 
-    @property
-    def data_root(self) -> Path:
-        """Research traces and other per-data-root files live next to the DB."""
-        return self.db_path.parent
-
     def connect(self) -> sqlite3.Connection:
         return db_connect(self.db_path)
 
-    @classmethod
-    def default(cls) -> Database:
-        return cls(data_dir() / "screen.db")
+
+@dataclass(frozen=True)
+class AppDeps:
+    """The app's external collaborators. `intake_fn` runs the intake pipeline for one
+    queued URL; the lifespan worker calls it for every row."""
+
+    rubric: RubricText
+    digester: DigesterProtocol
+    verdict_provider: VerdictProvider
+    batch_engine: BatchEngine
+    intake_fn: Callable[[str], str]
 
 
 def _enable_compare_instrumentation() -> None:
@@ -67,20 +68,9 @@ def _enable_compare_instrumentation() -> None:
         logger.propagate = False
 
 
-def create_app(
-    db_path: Path | None = None,
-    digester: DigesterProtocol | None = None,
-    verdict_provider: VerdictProvider | None = None,
-) -> FastAPI:
-    """Application factory. Tests pass a temp path; production uses the default.
-    `app.state.database` is what `screen.api.deps.get_db` reads per request.
-    `app.state.digester` is the `DigesterProtocol` the web rating view uses for
-    dimension digests; tests inject a fake, production gets the BAML adapter.
-    `app.state.verdict_provider` is the comparison pre-screen's confidence gate; tests
-    inject a fake, production gets the live Jev adapter — without this seam, every test
-    hitting `/compare` would call the live (paid, networked) Jev API."""
-    load_env()
-    database = Database(db_path) if db_path else Database.default()
+def create_app(database: Database, deps: AppDeps) -> FastAPI:
+    """Application factory. `app.state.database` is what `screen.api.deps.get_db` reads
+    per request; `app.state.deps` is what `screen.api.deps.app_deps` reads."""
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -90,7 +80,7 @@ def create_app(
         research batch's per-submission `BackgroundTasks` job."""
         conn = database.connect()
         worker_conn = database.connect()
-        worker_task = asyncio.create_task(run_intake_worker(worker_conn, database.data_root))
+        worker_task = asyncio.create_task(run_intake_worker(worker_conn, deps.intake_fn))
         conn.close()
         yield
         worker_task.cancel()
@@ -100,8 +90,7 @@ def create_app(
 
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database
-    app.state.digester = digester if digester is not None else BAMLDigester()
-    app.state.batch_engine = BatchEngine()
+    app.state.deps = deps
     app.state.batch_status = {
         "running": False,
         "total": 0,
@@ -114,11 +103,6 @@ def create_app(
     app.state.compare_cache = CompareCache()
     app.state.speculation_in_flight_for = None
     _enable_compare_instrumentation()
-    app.state.verdict_provider = (
-        verdict_provider
-        if verdict_provider is not None
-        else JevVerdictProvider(load_scoring_config())
-    )
     app.include_router(web_router)
     app.include_router(api_router)
     app.mount("/static", static_files, name="static")
@@ -128,7 +112,3 @@ def create_app(
         return {"status": "ok"}
 
     return app
-
-
-# Production module-level app for `uvicorn screen.api.app:app`.
-app = create_app()

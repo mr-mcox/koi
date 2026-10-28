@@ -20,7 +20,7 @@ class FakeAssertionClassifier:
             raise ValueError("FakeAssertionClassifier requires at least one result")
         self._index = 0
 
-    def classify(self, rubric_text: str, chunk: str, target: str) -> AssertionClassification:
+    def classify(self, chunk: str, target: str) -> AssertionClassification:
         if self._index < len(self._results):
             result = self._results[self._index]
             self._index += 1

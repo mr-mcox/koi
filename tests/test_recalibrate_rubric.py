@@ -16,9 +16,9 @@ import pytest
 import yaml
 
 from screen import recalibration as rr
-from screen.extract.prompt import rubric_text_for_dimension
 from screen.verdict.protocol import JevRuling, NoulJudgment
 from scripts import recalibrate_rubric as cli
+from tests.helpers import synthetic_rubric
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -215,10 +215,10 @@ def test_render_candidate_text_of_an_empty_proposal_reproduces_the_baseline() ->
 
 
 def test_render_candidate_text_round_trips_the_live_rubric_text() -> None:
-    """Guards the live shape: `rubric_text_for_dimension` leads with a blank line, and
+    """Guards the live shape: `RubricText.for_dimension` leads with a blank line, and
     an unedited proposal must reproduce it exactly or every candidate pays a formatting
     penalty Jev reads as a rubric change."""
-    live = rubric_text_for_dimension("location")
+    live = synthetic_rubric().for_dimension("location")
     proposal = rr.RubricProposal(theory="no edit", expected_effect="nothing")
     assert rr.render_candidate_text(live, proposal) == live
 
@@ -235,7 +235,7 @@ def test_structure_rubric_text_uses_the_proposers_own_field_names() -> None:
         "fit_anchor_strong",
         "look_for",
     }
-    live = rr.parse_rubric_fields(rubric_text_for_dimension("location"))
+    live = rr.parse_rubric_fields(synthetic_rubric().for_dimension("location"))
     assert payload["fit_anchor_mixed"] == live["fit_anchor_mixed"]
     assert not payload["fit_anchor_mixed"].startswith("Mixed:")
 
@@ -244,7 +244,7 @@ def test_structure_rubric_text_accepts_a_leading_blank_line() -> None:
     payload = yaml.safe_load(cli.AnthropicProposer._structure_rubric_text("\n" + _BASELINE_RUBRIC))
     assert (
         payload["fit_anchor_mixed"]
-        == rr.parse_rubric_fields(rubric_text_for_dimension("location"))["fit_anchor_mixed"]
+        == rr.parse_rubric_fields(synthetic_rubric().for_dimension("location"))["fit_anchor_mixed"]
     )
 
 
@@ -284,6 +284,7 @@ def test_anthropic_proposer_shows_full_digests_and_maps_structured_output() -> N
         costs=rr.CommitCosts.from_thresholds(
             winner_commit_threshold=0.75, tie_commit_threshold=0.85
         ),
+        private_values={},
         brier_floor=0.0123,
         context_mode="sampled",
         client=fake_client,
@@ -350,6 +351,7 @@ def test_anthropic_proposer_retries_empty_text_responses(
     ticks = iter([0.0, 312.0, 400.0, 401.0])
     proposer = cli.AnthropicProposer(
         costs=_COSTS,
+        private_values={},
         brier_floor=0.0,
         context_mode="sampled",
         client=FlakyClient(),
@@ -523,6 +525,7 @@ def test_run_rounds_records_history_and_accepts_on_net() -> None:
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=2,
         baseline_train=baseline_train,
     )
@@ -654,6 +657,7 @@ def test_run_rounds_numbers_rounds_after_a_resume() -> None:
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=2,
         baseline_train=baseline,
         round_offset=3,
@@ -686,6 +690,7 @@ Look for: lots of words that make the baseline long.
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=1,
         on_round=lambda round_result: seen.append(round_result.round_num),
     )
@@ -851,9 +856,12 @@ def test_apply_candidate_writes_every_field_back_to_the_rubric(tmp_path) -> None
     assert dim["look_for"] == "new look for"
 
 
-def test_privacy_gate_rejects_candidate_with_salary_figure() -> None:
-    with pytest.raises(rr.PrivacyViolationError, match="230"):
-        rr.validate_candidate("Anchors: below $230,000 is Poor; above is Strong.")
+def test_privacy_gate_rejects_candidate_carrying_the_configured_baseline() -> None:
+    with pytest.raises(rr.PrivacyViolationError, match="SCREEN_COMPENSATION_BASELINE"):
+        rr.validate_candidate(
+            "Anchors: below $1,234,567 is Poor; above is Strong.",
+            {"SCREEN_COMPENSATION_BASELINE": "$1,234,567"},
+        )
 
 
 def test_candidate_that_drops_a_placeholder_is_rejected() -> None:
@@ -873,16 +881,17 @@ def test_candidate_that_keeps_its_placeholder_is_accepted() -> None:
 
 
 def test_privacy_gate_accepts_clean_candidate() -> None:
-    rr.validate_candidate("""fit_anchors:
+    rr.validate_candidate(
+        """fit_anchors:
   Poor: Relocation required.
   Mixed: Remote offered but team is centrally based.
   Strong: Distributed-first company.
-""")
+""",
+        {"SCREEN_COMPENSATION_BASELINE": "$1,234,567"},
+    )
 
 
-def test_proposer_injects_private_values_when_present_in_rubric(monkeypatch) -> None:
-    monkeypatch.setenv("SCREEN_COMPENSATION_BASELINE", "$125k")
-
+def test_proposer_injects_private_values_when_present_in_rubric() -> None:
     class SpyClient:
         def __init__(self):
             self.last_kwargs = {}
@@ -908,6 +917,7 @@ def test_proposer_injects_private_values_when_present_in_rubric(monkeypatch) -> 
         costs=rr.CommitCosts.from_thresholds(
             winner_commit_threshold=0.75, tie_commit_threshold=0.85
         ),
+        private_values={"SCREEN_COMPENSATION_BASELINE": "$125k"},
         brier_floor=0.01,
         context_mode="sampled",
         client=spy,

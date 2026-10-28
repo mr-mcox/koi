@@ -18,20 +18,16 @@ from pathlib import Path
 
 from screen.browser import BrowserError, BrowserProtocol
 from screen.extract.extract import extract_assertions
-from screen.extract.prompt import rubric_text_for_baml
 from screen.extract.protocol import ExtractorProtocol
-from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.company_id import derive_company_id
 from screen.intake.events import ResearchTraceEvent
 from screen.intake.identify import IdentifierProtocol, identify_opening
 from screen.intake.opening_id import derive_opening_id
 from screen.intake.research_trace_id import derive_research_trace_id
-from screen.paths import data_dir as _data_dir
 from screen.research.batch import (
+    INTAKE_FIRST_PASS_TURN_BUDGET,
     ResearchTraceMissingError,
     RunDispatchDeps,
-    build_client,
-    build_extractor,
     read_page_content,
     record_event,
     research_trace_path_for,
@@ -64,10 +60,6 @@ class IntakePipelineError(RuntimeError):
 
 def db_path_for(data_dir: Path) -> Path:
     return data_dir / "screen.db"
-
-
-def build_identifier() -> IdentifierProtocol:
-    return BAMLIdentifier()
 
 
 def persist_company_and_opening(
@@ -135,14 +127,13 @@ def extract_and_persist_assertions(
     opening_id: str,
     chunk: str,
     *,
-    extractor: ExtractorProtocol | None = None,
+    extractor: ExtractorProtocol,
+    rubric_text: str,
 ) -> list[Assertion]:
     """Extract assertions from `chunk`, append to the DB, return existing + new
     for the opening — the caller builds `LoopState` from this without a re-read."""
     existing = assertions_for_opening(conn, opening_id)
-    rubric = rubric_text_for_baml()
-    xt = extractor if extractor is not None else build_extractor()
-    new_assertions = extract_assertions(chunk, rubric, existing, extractor=xt)
+    new_assertions = extract_assertions(chunk, rubric_text, existing, extractor=extractor)
     if new_assertions:
         append_assertions(conn, new_assertions, opening_id=opening_id)
     return existing + new_assertions
@@ -152,9 +143,10 @@ def identify_research_trace(
     research_trace_path: Path,
     data_dir: Path,
     *,
-    identifier_factory: Callable[[], IdentifierProtocol] = build_identifier,
-    extractor_factory: Callable[[], ExtractorProtocol] = build_extractor,
-    deps_factory: Callable[[], RunDispatchDeps] = RunDispatchDeps,
+    identifier_factory: Callable[[], IdentifierProtocol],
+    extractor_factory: Callable[[], ExtractorProtocol],
+    deps_factory: Callable[[], RunDispatchDeps],
+    turn_budget: int = INTAKE_FIRST_PASS_TURN_BUDGET,
 ) -> str:
     """Run the research trace -> Company + Opening + Assertions step. Returns
     the dispatch stop reason (the CLI echoes it; the queue worker ignores it).
@@ -180,11 +172,16 @@ def identify_research_trace(
         research_trace_id,
         datetime.now(UTC),
     )
+    base_deps = deps_factory()
     all_assertions = extract_and_persist_assertions(
-        conn, opening.id, page_content, extractor=extractor_factory()
+        conn,
+        opening.id,
+        page_content,
+        extractor=extractor_factory(),
+        rubric_text=base_deps.rubric.full(),
     )
     deps = dataclasses.replace(
-        deps_factory(),
+        base_deps,
         extractor=extractor_factory(),
         on_event=lambda event: record_event(research_trace_path, event),
     )
@@ -197,40 +194,32 @@ def identify_research_trace(
         page_content=page_content,
         company_name=identification.company_name,
         opening_title=identification.opening_title,
+        turn_budget=turn_budget,
         deps=deps,
     )
 
 
 def intake_url(
     url: str,
-    data_dir: Path | None = None,
+    data_dir: Path,
     *,
-    client_factory: Callable[[], BrowserProtocol] = build_client,
-    identifier_factory: Callable[[], IdentifierProtocol] = build_identifier,
-    extractor_factory: Callable[[], ExtractorProtocol] = build_extractor,
-    deps_factory: Callable[[], RunDispatchDeps] | None = None,
+    client_factory: Callable[[], BrowserProtocol],
+    identifier_factory: Callable[[], IdentifierProtocol],
+    extractor_factory: Callable[[], ExtractorProtocol],
+    deps_factory: Callable[[], RunDispatchDeps],
+    turn_budget: int = INTAKE_FIRST_PASS_TURN_BUDGET,
 ) -> str:
     """Run the full pipeline for one URL: fetch, identify, persist, dispatch.
     Returns the dispatch stop reason. Raises `IntakePipelineError` on failure
     at any stage — the caller (web route or queue worker) decides what to do
     with a failed URL.
-
-    `deps_factory` defaults to a browser matching `client_factory` (the
-    dispatch loop's own fetches reuse the same client the intake fetch used,
-    unless a caller overrides it).
     """
-    data_root = data_dir if data_dir is not None else _data_dir()
-    client = client_factory()
-    research_trace_path = fetch_url(url, client, data_root)
-    df = (
-        deps_factory
-        if deps_factory is not None
-        else lambda: RunDispatchDeps(browser=client_factory())
-    )
+    research_trace_path = fetch_url(url, client_factory(), data_dir)
     return identify_research_trace(
         research_trace_path,
-        data_root,
+        data_dir,
         identifier_factory=identifier_factory,
         extractor_factory=extractor_factory,
-        deps_factory=df,
+        deps_factory=deps_factory,
+        turn_budget=turn_budget,
     )
