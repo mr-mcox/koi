@@ -1,16 +1,18 @@
-"""FastAPI dependency for a per-request SQLite connection.
+"""Request-scoped accessors for what `create_app` put on `app.state`.
 
-`get_db` reads the `Database` instance off `request.app.state` rather than
-being rebuilt per app instance — this keeps it a fixed function reference,
-so route signatures can use a plain module-level `Annotated` type alias.
+Both read `request.app.state` rather than being rebuilt per app instance — this keeps
+them fixed function references, so route signatures can use a plain module-level
+`Annotated` type alias.
 """
-
-from __future__ import annotations
 
 import sqlite3
 from collections.abc import Generator
+from typing import TYPE_CHECKING, cast
 
 from fastapi import Request
+
+if TYPE_CHECKING:
+    from screen.api.app import AppDeps
 
 
 def get_db(request: Request) -> Generator[sqlite3.Connection]:
@@ -21,3 +23,8 @@ def get_db(request: Request) -> Generator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def app_deps(request: Request) -> AppDeps:
+    """The collaborators this app was built with."""
+    return cast("AppDeps", request.app.state.deps)

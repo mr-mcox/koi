@@ -104,7 +104,7 @@ cp .env.example .env   # then fill in the keys
 Screen a posting by pasting the URL into the intake page once the server is running:
 
 ```bash
-uv run uvicorn screen.api.app:app --port 8420
+uv run uvicorn screen.api.main:app --port 8420
 ```
 
 Then open http://localhost:8420/intake-queue and submit a job posting URL.

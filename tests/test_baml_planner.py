@@ -8,6 +8,8 @@ the criterion "produces correct strings for known inputs" is mechanically
 verified.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from screen.browser import SearchHit
@@ -287,9 +289,7 @@ class _FakeBamlStop:
     reason = "Mock stop."
 
 
-def test_baml_planner_plan_uses_state_primary_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_baml_planner_plan_uses_state_primary_target() -> None:
     """The planner passes the primary_target already set on LoopState to the
     generated BAML client without recomputing it, using only the lean set of
     fields DecidePlan actually needs."""
@@ -299,9 +299,7 @@ def test_baml_planner_plan_uses_state_primary_target(
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
-
-    planner = BAMLPlanner()
+    planner = BAMLPlanner(client=SimpleNamespace(DecidePlan=fake_decide_plan))
     state = _state(primary_target="compensation", prior_queries=["Acme Corp salary"])
     actions = planner.plan(state)
     assert len(actions) == 1
@@ -316,9 +314,7 @@ def test_baml_planner_plan_uses_state_primary_target(
     }
 
 
-def test_baml_planner_plan_computes_primary_target_from_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_baml_planner_plan_computes_primary_target_from_config() -> None:
     """Without a primary_target on state, the planner uses the config to
     select the top-ranked target before calling DecidePlan."""
     calls: list[dict[str, object]] = []
@@ -327,9 +323,7 @@ def test_baml_planner_plan_computes_primary_target_from_config(
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
-
-    planner = BAMLPlanner(config=_config())
+    planner = BAMLPlanner(config=_config(), client=SimpleNamespace(DecidePlan=fake_decide_plan))
     state = _state(
         assertions=[_assertion("craft_direction")],
         targets=["craft_direction", "compensation"],
@@ -340,9 +334,7 @@ def test_baml_planner_plan_computes_primary_target_from_config(
     assert calls[0]["primary_target"] == "compensation"
 
 
-def test_baml_planner_plan_fallback_to_craft_direction(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_baml_planner_plan_fallback_to_craft_direction() -> None:
     """If neither state nor the planner carries a config, the planner falls
     back to a hard-coded 'craft_direction' primary target so DecidePlan always has a
     value."""
@@ -352,9 +344,7 @@ def test_baml_planner_plan_fallback_to_craft_direction(
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    monkeypatch.setattr("screen.research.baml_planner.b.DecidePlan", fake_decide_plan)
-
-    planner = BAMLPlanner()
+    planner = BAMLPlanner(client=SimpleNamespace(DecidePlan=fake_decide_plan))
     state = _state(primary_target=None)
     planner.plan(state)
 

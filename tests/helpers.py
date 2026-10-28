@@ -1,32 +1,34 @@
-"""Shared test fixtures and helpers used by both `tests/cli/` and `tests/intake/`.
+"""Shared builders for fakes and fixtures. Every collaborator a test doesn't name gets
+an inert fake here, so no test can reach a live adapter by omission."""
 
-Formerly lived in `tests/cli/helpers.py`; moved here when the CLI intake
-command was retired and its tests became direct pipeline tests.
-"""
-
-from __future__ import annotations
-
+import dataclasses
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from fastapi import FastAPI
+
+from screen.api.app import AppDeps, Database, create_app
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
+from screen.extract.prompt import RubricText
+from screen.intake.cli import CliDeps
 from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
-from screen.research.fakes import FakePlanner
+from screen.research.batch import BatchEngine, RunDispatchDeps
+from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.types import Assertion, Citation, IdentificationResult
+from screen.verdict.classification_protocol import AssertionClassification
+from screen.verdict.fakes import FakeAssertionClassifier
+from screen.verdict.protocol import FewShotExample, RubricVerdict
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# Synthetic stand-ins for the private values `rubric.yaml` references.
+SYNTHETIC_PRIVATE = {"SCREEN_COMPENSATION_BASELINE": "$100,000"}
 
 
-def env_for(tmp_path: Path) -> dict[str, str]:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(REPO_ROOT / "src")
-    env["SCREEN_DATA_DIR"] = str(tmp_path)
-    env["TAVILY_API_KEY"] = "test-stub-key"
-    return env
+def synthetic_rubric() -> RubricText:
+    return RubricText.load(SYNTHETIC_PRIVATE)
 
 
 def seed_research_trace(research_trace_path: Path, raw_content: str, url: str) -> None:
@@ -83,3 +85,62 @@ def fake_planner(reason: str = "All rubric dimensions addressed.") -> FakePlanne
 
 def fake_digester() -> FakeDigester:
     return FakeDigester(["Synthetic digest."])
+
+
+def fake_dispatch_deps(**overrides: Any) -> RunDispatchDeps:
+    deps = RunDispatchDeps(
+        planner=fake_planner(),
+        browser=FakeBrowser(),
+        extractor=fake_extractor(),
+        digester=fake_digester(),
+        rubric=synthetic_rubric(),
+    )
+    return dataclasses.replace(deps, **overrides)
+
+
+class _UnconsultedVerdictProvider:
+    """Fails the test if the compare pre-screen ever consults Jev."""
+
+    def rule(
+        self,
+        rubric_text: str,
+        digest_a: str,
+        digest_b: str,
+        few_shot_examples: list[FewShotExample],
+    ) -> RubricVerdict:
+        raise AssertionError("verdict provider consulted without a fake configured")
+
+
+def _intake_not_configured(url: str) -> str:
+    raise AssertionError(f"intake ran for {url} without a fake intake_fn")
+
+
+def fake_app_deps(**overrides: Any) -> AppDeps:
+    deps = AppDeps(
+        rubric=synthetic_rubric(),
+        digester=fake_digester(),
+        verdict_provider=_UnconsultedVerdictProvider(),
+        batch_engine=BatchEngine(planner_factory=fake_planner, deps_factory=fake_dispatch_deps),
+        intake_fn=_intake_not_configured,
+    )
+    return dataclasses.replace(deps, **overrides)
+
+
+def fake_cli_deps(db_path: Path, **overrides: Any) -> CliDeps:
+    deps = CliDeps(
+        db_path=db_path,
+        rubric=synthetic_rubric(),
+        digester=fake_digester(),
+        classifier=FakeAssertionClassifier(
+            [
+                AssertionClassification(
+                    fit="Strong", confidence=0.9, is_relevant=True, relevance_confidence=0.9
+                )
+            ]
+        ),
+    )
+    return dataclasses.replace(deps, **overrides)
+
+
+def make_app(db_path: Path, **overrides: Any) -> FastAPI:
+    return create_app(Database(db_path), fake_app_deps(**overrides))

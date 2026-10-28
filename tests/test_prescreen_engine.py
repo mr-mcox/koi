@@ -28,6 +28,7 @@ from screen.store.repo import (
 )
 from screen.types import Assertion, Citation, Company, Comparison, Opening
 from screen.verdict.protocol import FewShotExample, RubricVerdict
+from tests.helpers import synthetic_rubric
 
 _NOW = datetime(2026, 9, 17, tzinfo=UTC)
 _CITATION = Citation(
@@ -138,6 +139,7 @@ def test_run_prescreen_persists_confident_verdicts_and_reports_progress(
         conn,
         config,
         verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
         progress=progress,
     )
 
@@ -169,6 +171,7 @@ def test_run_prescreen_reports_nothing_when_jev_is_never_confident(tmp_path: Pat
         conn,
         config,
         verdict_provider=_FixedVerdict("tie", 0.1),
+        rubric=synthetic_rubric(),
         progress=progress,
     )
 
@@ -224,7 +227,13 @@ def test_run_prescreen_reports_no_jev_read_without_a_cached_digest(tmp_path: Pat
         ) -> RubricVerdict:
             raise AssertionError("verdict provider should not be called without cached digests")
 
-    run_prescreen(conn, config, verdict_provider=_ExplodingVerdict(), progress=progress)
+    run_prescreen(
+        conn,
+        config,
+        verdict_provider=_ExplodingVerdict(),
+        rubric=synthetic_rubric(),
+        progress=progress,
+    )
 
     assert progress.final_suggestion is not None
     assert progress.final_suggestion.target == "location"
@@ -252,7 +261,13 @@ def test_run_prescreen_completes_with_no_suggestion_when_pool_cannot_pair(
     config = load_scoring_config()
     progress = CompareProgress()
 
-    run_prescreen(conn, config, verdict_provider=_FixedVerdict("tie", 1.0), progress=progress)
+    run_prescreen(
+        conn,
+        config,
+        verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
+        progress=progress,
+    )
 
     assert progress.completed is True
     assert progress.ruled == []
@@ -338,6 +353,7 @@ def test_run_prescreen_sources_few_shot_examples_from_operator_rulings(tmp_path:
         conn,
         config,
         verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
         progress=progress,
         max_iterations=1,
     )
@@ -374,6 +390,7 @@ def test_run_prescreen_drops_a_ruling_when_the_operator_wrote_during_the_jev_cal
         conn,
         config,
         verdict_provider=_VerdictThatRacesTheOperator(),
+        rubric=synthetic_rubric(),
         compare_state=compare_state,
         progress=progress,
         max_iterations=1,
@@ -403,6 +420,7 @@ def test_speculative_prescreen_answers_what_follows_the_on_screen_pair(
         conn,
         config,
         verdict_provider=_FixedVerdict("tie", 0.0),
+        rubric=synthetic_rubric(),
         compare_state=compare_state,
         compare_cache=compare_cache,
     )
@@ -433,6 +451,7 @@ def test_speculative_prescreen_auto_commits_confident_comparisons(tmp_path: Path
         conn,
         config,
         verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
         compare_state=compare_state,
         compare_cache=compare_cache,
     )
@@ -487,6 +506,7 @@ def test_speculative_prescreen_discards_its_result_if_the_operator_wrote_meanwhi
         conn,
         config,
         verdict_provider=_OperatorRulesDuringTheCall(),
+        rubric=synthetic_rubric(),
         compare_state=compare_state,
         compare_cache=compare_cache,
     )
@@ -515,6 +535,7 @@ def test_speculative_prescreen_is_a_no_op_with_nothing_on_screen(tmp_path: Path)
         conn,
         config,
         verdict_provider=_ExplodingVerdict(),
+        rubric=synthetic_rubric(),
         compare_state=CompareState(),
         compare_cache=CompareCache(),
     )

@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from screen.api.app import create_app
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import rank_pool
 from screen.score.types import PoolInput
@@ -26,6 +25,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
+from tests.helpers import make_app
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
@@ -48,7 +48,7 @@ def db_path(tmp_path: Path) -> Path:
 def client(db_path: Path) -> Iterator[TestClient]:
     """A TestClient backed by a fresh database at a temporary path.
     Used as a context manager so lifespan (and its `Database.connect()` call) runs."""
-    app = create_app(db_path)
+    app = make_app(db_path)
     with TestClient(app) as test_client:
         yield test_client
 

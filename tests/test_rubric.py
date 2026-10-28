@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-import screen.extract.prompt as prompt_module
-from screen.extract.prompt import all_dimension_slugs, all_non_scoring_slugs
+from screen.extract.prompt import RubricText, all_dimension_slugs, all_non_scoring_slugs
 from screen.types import Target
+from tests.helpers import synthetic_rubric
 
 RUBRIC_PATH = Path(__file__).resolve().parents[1] / "rubric.yaml"
 
@@ -107,7 +107,7 @@ def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  
     first = rubric["dimensions"][0]
     other = rubric["dimensions"][1]
 
-    text = prompt_module.rubric_text_for_dimension(first["slug"])
+    text = synthetic_rubric().for_dimension(first["slug"])
 
     assert first["definition"].strip() in text
     assert other["definition"].strip() not in text
@@ -115,7 +115,7 @@ def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  
 
 def test_rubric_text_for_dimension_unknown_slug_raises(rubric: dict) -> None:  # type: ignore[type-arg]
     with pytest.raises(KeyError):
-        prompt_module.rubric_text_for_dimension("not-a-real-slug")
+        synthetic_rubric().for_dimension("not-a-real-slug")
 
 
 def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -135,31 +135,16 @@ def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignor
     )
 
 
-def test_rubric_text_for_baml_empty_sections_do_not_crash(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """rubric_text_for_baml must not raise when optional sections are empty.
-    Exercises the empty-list branch in each _render_* helper."""
-    monkeypatch.setattr(
-        prompt_module,
-        "_load",
-        lambda: {
-            "dimensions": [],
-            "non_scoring": [],
-        },
-    )
-    result = prompt_module.rubric_text_for_baml()
+def test_full_render_with_empty_sections_does_not_crash() -> None:
+    """The full render must not raise when optional sections are empty."""
+    result = RubricText({"dimensions": [], "non_scoring": []}, private={}).full()
     assert "Scored dimensions" in result
 
 
-def test_rubric_text_for_baml_dimension_without_look_for(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Exercises the `if dim.get('look_for')` False branch in _render_dimensions."""
-    monkeypatch.setattr(
-        prompt_module,
-        "_load",
-        lambda: {
+def test_full_render_of_a_dimension_without_look_for() -> None:
+    """A dimension without `look_for` renders without a "Look for" line."""
+    result = RubricText(
+        {
             "dimensions": [
                 {
                     "slug": "domain",
@@ -172,7 +157,7 @@ def test_rubric_text_for_baml_dimension_without_look_for(
             ],
             "non_scoring": [],
         },
-    )
-    result = prompt_module.rubric_text_for_baml()
+        private={},
+    ).full()
     assert "Domain coolness" in result
     assert "Look for" not in result

@@ -1,7 +1,7 @@
 """Renders rubric.yaml sections into plain text for BAML prompt injection."""
 
 import functools
-import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -25,18 +25,16 @@ def _load() -> dict[str, Any]:
     return yaml.safe_load(_RUBRIC_PATH.read_text(encoding="utf-8"))
 
 
-def resolve_private(text: str, environ: dict[str, str] | None = None) -> str:
-    """Substitute private config names with their values from the environment.
+def resolve_private(text: str, private: Mapping[str, str]) -> str:
+    """Substitute private config names with their values from `private`.
     Raises when a referenced name is unset. Rendering the rubric without the baseline is
     never correct: the compensation anchors are all defined relative to it, so the model
     would score every opening against nothing and report confident-looking judgments.
-    A loud failure at render time is the only honest outcome.
     """
-    source = environ if environ is not None else os.environ
     for name in PRIVATE_PLACEHOLDERS:
         if name not in text:
             continue
-        value = source.get(name)
+        value = private.get(name)
         if not value:
             raise MissingPrivateConfigError(
                 f"{name} is unset, but rubric.yaml references it. "
@@ -57,33 +55,56 @@ def _render_one_dimension(dim: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _render_dimensions(data: dict[str, Any]) -> list[str]:
+def _render_full(data: Mapping[str, Any]) -> str:
     lines: list[str] = ["\n## Scored dimensions"]
     for dim in data.get("dimensions", []):
         lines.extend(_render_one_dimension(dim))
-    return lines
-
-
-def _render_non_scoring(data: dict[str, Any]) -> list[str]:
-    lines: list[str] = ["\n## Non-scoring targets"]
+    lines.append("\n## Non-scoring targets")
     for ns in data.get("non_scoring", []):
         lines.append(f"- {ns['slug']}: {ns['definition'].strip()}")
-    return lines
+    return "\n".join(lines)
 
 
-def rubric_text_for_baml(environ: dict[str, str] | None = None) -> str:
-    """Render all rubric sections into a flat text block for BAML prompt injection.
-    Dimensions and non-scoring targets are all included so the model has the
-    closed vocabulary without needing to see the YAML structure.
+def _render_dimension(data: Mapping[str, Any], target: str) -> str:
+    by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
+    if target in by_slug:
+        return "\n".join(_render_one_dimension(by_slug[target]))
+    non_scoring_by_slug = {ns["slug"]: ns for ns in data.get("non_scoring", [])}
+    ns = non_scoring_by_slug[target]
+    return f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}"
+
+
+class RubricText:
+    """The rubric rendered for model prompts, private placeholders resolved.
+
+    Built once at process start: a missing private value fails construction, so it
+    surfaces at startup rather than partway through a research pass.
     """
-    data = _load()
-    parts: list[list[str]] = [
-        _render_dimensions(data),
-        _render_non_scoring(data),
-    ]
-    return resolve_private(
-        "\n".join(line for section in parts for line in section), environ=environ
-    )
+
+    def __init__(self, data: Mapping[str, Any], private: Mapping[str, str]) -> None:
+        self._data = data
+        self._private = dict(private)
+        self._full = resolve_private(_render_full(data), self._private)
+
+    @classmethod
+    def load(cls, environ: Mapping[str, str]) -> RubricText:
+        """The committed `rubric.yaml`, with private values taken from `environ`."""
+        return cls(_load(), {name: environ.get(name, "") for name in PRIVATE_PLACEHOLDERS})
+
+    def full(self) -> str:
+        """Every scored dimension and non-scoring target, for research and extraction."""
+        return self._full
+
+    def for_dimension(self, target: str) -> str:
+        """One dimension's text alone, so a per-dimension judgment can't be swayed by
+        other dimensions' anchors. Non-scoring targets render their definition only.
+        Raises `KeyError` for a slug in neither vocabulary."""
+        return resolve_private(_render_dimension(self._data, target), self._private)
+
+    def resolve(self, text: str) -> str:
+        """Resolve private placeholders in rubric text that originated elsewhere (e.g. a
+        recalibration candidate)."""
+        return resolve_private(text, self._private)
 
 
 def all_dimension_slugs() -> list[str]:
@@ -94,26 +115,11 @@ def all_non_scoring_slugs() -> list[str]:
     return [n["slug"] for n in _load().get("non_scoring", [])]
 
 
-def rubric_text_for_dimension(target: str, environ: dict[str, str] | None = None) -> str:
-    """One dimension's rubric text, verbatim — the fine-stage similarity gate (Jev) is
-    scored against this dimension alone, never the full rubric, so it can't be swayed by
-    unrelated dimensions' anchors. Falls back to the non-scoring entry's definition for
-    `non_scoring:obtainability` and friends (no fit anchors — never scored, Wall 4).
-    Raises `KeyError` for a slug in neither vocabulary."""
-    return resolve_private(unresolved_rubric_text_for_dimension(target), environ=environ)
-
-
 def unresolved_rubric_text_for_dimension(target: str) -> str:
-    """`rubric_text_for_dimension` with private placeholders left as their names. For
-    callers that show rubric text to a model that may rewrite it, or write it back to
-    the public `rubric.yaml` — they must never hold the private value."""
-    data = _load()
-    by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
-    if target in by_slug:
-        return "\n".join(_render_one_dimension(by_slug[target]))
-    non_scoring_by_slug = {ns["slug"]: ns for ns in data.get("non_scoring", [])}
-    ns = non_scoring_by_slug[target]
-    return f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}"
+    """One dimension's text with private placeholders left as their names. For callers
+    that show rubric text to a model that may rewrite it, or write it back to the public
+    `rubric.yaml` — they must never hold the private value."""
+    return _render_dimension(_load(), target)
 
 
 def fit_anchors_for_dimension(target: str) -> dict[str, str]:

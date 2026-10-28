@@ -38,8 +38,12 @@ def test_extract_assertions_appends_not_truncates(tmp_path: Path) -> None:
         [[canned_assertion("craft_direction")], [canned_assertion("trajectory")]]
     )
 
-    extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
-    extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
+    extract_and_persist_assertions(
+        conn, "opening", "chunk", extractor=fake_ext, rubric_text="rubric"
+    )
+    extract_and_persist_assertions(
+        conn, "opening", "chunk", extractor=fake_ext, rubric_text="rubric"
+    )
 
     assertions = assertions_for_opening(conn, "opening")
     assert len(assertions) == 2, (
@@ -55,7 +59,9 @@ def test_extract_assertions_each_result_is_valid_assertion(tmp_path: Path) -> No
     conn = connect(tmp_path / "screen.db")
     _seed_opening(conn)
     fake_ext = FakeExtractor([[canned_assertion("mission"), canned_assertion("domain")]])
-    extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
+    extract_and_persist_assertions(
+        conn, "opening", "chunk", extractor=fake_ext, rubric_text="rubric"
+    )
 
     assertions = assertions_for_opening(conn, "opening")
     assert len(assertions) == 2
@@ -72,7 +78,9 @@ def test_extract_assertions_skips_db_write_when_extractor_returns_nothing(
     _seed_opening(conn)
     fake_ext = FakeExtractor([[]])
 
-    result = extract_and_persist_assertions(conn, "opening", "chunk", extractor=fake_ext)
+    result = extract_and_persist_assertions(
+        conn, "opening", "chunk", extractor=fake_ext, rubric_text="rubric"
+    )
 
     assert result == []
     assert assertions_for_opening(conn, "opening") == []

@@ -20,8 +20,3 @@ def test_pipeline_read_page_content_is_the_shared_batch_implementation() -> None
 
 def test_pipeline_research_trace_path_for_is_the_shared_batch_implementation() -> None:
     assert pipeline.research_trace_path_for is batch.research_trace_path_for
-
-
-def test_pipeline_build_factories_are_the_shared_batch_implementations() -> None:
-    assert pipeline.build_client is batch.build_client
-    assert pipeline.build_extractor is batch.build_extractor

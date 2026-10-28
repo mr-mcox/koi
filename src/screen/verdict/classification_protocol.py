@@ -26,11 +26,7 @@ class AssertionClassification:
 
 @runtime_checkable
 class AssertionClassifier(Protocol):
-    """Classifies an unclassified assertion's fit and relevance via rubric text."""
+    """Classifies an unclassified assertion's fit and relevance against its target
+    dimension's rubric text, which the classifier holds."""
 
-    def classify(
-        self,
-        rubric_text: str,
-        chunk: str,
-        target: str,
-    ) -> AssertionClassification: ...
+    def classify(self, chunk: str, target: str) -> AssertionClassification: ...

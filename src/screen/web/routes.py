@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from screen.api.deps import get_db
+from screen.api.deps import app_deps, get_db
 from screen.api.pool import (
     CompareCache,
     CompareProgress,
@@ -36,7 +36,6 @@ from screen.api.scoring import latest_ruling_by_assertion
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_record_for_target
-from screen.extract.prompt import rubric_text_for_baml
 from screen.intake.admission import declined_host_for, declined_submission_message
 from screen.research.batch import eta_text
 from screen.score.compare_picker import ComparisonSuggestion
@@ -362,14 +361,13 @@ def _rating_context(
 def _rating_context_for_request(
     request: Request, conn: sqlite3.Connection, opening_id: str
 ) -> dict[str, object]:
-    """Thin wrapper pulling the digester off `request.app.state` — shared by the GET
-    and the assertion-ruling-submit route so each doesn't repeat the same three
-    keyword args."""
+    """`_rating_context` with the app's digester and rubric — shared by the GET and the
+    assertion-ruling-submit route."""
     return _rating_context(
         conn,
         opening_id,
-        digester=request.app.state.digester,
-        rubric_text=rubric_text_for_baml(),
+        digester=app_deps(request).digester,
+        rubric_text=app_deps(request).rubric.full(),
         now=datetime.now(UTC),
     )
 
@@ -570,7 +568,8 @@ def _start_compare_prescreen(
         run_prescreen_in_background,
         request.app.state.database.db_path,
         config,
-        verdict_provider=request.app.state.verdict_provider,
+        verdict_provider=app_deps(request).verdict_provider,
+        rubric=app_deps(request).rubric,
         compare_state=compare_state,
         compare_cache=request.app.state.compare_cache,
         progress=progress,
@@ -602,7 +601,8 @@ def _start_speculation(
         run_speculative_prescreen_in_background,
         request.app.state.database.db_path,
         config,
-        verdict_provider=request.app.state.verdict_provider,
+        verdict_provider=app_deps(request).verdict_provider,
+        rubric=app_deps(request).rubric,
         compare_state=request.app.state.compare_state,
         compare_cache=compare_cache,
     )
@@ -711,8 +711,8 @@ def compare(
                 opening_b,
                 target,
                 config,
-                digester=request.app.state.digester,
-                rubric_text=rubric_text_for_baml(),
+                digester=app_deps(request).digester,
+                rubric_text=app_deps(request).rubric.full(),
                 now=datetime.now(UTC),
                 redirect_url=redirect_url,
             )
@@ -964,7 +964,7 @@ def start_batch(
         "eta_seconds": None,
     }
     request.app.state.batch_status = new_status
-    engine = request.app.state.batch_engine
+    engine = app_deps(request).batch_engine
     background_tasks.add_task(
         engine.run, request.app.state.database.db_path, batch_size, new_status
     )

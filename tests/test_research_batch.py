@@ -9,21 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from screen.browser import BrowserProtocol
 from screen.digest.fakes import FakeDigester
-from screen.digest.protocol import DigesterProtocol
 from screen.extract.fakes import FakeExtractor
-from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.batch import (
     BatchEngine,
     ResearchTraceMissingError,
-    RunDispatchDeps,
-    build_client,
-    build_digester,
-    build_extractor,
-    build_planner,
     eligible_weights,
     eta_text,
     read_page_content,
@@ -33,7 +25,6 @@ from screen.research.batch import (
     run_dispatch,
 )
 from screen.research.fakes import FakeBrowser, FakePlanner
-from screen.research.protocol import PlannerProtocol
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
@@ -44,7 +35,7 @@ from screen.store.repo import (
     upsert_opening,
 )
 from screen.types import Assertion, Citation, Company, Opening
-from tests.helpers import canned_assertion
+from tests.helpers import canned_assertion, fake_dispatch_deps
 
 _QUERY = "extra search"
 
@@ -96,7 +87,7 @@ def _search_then_stop_planner() -> FakePlanner:
 def _build_engine(tmp_path: Path) -> BatchEngine:
     return BatchEngine(
         planner_factory=_search_then_stop_planner,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={_QUERY: []}),
             extractor=FakeExtractor([[canned_assertion()]]),
             digester=FakeDigester(["Synthetic digest."]),
@@ -389,7 +380,7 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
     engine = BatchEngine(
         planner_factory=_search_then_stop_planner,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={_QUERY: []}),
             extractor=FakeExtractor([[canned_assertion()]]),
             digester=FakeDigester(["Synthetic digest."]),
@@ -431,7 +422,7 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
         planner_factory=lambda: FakePlanner(
             sequence=[[FetchAction(url=url)], [StopAction(reason="done")]]
         ),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(fetch_fixtures={url: {"raw_content": "content"}}),
             extractor=FakeExtractor([[canned_assertion()]]),
             digester=FakeDigester(["Synthetic digest."]),
@@ -460,7 +451,7 @@ def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
                 [StopAction(reason="mined out")],
             ]
         ),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(
                 search_fixtures={
                     "find page": [{"url": url, "raw_content": "content", "title": "x"}]
@@ -497,7 +488,7 @@ def test_batch_engine_prints_opportunity_summary(
                 [StopAction(reason="mined out")],
             ]
         ),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(
                 search_fixtures={
                     "find page": [{"url": url, "raw_content": "content", "title": "x"}]
@@ -551,17 +542,8 @@ def test_resume_opening_raises_on_missing_trace(tmp_path: Path) -> None:
     upsert_opening(conn, opening)
 
     with pytest.raises(ResearchTraceMissingError):
-        resume_opening(conn, tmp_path, opening, 1)
+        resume_opening(conn, tmp_path, opening, 1, deps=fake_dispatch_deps())
     conn.close()
-
-
-def test_default_factories_return_protocol_instances() -> None:
-    """The production factory functions are safe to call and satisfy the expected
-    protocol types, even though the test suite replaces them with fakes."""
-    assert isinstance(build_client(), BrowserProtocol)
-    assert isinstance(build_extractor(), ExtractorProtocol)
-    assert isinstance(build_digester(), DigesterProtocol)
-    assert isinstance(build_planner(), PlannerProtocol)
 
 
 def test_read_page_content_skips_blank_lines_and_non_tavily_events(
@@ -677,7 +659,7 @@ def test_run_dispatch_uses_default_digester_when_none_provided(tmp_path: Path) -
         company_name="Acme Inc",
         opening_title="Eng",
         turn_budget=1,
-        deps=RunDispatchDeps(
+        deps=fake_dispatch_deps(
             planner=FakePlanner([[StopAction(reason="default digester test")]]),
             browser=FakeBrowser(),
             extractor=FakeExtractor([[canned_assertion()]]),

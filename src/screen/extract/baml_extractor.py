@@ -16,7 +16,6 @@ from screen.baml_client.types import Assertion as BAMLAssertion
 from screen.extract.types import ExtractedAssertion, hydrate_assertion
 from screen.types import Assertion
 from screen.verdict.classification_protocol import AssertionClassifier
-from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
 
 # Threshold on Jev's `relevance_confidence` above which a "not relevant" verdict is trusted
 # enough to drop the assertion rather than keep it at a wide distribution. Unmeasured —
@@ -32,17 +31,13 @@ def _to_extracted_assertion(a: BAMLAssertion, now: datetime) -> ExtractedAsserti
 
 
 def classify_and_filter(
-    extracted: list[ExtractedAssertion],
-    rubric_text: str,
-    classifier: AssertionClassifier,
+    extracted: list[ExtractedAssertion], classifier: AssertionClassifier
 ) -> list[Assertion]:
     """Classify each extracted assertion and drop anything Jev confidently judges
     irrelevant to its target, before it ever reaches storage."""
 
     def _classify_one(extracted_assertion: ExtractedAssertion) -> Assertion | None:
-        classification = classifier.classify(
-            rubric_text, extracted_assertion.chunk, extracted_assertion.target
-        )
+        classification = classifier.classify(extracted_assertion.chunk, extracted_assertion.target)
         if (
             not classification.is_relevant
             and classification.relevance_confidence >= RELEVANCE_DROP_THRESHOLD
@@ -61,8 +56,8 @@ class BAMLExtractor:
     then runs Jev classification to hydrate the final assertion shape.
     """
 
-    def __init__(self, classifier: AssertionClassifier | None = None) -> None:
-        self._classifier = classifier or JevAssertionClassifier()
+    def __init__(self, classifier: AssertionClassifier) -> None:
+        self._classifier = classifier
 
     def extract_assertions(
         self,
@@ -78,4 +73,4 @@ class BAMLExtractor:
             existing_assertions=existing_json,
         )
         extracted = [_to_extracted_assertion(a, now) for a in raw]
-        return classify_and_filter(extracted, rubric_text, self._classifier)
+        return classify_and_filter(extracted, self._classifier)

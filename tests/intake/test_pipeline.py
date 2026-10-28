@@ -21,12 +21,11 @@ from screen.intake.fakes import FakeTavily
 from screen.intake.research_trace_id import derive_research_trace_id
 from screen.research.actions import FetchAction, StopAction
 from screen.research.batch import (
-    RunDispatchDeps,
     read_page_content,
     research_trace_path_for,
 )
 from screen.research.fakes import FakeBrowser, FakePlanner
-from tests.helpers import canned_assertion, fake_identifier
+from tests.helpers import canned_assertion, fake_dispatch_deps, fake_extractor, fake_identifier
 
 
 def _fake_tavily_for(url: str) -> FakeTavily:
@@ -54,7 +53,7 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
@@ -90,6 +89,8 @@ def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Pat
             data_dir=tmp_path,
             client_factory=lambda: fake,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
 
     assert excinfo.value.stage == "fetch_url"
@@ -158,6 +159,8 @@ def test_pipeline_records_partial_research_trace_on_search_client_error(tmp_path
             data_dir=tmp_path,
             client_factory=_raise,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
 
     research_traces = list(tmp_path.rglob("*.jsonl"))
@@ -176,7 +179,7 @@ def test_pipeline_returns_stop_reason(tmp_path: Path) -> None:
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
@@ -211,7 +214,7 @@ def test_pipeline_dispatch_persists_fetch_assertions(tmp_path: Path) -> None:
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_planner(), browser=_browser(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
@@ -239,6 +242,8 @@ def test_pipeline_intake_records_failure_details_in_trace(tmp_path: Path) -> Non
             data_dir=tmp_path,
             client_factory=_raise,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
 
     research_traces = list(tmp_path.rglob("*.jsonl"))
@@ -267,7 +272,7 @@ def test_pipeline_dispatch_continues_past_failed_fetch(tmp_path: Path) -> None:
         client_factory=lambda: _fake_tavily_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_planner(), digester=FakeDigester(["Synthetic digest."])
         ),
     )

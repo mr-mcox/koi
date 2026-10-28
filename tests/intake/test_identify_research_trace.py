@@ -15,12 +15,17 @@ from screen.extract.fakes import FakeExtractor
 from screen.intake.fakes import FakeIdentifier
 from screen.intake.pipeline import IntakePipelineError, identify_research_trace
 from screen.research.actions import StopAction
-from screen.research.batch import RunDispatchDeps
 from screen.research.fakes import FakePlanner
 from screen.store.db import connect
 from screen.store.repo import assertions_for_opening
 from screen.types import IdentificationResult
-from tests.helpers import canned_assertion, fake_identifier, seed_research_trace
+from tests.helpers import (
+    canned_assertion,
+    fake_dispatch_deps,
+    fake_extractor,
+    fake_identifier,
+    seed_research_trace,
+)
 
 
 def _default_planner() -> FakePlanner:
@@ -45,7 +50,7 @@ def test_identify_research_trace_writes_company_and_opening(tmp_path: Path) -> N
         tmp_path,
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -68,7 +73,7 @@ def test_identify_research_trace_leaves_trace_at_final_path(tmp_path: Path) -> N
         tmp_path,
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -86,7 +91,7 @@ def test_identify_research_trace_records_decide_plan_event(tmp_path: Path) -> No
         tmp_path,
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -108,7 +113,7 @@ def test_identify_research_trace_ignores_sibling_files(tmp_path: Path) -> None:
         tmp_path,
         identifier_factory=lambda: fake_identifier(title="Eng"),
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -123,6 +128,8 @@ def test_identify_research_trace_raises_when_trace_missing(tmp_path: Path) -> No
             tmp_path / "research_traces" / "no-such-research_trace.jsonl",
             tmp_path,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
     assert "research trace missing" in str(exc_info.value).lower()
 
@@ -165,7 +172,7 @@ def test_identify_research_trace_skips_blank_and_non_tavily_lines(tmp_path: Path
             [IdentificationResult(company_name="Example", opening_title="Eng", opening_notes="n")]
         ),
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -195,6 +202,8 @@ def test_identify_research_trace_errors_when_no_tavily_extract(tmp_path: Path) -
             research_trace,
             tmp_path,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
     assert "no tavily_extract" in str(exc_info.value).lower()
 
@@ -209,7 +218,7 @@ def test_identify_research_trace_writes_assertions_to_db(tmp_path: Path) -> None
         tmp_path,
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
-        deps_factory=lambda: RunDispatchDeps(
+        deps_factory=lambda: fake_dispatch_deps(
             planner=_default_planner(), digester=_default_digester()
         ),
     )
@@ -255,5 +264,7 @@ def test_identify_research_trace_errors_on_event_with_empty_results(tmp_path: Pa
             research_trace,
             tmp_path,
             identifier_factory=fake_identifier,
+            extractor_factory=fake_extractor,
+            deps_factory=fake_dispatch_deps,
         )
     assert "no tavily_extract" in str(exc_info.value).lower()
