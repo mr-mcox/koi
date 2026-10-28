@@ -155,7 +155,7 @@ import each other. Moving `pool.py` into `compare/` instead would have filed poo
 ranking, which research uses too, under comparison. `tests/test_import_direction.py`
 places `compare` in the layer above `pool`, so the pool ranking can't import it.
 
-## G. Split `web/routes.py` by feature and type the app's mutable state — *done*
+## G. Split `web/routes.py` by feature and type the app's mutable state — *done* in [#2](https://github.com/mr-mcox/koi/pull/2)
 
 `web/routes.py` now only aggregates one router per feature: `queue.py` (queue, rating,
 assertion rulings, prune-stale), `compare.py`, `archive.py` (stage changes and the
