@@ -177,7 +177,7 @@ asserts it stays hidden). `tests/test_web.py` and `tests/test_intake_queue_web.p
 now `tests/web/` (one file per feature, with shared fixtures in `conftest.py` and
 builders in `helpers.py`).
 
-## H. Mirror the test tree to `src/` and consolidate builders — *done, uncommitted*
+## H. Mirror the test tree to `src/` and consolidate builders — *done* in [#3](https://github.com/mr-mcox/koi/pull/3)
 
 Tests now sit in folders mirroring `src/screen/` (`api/`, `compare/`, `digest/`,
 `extract/`, `intake/`, `research/`, `research_trace/`, `score/`, `store/`, `verdict/`,
