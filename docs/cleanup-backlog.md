@@ -177,17 +177,27 @@ asserts it stays hidden). `tests/test_web.py` and `tests/test_intake_queue_web.p
 now `tests/web/` (one file per feature, with shared fixtures in `conftest.py` and
 builders in `helpers.py`).
 
-## H. Mirror the test tree to `src/` and consolidate builders — *open, after F and G*
+## H. Mirror the test tree to `src/` and consolidate builders — *done, uncommitted*
 
-`tests/` holds 56 files flat.
-- Move tests into folders mirroring `src/screen/` (`tests/web/` and `tests/store/`
-  already do).
-- Drop the redundant `test_store_` filename prefixes.
-- Add `__init__.py` to `tests/intake/` to match its sibling folders.
-- Replace the 17 per-file `_assertion` builders and the `_seed_opening*` variants with
-  shared builders in `tests/helpers.py`.
+Tests now sit in folders mirroring `src/screen/` (`api/`, `compare/`, `digest/`,
+`extract/`, `intake/`, `research/`, `research_trace/`, `score/`, `store/`, `verdict/`,
+`web/`), each a package, with the `test_store_` prefixes dropped. Tests of top-level
+modules (`types`, `pool`, `wiring`, `recalibration`, …), `rubric.yaml` and the import
+layering stay at the top of `tests/`. Two files are named for what they cover rather than
+a module: `test_pool_store.py` (pool assembly from the DB) and
+`compare/test_picker_coverage.py`.
 
-Touches: every test file.
+`tests/helpers.py` holds the builders: `canned_citation`, `canned_assertion(target, fit,
+provenance, **overrides)` and `seed_opening(conn, opening_id, …)`, which derives the
+company id, title and trace id from the opening id. They replace the per-file
+`_assertion`/`_citation` builders, the `_seed_opening*` variants and the duplicates in
+`tests/web/helpers.py`. Files whose default is ratified evidence bind
+`partial(canned_assertion, provenance="ratified")`. The web tests and
+`tests/api/test_routes.py` get a `conn` fixture.
+
+What stays local on purpose: the dict builders in `test_types.py` (raw input for
+validation tests), and `research/test_batch.py`'s `_seed_opening_with_trace` and
+`_seed_assertions`, which combine the shared builders with a trace or bulk evidence.
 
 ## I. Comment pass — *open, last*
 

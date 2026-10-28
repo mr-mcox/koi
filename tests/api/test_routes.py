@@ -7,6 +7,7 @@ SQLite database in a temporary directory, seeded directly via `screen.store.repo
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,29 +20,24 @@ from screen.score.scorer import rank_pool
 from screen.score.types import PoolInput
 from screen.store.db import connect
 from screen.store.repo import (
-    append_assertions,
     upsert_assertion_ruling,
-    upsert_company,
-    upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
-from tests.helpers import make_app
+from screen.types import AssertionRuling
+from tests.helpers import canned_assertion, make_app, seed_opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
-
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
 
 
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "screen.db"
+
+
+@pytest.fixture
+def conn(db_path: Path) -> Iterator[sqlite3.Connection]:
+    conn = connect(db_path)
+    yield conn
+    conn.close()
 
 
 @pytest.fixture
@@ -51,26 +47,6 @@ def client(db_path: Path) -> Iterator[TestClient]:
     app = make_app(db_path)
     with TestClient(app) as test_client:
         yield test_client
-
-
-def _seed_opening(
-    db_path: Path, *, company_id: str, opening_id: str, assertions: list[Assertion] | None = None
-) -> None:
-    conn = connect(db_path)
-    upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=_NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id=opening_id,
-            company_id=company_id,
-            title=f"{opening_id} title",
-            url=f"https://example.com/{opening_id}",
-            research_trace_id=f"tx-{opening_id}",
-            created_at=_NOW,
-        ),
-    )
-    if assertions:
-        append_assertions(conn, assertions, opening_id=opening_id)
 
 
 def test_health_returns_ok(client: TestClient) -> None:
@@ -84,18 +60,13 @@ def test_opening_score_returns_404_when_opening_missing(client: TestClient) -> N
     assert response.status_code == 404
 
 
-def test_opening_score_reports_pool_rank_readouts(client: TestClient, db_path: Path) -> None:
+def test_opening_score_reports_pool_rank_readouts(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
     """`/openings/{id}/score` returns the same pool-scored rank readouts the queue uses.
     With only one opening in the pool it is unambiguously rank 1 and top-K."""
-    assertion = Assertion(
-        target="craft_direction",
-        fit="Strong",
-        provenance="ratified",
-        chunk="verbatim source text",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=[assertion])
+    assertion = canned_assertion("craft_direction", "Strong", "ratified")
+    seed_opening(conn, "acme--eng", assertions=[assertion])
     config = load_scoring_config()
     expected = rank_pool(
         [PoolInput(opening_id="acme--eng", assertions=[assertion])],
@@ -126,25 +97,15 @@ def test_queue_is_empty_when_no_openings_exist(client: TestClient) -> None:
     assert response.json() == []
 
 
-def test_queue_sorts_by_p_top_k_descending(client: TestClient, db_path: Path) -> None:
+def test_queue_sorts_by_p_top_k_descending(client: TestClient, conn: sqlite3.Connection) -> None:
     """A well-evidenced opening should have a higher `P(rank ≤ top_k)` than an unexamined
     one, and the queue sorts on that (then expected rank, then id)."""
     config = load_scoring_config()
     strong_assertions = [
-        Assertion(
-            target=slug,  # type: ignore[arg-type]
-            fit="Strong",
-            provenance="ratified",
-            chunk="verbatim source text",
-            citations=[_CITATION],
-            created_at=_NOW,
-        )
-        for slug in (*config.dimension_weights,)
+        canned_assertion(slug, "Strong", "ratified") for slug in (*config.dimension_weights,)
     ]
-    _seed_opening(
-        db_path, company_id="acme", opening_id="acme--strong", assertions=strong_assertions
-    )
-    _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
+    seed_opening(conn, "acme--strong", assertions=strong_assertions)
+    seed_opening(conn, "widgets--unexamined")
 
     response = client.get("/queue")
 
@@ -155,25 +116,18 @@ def test_queue_sorts_by_p_top_k_descending(client: TestClient, db_path: Path) ->
     assert body[0]["expected_rank"] < body[1]["expected_rank"]
 
 
-def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Path) -> None:
+def test_queue_and_score_apply_assertion_rulings(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
     """Rulings must move the queue: an opening with Poor model-proposed assertions that
     are all overridden to Strong should outrank an unexamined one, and the per-opening
     score endpoint must agree with the queue entry."""
     config = load_scoring_config()
     weak_assertions = [
-        Assertion(
-            target=slug,  # type: ignore[arg-type]
-            fit="Poor",
-            provenance="model_proposed",
-            chunk="verbatim source text",
-            citations=[_CITATION],
-            created_at=_NOW,
-        )
-        for slug in (*config.dimension_weights,)
+        canned_assertion(slug, "Poor", "model_proposed") for slug in (*config.dimension_weights,)
     ]
-    _seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=weak_assertions)
-    _seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
-    conn = connect(db_path)
+    seed_opening(conn, "acme--ruled", assertions=weak_assertions)
+    seed_opening(conn, "widgets--unexamined")
     for assertion in weak_assertions:
         upsert_assertion_ruling(
             conn,
@@ -184,7 +138,6 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
                 created_at=_NOW,
             ),
         )
-    conn.close()
     response = client.get("/queue")
     assert response.status_code == 200
     body = response.json()
@@ -199,24 +152,19 @@ def test_queue_and_score_apply_assertion_rulings(client: TestClient, db_path: Pa
     assert score_response["settledness"] == pytest.approx(queue_item["settledness"])
 
 
-def test_queue_includes_settledness_when_enough_openings(client: TestClient, db_path: Path) -> None:
+def test_queue_includes_settledness_when_enough_openings(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
     """With at least `top_k` openings, every queue item carries the pool's top-K
     settledness and the shared `top_k`. Seed exactly `top_k` openings so the boundary
     exists but the pool is fully separated."""
     config = load_scoring_config()
     for i in range(config.top_k):
         assertions = [
-            Assertion(
-                target=slug,  # type: ignore[arg-type]
-                fit="Strong" if i == 0 else "Poor",
-                provenance="ratified",
-                chunk="verbatim source text",
-                citations=[_CITATION],
-                created_at=_NOW,
-            )
+            canned_assertion(slug, "Strong" if i == 0 else "Poor", "ratified")
             for slug in (*config.dimension_weights,)
         ]
-        _seed_opening(db_path, company_id=f"c{i}", opening_id=f"c{i}--eng", assertions=assertions)
+        seed_opening(conn, f"c{i}--eng", assertions=assertions)
     response = client.get("/queue")
 
     assert response.status_code == 200
@@ -231,10 +179,12 @@ def test_queue_includes_settledness_when_enough_openings(client: TestClient, db_
     assert body[0]["settledness"] == pytest.approx(1.0)
 
 
-def test_queue_settledness_is_one_when_fewer_than_top_k(client: TestClient, db_path: Path) -> None:
+def test_queue_settledness_is_one_when_fewer_than_top_k(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
     """Fewer than `top_k` openings: every opening is in the top K by definition, so
     settledness is 1.0."""
-    _seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+    seed_opening(conn, "acme--eng")
     response = client.get("/queue")
 
     assert response.status_code == 200
@@ -244,24 +194,19 @@ def test_queue_settledness_is_one_when_fewer_than_top_k(client: TestClient, db_p
     assert body[0]["top_k"] == load_scoring_config().top_k
 
 
-def test_queue_p_top_k_is_deterministic_across_calls(client: TestClient, db_path: Path) -> None:
+def test_queue_p_top_k_is_deterministic_across_calls(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
     """Two `/queue` calls against the same DB snapshot return identical `p_top_k`
     values — both draw under the shared `config.seed`, so this is reproducibility,
     not sampling noise."""
     config = load_scoring_config()
     for i in range(config.top_k):
         assertions = [
-            Assertion(
-                target=slug,  # type: ignore[arg-type]
-                fit="Strong" if i == 0 else "Poor",
-                provenance="ratified",
-                chunk="verbatim source text",
-                citations=[_CITATION],
-                created_at=_NOW,
-            )
+            canned_assertion(slug, "Strong" if i == 0 else "Poor", "ratified")
             for slug in (*config.dimension_weights,)
         ]
-        _seed_opening(db_path, company_id=f"d{i}", opening_id=f"d{i}--eng", assertions=assertions)
+        seed_opening(conn, f"d{i}--eng", assertions=assertions)
     first = client.get("/queue").json()
     second = client.get("/queue").json()
     assert [item["p_top_k"] for item in first] == [item["p_top_k"] for item in second]

@@ -4,6 +4,7 @@ comparison outcome must change `pool_for_screening`'s rank order end-to-end."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import partial
 
 import pytest
 
@@ -11,33 +12,17 @@ from screen.pool import pool_for_screening
 from screen.score.loader import load_scoring_config
 from screen.score.pairwise import Comparison
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, Opening
+from screen.types import Opening
+from tests.helpers import canned_assertion
 
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
+_assertion = partial(canned_assertion, provenance="ratified")
+
 _NOW = datetime(2026, 9, 17, tzinfo=UTC)
 
 
 @pytest.fixture(scope="module")
 def config() -> ScoringConfig:
     return load_scoring_config()
-
-
-def _assertion(target: str) -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit="Strong",
-        provenance="ratified",
-        chunk="verbatim source text",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
 
 
 def _opening(opening_id: str, company_id: str) -> Opening:

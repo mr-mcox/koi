@@ -16,29 +16,10 @@ from screen.score.bandit import (
 )
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, Fit, Provenance, Target
-
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
+from screen.types import Assertion
+from tests.helpers import canned_assertion
 
 _NOW = datetime(2026, 8, 31, tzinfo=UTC)
-
-
-def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_proposed") -> Assertion:
-    return Assertion(
-        target=target,
-        fit=fit,
-        provenance=provenance,
-        chunk="chunk",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
 
 
 @pytest.fixture(scope="module")
@@ -51,10 +32,10 @@ def test_wide_high_weight_targets_outrank_narrow_low_weight_targets(config: Scor
     higher aggregate uncertainty than one with narrow-half-width, low-weight targets."""
     # "craft_direction" carries weight 3 in scoring.yaml; leaving it fully unexamined keeps its
     # half-width at the Uniform(-1, 1) maximum (1.0).
-    wide_high_weight = [_assertion("domain", "Strong")]
+    wide_high_weight = [canned_assertion("domain", "Strong")]
     # "domain" carries weight 1; many ratified (heavily-weighted) assertions collapse its
     # half-width close to zero.
-    narrow_low_weight = [_assertion("domain", "Strong", "ratified") for _ in range(20)]
+    narrow_low_weight = [canned_assertion("domain", "Strong", "ratified") for _ in range(20)]
 
     assert aggregate_uncertainty(wide_high_weight, config) > aggregate_uncertainty(
         narrow_low_weight, config
@@ -70,7 +51,7 @@ def test_fully_examined_opening_has_lower_uncertainty_than_untouched_one(
     untouched: list[Assertion] = []
     all_targets = list(config.dimension_weights)
     examined = [
-        _assertion(target, "Strong", "ratified") for target in all_targets for _ in range(10)
+        canned_assertion(target, "Strong", "ratified") for target in all_targets for _ in range(10)
     ]
 
     assert aggregate_uncertainty(untouched, config) > aggregate_uncertainty(examined, config)

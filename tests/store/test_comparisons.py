@@ -8,49 +8,24 @@ from screen.store.repo import (
     active_provisional_comparisons,
     append_comparison,
     comparisons_for_target,
-    upsert_company,
-    upsert_opening,
 )
-from screen.types import Company, Comparison, Opening
+from screen.types import Comparison
+from tests.helpers import seed_opening
 
 _NOW = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 
 
-def _seed_openings(conn) -> None:
-    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id="acme--eng-a",
-            company_id="acme",
-            title="Staff Engineer A",
-            url="https://example.com/jobs/a",
-            research_trace_id="tx0123456789abcdef",
-            created_at=_NOW,
-        ),
-    )
-    upsert_opening(
-        conn,
-        Opening(
-            id="acme--eng-b",
-            company_id="acme",
-            title="Staff Engineer B",
-            url="https://example.com/jobs/b",
-            research_trace_id="tx0123456789abcdea",
-            created_at=_NOW,
-        ),
-    )
-
-
 def test_comparisons_for_target_returns_empty_when_none_recorded(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     assert comparisons_for_target(conn, "craft_direction") == []
 
 
 def test_append_then_read_comparison_round_trips(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     comparison = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
@@ -69,7 +44,8 @@ def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) ->
     """Append-only: a second judgment on the same pair/dimension adds a row, it does not
     replace the first."""
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     first = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
@@ -95,7 +71,8 @@ def test_append_comparison_keeps_full_history_not_latest_only(tmp_path: Path) ->
 
 def test_comparisons_for_target_excludes_other_targets(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     append_comparison(
         conn,
         Comparison(
@@ -113,7 +90,8 @@ def test_comparisons_for_target_excludes_other_targets(tmp_path: Path) -> None:
 
 def test_active_provisional_comparisons_excludes_operator_rows(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     append_comparison(
         conn,
         Comparison(
@@ -134,7 +112,8 @@ def test_active_provisional_comparisons_returns_provisional_rows_across_targets(
     tmp_path: Path,
 ) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     location_tie = Comparison(
         opening_a_id="acme--eng-a",
         opening_b_id="acme--eng-b",
@@ -165,7 +144,8 @@ def test_active_provisional_comparisons_excludes_a_pair_the_operator_later_overr
     """A later operator ruling on the same (pair, target) is the override — it must not
     coexist in the review list alongside the provisional row it displaces."""
     conn = connect(tmp_path / "screen.db")
-    _seed_openings(conn)
+    seed_opening(conn, "acme--eng-a")
+    seed_opening(conn, "acme--eng-b")
     append_comparison(
         conn,
         Comparison(

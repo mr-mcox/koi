@@ -2,37 +2,19 @@
 
 from __future__ import annotations
 
-import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 
 from screen.extract.fakes import FakeExtractor
 from screen.intake.pipeline import extract_and_persist_assertions
 from screen.store.db import connect
-from screen.store.repo import assertions_for_opening, upsert_company, upsert_opening
-from screen.types import Company, Opening
-from tests.helpers import canned_assertion
-
-
-def _seed_opening(conn: sqlite3.Connection) -> None:
-    upsert_company(conn, Company(id="co", name="Example Co", created_at=datetime.now(UTC)))
-    upsert_opening(
-        conn,
-        Opening(
-            id="opening",
-            company_id="co",
-            title="Eng",
-            url="https://example.com/jobs/42",
-            research_trace_id="t1",
-            created_at=datetime.now(UTC),
-        ),
-    )
+from screen.store.repo import assertions_for_opening
+from tests.helpers import canned_assertion, seed_opening
 
 
 def test_extract_assertions_appends_not_truncates(tmp_path: Path) -> None:
     """extract_and_persist_assertions is append-only: a second call appends, not replaces (Wall 6)."""
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn, "opening", company_id="co")
 
     fake_ext = FakeExtractor(
         [[canned_assertion("craft_direction")], [canned_assertion("trajectory")]]
@@ -57,7 +39,7 @@ def test_extract_assertions_appends_not_truncates(tmp_path: Path) -> None:
 def test_extract_assertions_each_result_is_valid_assertion(tmp_path: Path) -> None:
     """Every persisted row must parse as a valid Assertion."""
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn, "opening", company_id="co")
     fake_ext = FakeExtractor([[canned_assertion("mission"), canned_assertion("domain")]])
     extract_and_persist_assertions(
         conn, "opening", "chunk", extractor=fake_ext, rubric_text="rubric"
@@ -75,7 +57,7 @@ def test_extract_assertions_skips_db_write_when_extractor_returns_nothing(
 ) -> None:
     """An empty extraction result must not call append_assertions (no-op branch)."""
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn, "opening", company_id="co")
     fake_ext = FakeExtractor([[]])
 
     result = extract_and_persist_assertions(

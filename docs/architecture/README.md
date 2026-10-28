@@ -27,7 +27,7 @@ strand a summary here.
   `rubric.yaml`, never freeform → [decisions.md](decisions.md) R4 · `tests/test_rubric.py`
 - **The dispatcher owns every tool call and all state mutation.** `DecidePlan` is the only
   LLM-shaped decision; Tavily is dispatched, never agent-called. Rejecting this means
-  rejecting the four-state loop → `tests/test_dispatcher.py`
+  rejecting the four-state loop → `tests/research/test_dispatcher.py`
 - **No agent framework.** BAML covers structured output; adding a framework is a vocabulary
   change, not a dependency change
 - **Dependency direction runs one way** — `intake/` may import `research/`, never the

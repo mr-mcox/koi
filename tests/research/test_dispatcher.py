@@ -24,33 +24,12 @@ from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import ResearchTraceEvent
 from screen.score.loader import load_scoring_config
-from screen.types import Assertion, Citation
+from screen.types import Assertion
+from tests.helpers import canned_assertion
 
 
 def _noop(_event: object) -> None:
     pass
-
-
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=False,
-        source_date=None,
-    )
-
-
-def _assertion(target: str = "craft_direction") -> Assertion:
-    return Assertion(
-        target=target,
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Build and own the platform every engineer deploys on.",
-        citations=[_citation()],
-        created_at="2026-08-28T00:00:00Z",
-    )
 
 
 def _state(
@@ -68,7 +47,7 @@ def _state(
         "page_content": "Some posting text.",
         "url": "https://example.com/jobs/1",
         "rubric_text": "craft_direction: ...",
-        "assertions": assertions if assertions is not None else [_assertion()],
+        "assertions": assertions if assertions is not None else [canned_assertion()],
         "turn_budget": 5,
         "active_target_action_cap": 5,
         "turns_used": turns_used,
@@ -96,7 +75,7 @@ def _deps(
 
 
 def test_dispatch_stop_returns_pass_summary() -> None:
-    state = _state(assertions=[_assertion(), _assertion()])
+    state = _state(assertions=[canned_assertion(), canned_assertion()])
     stop = StopAction(reason="All rubric dimensions addressed.")
     summary = dispatch(
         state,
@@ -273,7 +252,7 @@ def test_fetch_action_happy_path() -> None:
     event, runs extraction, and returns updated state with new assertions appended."""
     url = "https://levels.fyi/companies/acme"
     raw = "Acme pays $400k TC for staff engineers in remote roles."
-    new_assertion = _assertion(target="compensation")
+    new_assertion = canned_assertion(target="compensation")
 
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": raw}})
     extractor = FakeExtractor([[new_assertion]])
@@ -286,7 +265,7 @@ def test_fetch_action_happy_path() -> None:
     )
 
     events: list[object] = []
-    state = _state(assertions=[_assertion()])
+    state = _state(assertions=[canned_assertion()])
 
     summary = dispatch(
         state,

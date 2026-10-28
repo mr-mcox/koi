@@ -5,7 +5,9 @@ applied to the comparison gate instead of research turns."""
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 from screen.compare.picker import ComparisonSuggestion
@@ -26,30 +28,13 @@ from screen.store.repo import (
     upsert_company,
     upsert_opening,
 )
-from screen.types import Assertion, Citation, Company, Comparison, Opening
+from screen.types import Company, Comparison, Opening
 from screen.verdict.protocol import FewShotExample, RubricVerdict
-from tests.helpers import synthetic_rubric
+from tests.helpers import canned_assertion, seed_opening, synthetic_rubric
+
+_assertion = partial(canned_assertion, provenance="ratified")
 
 _NOW = datetime(2026, 9, 17, tzinfo=UTC)
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
-
-
-def _assertion(target: str, fit: str) -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit=fit,  # type: ignore[arg-type]
-        provenance="ratified",
-        chunk="verbatim source text",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
 
 
 class _FixedVerdict:
@@ -543,29 +528,18 @@ def test_speculative_prescreen_is_a_no_op_with_nothing_on_screen(tmp_path: Path)
     assert comparisons_for_target(conn, "location") == []
 
 
-def _seed_third_opening(conn, digest: str) -> None:  # type: ignore[no-untyped-def]
+def _seed_third_opening(conn: sqlite3.Connection, digest: str) -> None:
     """A third opening gives the location dimension three comparable pairs, so a
     speculative walk has more than one auto-ruling available to it."""
-    upsert_company(conn, Company(id="globex", name="Globex", created_at=_NOW))
-    upsert_opening(
+    seed_opening(
         conn,
-        Opening(
-            id="globex--c",
-            company_id="globex",
-            title="Staff Engineer",
-            url="https://example.com/c",
-            research_trace_id="tx" + "2" * 18,
-            created_at=_NOW,
-        ),
-    )
-    append_assertions(
-        conn,
-        [
+        "globex--c",
+        assertions=[
             _assertion("location", "Mixed"),
             _assertion("craft_direction", "Strong"),
             _assertion("craft_direction", "Strong"),
         ],
-        opening_id="globex--c",
+        created_at=_NOW,
     )
     insert_dimension_digest(
         conn,

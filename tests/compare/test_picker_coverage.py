@@ -5,20 +5,7 @@ from screen.compare.picker import _settled_pairs, select_comparison
 from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.types import ScoringConfig
 from screen.types import Assertion, Citation
-
-
-def _assertion(target: str) -> Assertion:
-    return Assertion(
-        id=str(uuid4()),
-        target=target,  # type: ignore[arg-type]
-        fit="Strong",  # type: ignore[arg-type]
-        provenance="model_proposed",
-        chunk="x",
-        citations=[
-            Citation(url="http", quote="x", host="h", source_provenance="p", independent=True)
-        ],
-        created_at=datetime.now(UTC),
-    )
+from tests.helpers import canned_assertion
 
 
 def test_settled_pairs_allows_when_digest_version_differs():
@@ -70,7 +57,10 @@ def test_pair_priority_floor_keeps_pair_selectable():
     res = select_comparison(
         ["a", "b"],
         companies_by_opening={"a": "c1", "b": "c2"},
-        assertions_by_opening={"a": [_assertion("mission")], "b": [_assertion("mission")]},
+        assertions_by_opening={
+            "a": [canned_assertion("mission")],
+            "b": [canned_assertion("mission")],
+        },
         comparisons_by_target={},
         p_top_k_by_opening={"a": 0.0, "b": 0.0},
         config=config,

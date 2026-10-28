@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from screen.digest.fakes import FakeDigester
+from screen.store.db import connect
 from screen.verdict.protocol import FewShotExample, RubricVerdict
 from tests.helpers import make_app
 
@@ -35,11 +37,18 @@ def db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def conn(db_path: Path) -> Iterator[sqlite3.Connection]:
+    conn = connect(db_path)
+    yield conn
+    conn.close()
+
+
+@pytest.fixture
 def client(db_path: Path) -> Iterator[TestClient]:
     """A TestClient backed by a fresh database at a temporary path. The verdict-provider
     fake guarantees the comparison pre-screen pass is always a no-op, so these tests
     exercise `/compare` exactly as before the pre-screen kernel existed;
-    `tests/test_api_pool.py` and `tests/test_prescreen_engine.py` cover the kernel
+    `tests/test_pool_store.py` and `tests/compare/test_prescreen.py` cover the kernel
     itself."""
     app = make_app(
         db_path,

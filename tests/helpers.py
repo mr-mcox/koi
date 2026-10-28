@@ -3,6 +3,7 @@ an inert fake here, so no test can reach a live adapter by omission."""
 
 import dataclasses
 import json
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,18 @@ from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
 from screen.research.batch import BatchEngine, RunDispatchDeps
 from screen.research.fakes import FakeBrowser, FakePlanner
-from screen.types import Assertion, Citation, IdentificationResult
+from screen.store.repo import append_assertions, upsert_company, upsert_opening
+from screen.types import (
+    Assertion,
+    Citation,
+    Company,
+    Fit,
+    IdentificationResult,
+    Opening,
+    Provenance,
+    Stage,
+    Target,
+)
 from screen.verdict.protocol import FewShotExample, RubricVerdict
 
 # Synthetic stand-ins for the private values `rubric.yaml` references.
@@ -43,26 +55,64 @@ def seed_research_trace(research_trace_path: Path, raw_content: str, url: str) -
     research_trace_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
 
 
-def canned_citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/42",
-        quote="Synthetic fixture content.",
-        host="example.com",
-        source_provenance="official",
-        independent=True,
-        source_date=None,
-    )
+def canned_citation(**overrides: Any) -> Citation:
+    fields: dict[str, Any] = {
+        "url": "https://example.com/jobs/42",
+        "quote": "Synthetic fixture content.",
+        "host": "example.com",
+        "source_provenance": "official",
+        "independent": True,
+        "source_date": None,
+    }
+    return Citation(**(fields | overrides))
 
 
-def canned_assertion(target: str = "craft_direction") -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Synthetic fixture content.",
-        citations=[canned_citation()],
-        created_at=datetime.now(UTC),
+def canned_assertion(
+    target: Target = "craft_direction",
+    fit: Fit = "Strong",
+    provenance: Provenance = "model_proposed",
+    **overrides: Any,
+) -> Assertion:
+    fields: dict[str, Any] = {
+        "target": target,
+        "fit": fit,
+        "provenance": provenance,
+        "chunk": "Synthetic fixture content.",
+        "citations": [canned_citation()],
+        "created_at": datetime.now(UTC),
+    }
+    return Assertion(**(fields | overrides))
+
+
+def seed_opening(
+    conn: sqlite3.Connection,
+    opening_id: str = "acme--eng-abc123",
+    *,
+    company_id: str | None = None,
+    title: str | None = None,
+    research_trace_id: str | None = None,
+    stage: Stage = "screening",
+    assertions: list[Assertion] | None = None,
+    created_at: datetime | None = None,
+) -> Opening:
+    """Upsert an opening and its company. Unset ids and the title derive from `opening_id`;
+    the company id is the part before `--`."""
+    created_at = created_at or datetime.now(UTC)
+    company_id = company_id or opening_id.split("--", maxsplit=1)[0]
+    upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=created_at))
+    opening = Opening(
+        id=opening_id,
+        company_id=company_id,
+        title=title or f"{opening_id} title",
+        url=f"https://example.com/{opening_id}",
+        research_trace_id=research_trace_id or f"tx-{opening_id}",
+        created_at=created_at,
+        stage=stage,
     )
+    upsert_opening(conn, opening)
+    if assertions:
+        append_assertions(conn, assertions, opening_id=opening_id)
+    return opening
 
 
 def fake_identifier(company: str = "Example Co", title: str = "Staff Engineer") -> FakeIdentifier:

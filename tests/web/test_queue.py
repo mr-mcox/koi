@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -31,26 +32,23 @@ from screen.types import (
     Fit,
     Opening,
 )
-from tests.helpers import make_app
+from tests.helpers import canned_assertion, canned_citation, make_app, seed_opening
 from tests.web.helpers import (
-    CITATION,
     NOW,
     boundary_glyph_positions,
-    make_assertion,
-    seed_opening,
 )
 
 
-def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Path) -> None:
+def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(
+    db_path: Path, conn: sqlite3.Connection
+) -> None:
     """A warm cache means the rating view never calls the digester — cold-cache
     generation happens post-pass, not on page view."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -59,7 +57,6 @@ def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Pat
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
     digester = FakeDigester(["unused"])
     app = make_app(db_path, digester=digester)
 
@@ -70,13 +67,14 @@ def test_rate_opening_makes_no_live_digest_calls_when_cache_is_warm(db_path: Pat
     assert digester.calls == 0
 
 
-def test_index_renders_queue_html(client: TestClient, db_path: Path) -> None:
+def test_index_renders_queue_html(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """`GET /` returns text/html with the ranked queue."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
 
     response = client.get("/")
@@ -89,12 +87,14 @@ def test_index_renders_queue_html(client: TestClient, db_path: Path) -> None:
     assert "rate" in body
 
 
-def test_index_order_matches_json_queue(client: TestClient, db_path: Path) -> None:
+def test_index_order_matches_json_queue(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """The HTML queue renders in the same standing order as `GET /queue`."""
     config = load_scoring_config()
-    strong = [make_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
-    seed_opening(db_path, company_id="acme", opening_id="acme--strong", assertions=strong)
-    seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
+    strong = [canned_assertion(slug, "Strong", "ratified") for slug in (*config.dimension_weights,)]
+    seed_opening(conn, "acme--strong", assertions=strong)
+    seed_opening(conn, "widgets--unexamined")
 
     html_response = client.get("/")
     json_response = client.get("/queue")
@@ -112,7 +112,9 @@ def test_index_order_matches_json_queue(client: TestClient, db_path: Path) -> No
     assert positions[0] < positions[1]
 
 
-def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path: Path) -> None:
+def test_index_queue_reorders_after_assertion_ruling(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """Submitting a ruling that raises an opening's standing re-sorts the HTML queue and
     the JSON queue in the same way."""
     config = load_scoring_config()
@@ -122,26 +124,24 @@ def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path
             fit="Poor",
             provenance="model_proposed",
             chunk="verbatim source text",
-            citations=[CITATION],
+            citations=[canned_citation()],
             created_at=NOW,
         )
         for slug in (*config.dimension_weights,)
     ]
-    seed_opening(db_path, company_id="acme", opening_id="acme--ruled", assertions=poor_assertions)
-    seed_opening(db_path, company_id="widgets", opening_id="widgets--unexamined")
+    seed_opening(conn, "acme--ruled", assertions=poor_assertions)
+    seed_opening(conn, "widgets--unexamined")
 
     before = client.get("/")
     assert before.status_code == 200
     assert before.text.find("widgets--unexamined") < before.text.find("acme--ruled")
 
-    conn = connect(db_path)
     for assertion in assertions_for_opening(conn, "acme--ruled"):
         response = client.post(
             f"/openings/acme--ruled/assertions/{assertion.id}/ruling",
             data={"fit": "Strong"},
         )
         assert response.status_code == 200
-    conn.close()
 
     after = client.get("/")
     assert after.status_code == 200
@@ -153,27 +153,26 @@ def test_index_queue_reorders_after_assertion_ruling(client: TestClient, db_path
     assert json_ids == ["acme--ruled", "widgets--unexamined"]
 
 
-def test_index_queue_reorders_after_comparison(client: TestClient, db_path: Path) -> None:
+def test_index_queue_reorders_after_comparison(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """A stored comparison must reach the same `_ranked_pool` the HTML queue and JSON
     `/queue` both render from — the wiring `pool_for_screening`'s comparison args
     depend on (`comparisons_by_target`/`companies_by_opening`), not just the pure fit."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--a",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--a",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
     seed_opening(
-        db_path,
-        company_id="widgets",
-        opening_id="widgets--b",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "widgets--b",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
 
     before = client.get("/")
     assert before.status_code == 200
 
-    conn = connect(db_path)
     for _ in range(3):
         append_comparison(
             conn,
@@ -186,7 +185,6 @@ def test_index_queue_reorders_after_comparison(client: TestClient, db_path: Path
                 created_at=NOW,
             ),
         )
-    conn.close()
 
     after = client.get("/")
     assert after.status_code == 200
@@ -207,14 +205,14 @@ def test_index_empty_queue_renders(client: TestClient) -> None:
 
 
 def test_index_queue_renders_median_marker_settledness_and_no_probability(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """The queue row replaces raw standing/reach/ceiling floats and any decimal
     probability with the shared boundary glyph; with fewer than `top_k` openings
     there is no boundary yet, so the median marker renders fully settled (alpha 1)."""
     config = load_scoring_config()
-    strong = [make_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
-    seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+    strong = [canned_assertion(slug, "Strong", "ratified") for slug in (*config.dimension_weights,)]
+    seed_opening(conn, "acme--eng", assertions=strong)
     response = client.get("/")
     assert response.status_code == 200
     body = response.text
@@ -238,7 +236,7 @@ def test_index_queue_renders_median_marker_settledness_and_no_probability(
 
 
 def test_index_queue_median_marker_settledness_reflects_top_k_straddle(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Once the pool exceeds `top_k` size, an opening near the boundary whose rank band
     straddles it renders a partial (not full, not zero) settledness alpha."""
@@ -247,16 +245,15 @@ def test_index_queue_median_marker_settledness_reflects_top_k_straddle(
     for i in range(config.top_k + 3):
         fit: Fit = "Strong" if i % 2 == 0 else "Mixed"
         seed_opening(
-            db_path,
-            company_id=f"c{i}",
-            opening_id=f"c{i}--eng",
+            conn,
+            f"c{i}--eng",
             assertions=[
                 Assertion(
                     target=slug,  # type: ignore[arg-type]
                     fit=fit,
                     provenance="model_proposed",
                     chunk="verbatim source text",
-                    citations=[CITATION],
+                    citations=[canned_citation()],
                     created_at=NOW,
                 )
                 for slug in targets
@@ -269,7 +266,7 @@ def test_index_queue_median_marker_settledness_reflects_top_k_straddle(
 
 
 def test_index_queue_median_marker_settledness_is_zero_when_fully_outside_top_k(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """An opening whose entire rank band sits worse than the top-K boundary renders an
     outline-only median marker (alpha 0) and the 'outside' settledness label."""
@@ -277,16 +274,14 @@ def test_index_queue_median_marker_settledness_is_zero_when_fully_outside_top_k(
     targets = (*config.dimension_weights,)
     for i in range(config.top_k):
         seed_opening(
-            db_path,
-            company_id=f"c{i}",
-            opening_id=f"c{i}--eng",
-            assertions=[make_assertion(slug, "Strong") for slug in targets],
+            conn,
+            f"c{i}--eng",
+            assertions=[canned_assertion(slug, "Strong", "ratified") for slug in targets],
         )
     seed_opening(
-        db_path,
-        company_id="tail",
-        opening_id="tail--eng",
-        assertions=[make_assertion(slug, "Poor") for slug in targets],
+        conn,
+        "tail--eng",
+        assertions=[canned_assertion(slug, "Poor", "ratified") for slug in targets],
     )
 
     response = client.get("/")
@@ -297,13 +292,13 @@ def test_index_queue_median_marker_settledness_is_zero_when_fully_outside_top_k(
 
 
 def test_rate_opening_score_block_renders_median_marker_settledness_and_no_probability(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """The per-opening score block replaces raw floats and any decimal probability
     with the same boundary glyph the queue uses."""
     config = load_scoring_config()
-    strong = [make_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
-    seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+    strong = [canned_assertion(slug, "Strong", "ratified") for slug in (*config.dimension_weights,)]
+    seed_opening(conn, "acme--eng", assertions=strong)
     response = client.get("/openings/acme--eng/rate")
     assert response.status_code == 200
     body = response.text
@@ -321,15 +316,16 @@ def test_rate_opening_score_block_renders_median_marker_settledness_and_no_proba
     assert range_left <= median <= range_right
 
 
-def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path: Path) -> None:
+def test_rate_opening_groups_assertions_by_dimension(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """Assertions are grouped under their target dimension heading instead of a flat list."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[
-            make_assertion("craft_direction", "Strong"),
-            make_assertion("mission", "Mixed"),
+            canned_assertion("craft_direction", "Strong", "ratified"),
+            canned_assertion("mission", "Mixed", "ratified"),
         ],
     )
 
@@ -351,16 +347,14 @@ def test_rate_opening_groups_assertions_by_dimension(client: TestClient, db_path
 
 
 def test_rate_opening_shows_cached_digest_above_assertions(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Each dimension group shows its cached digest above the assertion list."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -369,31 +363,28 @@ def test_rate_opening_shows_cached_digest_above_assertions(
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
 
     response = client.get("/openings/acme--eng/rate")
     body = response.text
 
     assert body.count("High-bar stretch culture.") == 1
     digest_pos = body.find("High-bar stretch culture.")
-    chunk_pos = body.find("verbatim source text")
+    chunk_pos = body.find("Synthetic fixture content.")
     assert digest_pos < chunk_pos
 
 
 def test_rate_opening_dimension_order_is_weight_descending(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Dimension groups render in weight-descending order, not assertion insertion order."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[
-            make_assertion("domain", "Mixed"),  # weight 1
-            make_assertion("craft_direction", "Strong"),  # weight 3
+            canned_assertion("domain", "Mixed", "ratified"),  # weight 1
+            canned_assertion("craft_direction", "Strong", "ratified"),  # weight 3
         ],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -410,7 +401,6 @@ def test_rate_opening_dimension_order_is_weight_descending(
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
 
     response = client.get("/openings/acme--eng/rate")
     body = response.text
@@ -421,16 +411,14 @@ def test_rate_opening_dimension_order_is_weight_descending(
 
 
 def test_rate_opening_empty_dimension_shows_not_yet_examined(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """A dimension with no assertions renders its group with a 'not yet examined' digest."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -439,7 +427,6 @@ def test_rate_opening_empty_dimension_shows_not_yet_examined(
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
 
     response = client.get("/openings/acme--eng/rate")
     body = response.text
@@ -451,17 +438,15 @@ def test_rate_opening_empty_dimension_shows_not_yet_examined(
 
 
 def test_rate_opening_renders_bullets_and_line_breaks_as_html(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """A digest with leading-dash bullets and line breaks renders as `<ul>/<li>`
     or `<br>`, not literal text."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -470,7 +455,6 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
 
     response = client.get("/openings/acme--eng/rate")
     body = response.text
@@ -481,17 +465,17 @@ def test_rate_opening_renders_bullets_and_line_breaks_as_html(
     assert "- Autonomy is real." not in body
 
 
-def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_path: Path) -> None:
+def test_rate_opening_per_assertion_rendering_unchanged(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """The per-assertion markup (fit control, provenance glyph, quote) stays stable across
     dimension grouping; the target itself isn't repeated per assertion since the dimension
     heading above already names it."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
-    conn = connect(db_path)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng",
@@ -500,14 +484,13 @@ def test_rate_opening_per_assertion_rendering_unchanged(client: TestClient, db_p
         assertion_count=1,
         computed_at=NOW,
     )
-    conn.close()
 
     response = client.get("/openings/acme--eng/rate")
     body = response.text
 
     assert "fit-strong active" in body
     assert 'title="ratified"' in body
-    assert "<blockquote>verbatim source text</blockquote>" in body
+    assert "<blockquote>Synthetic fixture content.</blockquote>" in body
 
 
 def test_rate_opening_404_when_missing(client: TestClient) -> None:
@@ -516,30 +499,32 @@ def test_rate_opening_404_when_missing(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_rate_opening_renders_citation_link(client: TestClient, db_path: Path) -> None:
+def test_rate_opening_renders_citation_link(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """Each assertion's citation renders as a clickable link to its `url`."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
 
     response = client.get("/openings/acme--eng/rate")
 
     body = response.text
-    assert f'href="{CITATION.url}"' in body
-    assert CITATION.host in body
+    assert f'href="{canned_citation().url}"' in body
+    assert canned_citation().host in body
 
 
-def test_rate_opening_shows_model_proposed_provenance(client: TestClient, db_path: Path) -> None:
+def test_rate_opening_shows_model_proposed_provenance(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """An assertion with no recorded ruling shows its provenance as a compact glyph
     and renders the fit control active at the model's proposed value."""
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
-        assertions=[make_assertion("craft_direction", "Strong")],
+        conn,
+        "acme--eng",
+        assertions=[canned_assertion("craft_direction", "Strong", "ratified")],
     )
 
     response = client.get("/openings/acme--eng/rate")
@@ -552,18 +537,16 @@ def test_rate_opening_shows_model_proposed_provenance(client: TestClient, db_pat
 
 
 def test_rate_opening_shows_existing_ruling_in_fit_control(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """An `AssertionRuling` already recorded for an assertion makes the control's
     active segment reflect the operator's value, not the original proposal."""
-    assertion = make_assertion("craft_direction", "Mixed")
+    assertion = canned_assertion("craft_direction", "Mixed", "ratified")
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
-    conn = connect(db_path)
     ruling = AssertionRuling(assertion_id=assertion.id, fit="Strong", created_at=NOW)
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
@@ -580,7 +563,7 @@ def test_rate_opening_shows_existing_ruling_in_fit_control(
 
 
 def test_rate_opening_ruling_flips_provenance_glyph_to_ratified(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Once an operator ruling exists for an assertion, the glyph shows `ratified`
     (the operator's own review), not the model's original provenance — the glyph
@@ -590,16 +573,14 @@ def test_rate_opening_ruling_flips_provenance_glyph_to_ratified(
         fit="Strong",
         provenance="model_proposed",
         chunk="verbatim source text",
-        citations=[CITATION],
+        citations=[canned_citation()],
         created_at=NOW,
     )
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
-    conn = connect(db_path)
     ruling = AssertionRuling(assertion_id=assertion.id, fit="Mixed", created_at=NOW)
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
@@ -632,15 +613,16 @@ def test_static_htmx_is_reachable(client: TestClient) -> None:
     ].startswith("application/javascript")
 
 
-def test_submit_ruling_writes_and_swaps_partial(client: TestClient, db_path: Path) -> None:
+def test_submit_ruling_writes_and_swaps_partial(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """POSTing an override writes an `AssertionRuling` and returns the rating content
     partial (not a full document) reflecting the new ruling — an HTMX partial swap,
     not a full-document GET."""
-    assertion = make_assertion("craft_direction", "Mixed")
+    assertion = canned_assertion("craft_direction", "Mixed", "ratified")
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
 
@@ -654,7 +636,6 @@ def test_submit_ruling_writes_and_swaps_partial(client: TestClient, db_path: Pat
     assert "fit-strong active" in response.text
     assert 'value="Strong"' in response.text
 
-    conn = connect(db_path)
     rulings = assertion_rulings_for_opening(conn, "acme--eng")
     assert len(rulings) == 1
     assert rulings[0].assertion_id == assertion.id
@@ -662,7 +643,7 @@ def test_submit_ruling_writes_and_swaps_partial(client: TestClient, db_path: Pat
 
 
 def test_submit_ruling_confirming_current_value_still_ratifies(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Clicking the already-active segment is an explicit confirm, not a no-op —
     it still records a ruling and flips the glyph to `ratified`."""
@@ -671,13 +652,12 @@ def test_submit_ruling_confirming_current_value_still_ratifies(
         fit="Strong",
         provenance="model_proposed",
         chunk="verbatim source text",
-        citations=[CITATION],
+        citations=[canned_citation()],
         created_at=NOW,
     )
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
 
@@ -688,17 +668,18 @@ def test_submit_ruling_confirming_current_value_still_ratifies(
     assert response.status_code == 200
     assert 'title="ratified"' in response.text
 
-    conn = connect(db_path)
     rulings = assertion_rulings_for_opening(conn, "acme--eng")
     assert len(rulings) == 1
     assert rulings[0].fit == "Strong"
 
 
-def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> None:
+def test_submit_ruling_changes_the_score(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """Submitting a ruling changes the rendered standing when it flips a target's fit."""
     config = load_scoring_config()
-    strong = [make_assertion(slug, "Strong") for slug in (*config.dimension_weights,)]
-    seed_opening(db_path, company_id="acme", opening_id="acme--eng", assertions=strong)
+    strong = [canned_assertion(slug, "Strong", "ratified") for slug in (*config.dimension_weights,)]
+    seed_opening(conn, "acme--eng", assertions=strong)
     stretch_assertion = next(a for a in strong if a.target == "craft_direction")
 
     before = client.get("/openings/acme--eng/rate")
@@ -712,21 +693,19 @@ def test_submit_ruling_changes_the_score(client: TestClient, db_path: Path) -> N
 
 
 def test_submit_ruling_replaces_prior_ruling_for_same_assertion(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """Re-submitting an override for the same assertion replaces the stored ruling."""
-    assertion = make_assertion("craft_direction", "Mixed")
+    assertion = canned_assertion("craft_direction", "Mixed", "ratified")
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
 
     client.post(f"/openings/acme--eng/assertions/{assertion.id}/ruling", data={"fit": "Strong"})
     client.post(f"/openings/acme--eng/assertions/{assertion.id}/ruling", data={"fit": "Poor"})
 
-    conn = connect(db_path)
     rulings = assertion_rulings_for_opening(conn, "acme--eng")
     assert len(rulings) == 1
     assert rulings[0].fit == "Poor"
@@ -739,15 +718,16 @@ def test_submit_ruling_404_when_opening_missing(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_submit_ruling_ignores_off_site_redirect_to(client: TestClient, db_path: Path) -> None:
+def test_submit_ruling_ignores_off_site_redirect_to(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """`redirect_to` only honors same-origin relative paths — an absolute or
     protocol-relative URL is ignored and the usual HTMX partial is returned instead of
     an open redirect."""
-    assertion = make_assertion("craft_direction", "Mixed")
+    assertion = canned_assertion("craft_direction", "Mixed", "ratified")
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
 
@@ -760,12 +740,13 @@ def test_submit_ruling_ignores_off_site_redirect_to(client: TestClient, db_path:
     assert 'id="rating-content"' in response.text
 
 
-def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) -> None:
-    assertion = make_assertion("craft_direction", "Mixed")
+def test_submit_ruling_rejects_invalid_fit(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
+    assertion = canned_assertion("craft_direction", "Mixed", "ratified")
     seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--eng",
+        conn,
+        "acme--eng",
         assertions=[assertion],
     )
 
@@ -777,12 +758,12 @@ def test_submit_ruling_rejects_invalid_fit(client: TestClient, db_path: Path) ->
 
 
 def test_index_queue_hides_boundary_tick_when_fewer_than_top_k(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """With fewer than `top_k` scored openings there is no K-th opening, so the queue
     row's glyph has no boundary tick and no crossing-probability tooltip — the boundary
     does not exist yet."""
-    seed_opening(db_path, company_id="acme", opening_id="acme--eng")
+    seed_opening(conn, "acme--eng")
 
     response = client.get("/")
 
@@ -794,7 +775,7 @@ def test_index_queue_hides_boundary_tick_when_fewer_than_top_k(
 
 
 def test_index_queue_shows_boundary_tick_when_at_least_top_k(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """With at least `top_k` scored openings the K-th opening exists, so every row's
     glyph shows a boundary tick and a crossing-probability tooltip."""
@@ -802,10 +783,9 @@ def test_index_queue_shows_boundary_tick_when_at_least_top_k(
     targets = (*config.dimension_weights,)
     for i in range(config.top_k):
         seed_opening(
-            db_path,
-            company_id=f"c{i}",
-            opening_id=f"c{i}--eng",
-            assertions=[make_assertion(slug, "Strong") for slug in targets],
+            conn,
+            f"c{i}--eng",
+            assertions=[canned_assertion(slug, "Strong", "ratified") for slug in targets],
         )
 
     response = client.get("/")
@@ -817,7 +797,7 @@ def test_index_queue_shows_boundary_tick_when_at_least_top_k(
 
 
 def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """The per-opening score block renders the same marks (interval band, median dot,
     boundary tick) as the queue row, via the shared `boundary_glyph` macro."""
@@ -825,10 +805,9 @@ def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
     targets = (*config.dimension_weights,)
     for i in range(config.top_k):
         seed_opening(
-            db_path,
-            company_id=f"c{i}",
-            opening_id=f"c{i}--eng",
-            assertions=[make_assertion(slug, "Strong") for slug in targets],
+            conn,
+            f"c{i}--eng",
+            assertions=[canned_assertion(slug, "Strong", "ratified") for slug in targets],
         )
 
     response = client.get("/openings/c0--eng/rate")
@@ -840,13 +819,15 @@ def test_rate_opening_score_block_shares_boundary_glyph_macro_with_queue(
         assert mark in body
 
 
-def test_queue_excludes_openings_not_in_screening_stage(client: TestClient, db_path: Path) -> None:
+def test_queue_excludes_openings_not_in_screening_stage(
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
+) -> None:
     """The ranked HTML queue and the JSON `/queue` only ever list `screening`-stage
     openings — `pursuing`/`applied`/`closed` openings leave the live queue."""
-    seed_opening(db_path, company_id="acme", opening_id="acme--screening")
-    seed_opening(db_path, company_id="widgets", opening_id="widgets--pursuing", stage="pursuing")
-    seed_opening(db_path, company_id="globex", opening_id="globex--applied", stage="applied")
-    seed_opening(db_path, company_id="initech", opening_id="initech--closed", stage="closed")
+    seed_opening(conn, "acme--screening")
+    seed_opening(conn, "widgets--pursuing", stage="pursuing")
+    seed_opening(conn, "globex--applied", stage="applied")
+    seed_opening(conn, "initech--closed", stage="closed")
 
     html = client.get("/")
     json_response = client.get("/queue")
@@ -861,7 +842,7 @@ def test_queue_excludes_openings_not_in_screening_stage(client: TestClient, db_p
 
 
 def test_moving_opening_out_of_screening_drops_it_from_boundary_computation(
-    client: TestClient, db_path: Path
+    client: TestClient, db_path: Path, conn: sqlite3.Connection
 ) -> None:
     """A de-queued opening never anchors the `top_k` boundary — moving the K-th-ranked
     opening out of `screening` shifts the boundary to the new K-th opening."""
@@ -869,20 +850,17 @@ def test_moving_opening_out_of_screening_drops_it_from_boundary_computation(
     targets = (*config.dimension_weights,)
     for i in range(config.top_k + 1):
         seed_opening(
-            db_path,
-            company_id=f"c{i}",
-            opening_id=f"c{i}--eng",
-            assertions=[make_assertion(slug, "Strong") for slug in targets],
+            conn,
+            f"c{i}--eng",
+            assertions=[canned_assertion(slug, "Strong", "ratified") for slug in targets],
         )
 
     before = client.get("/queue").json()
     assert len(before) == config.top_k + 1
 
-    conn = connect(db_path)
     top_opening = get_opening(conn, before[0]["opening_id"])
     assert top_opening is not None
     upsert_opening(conn, top_opening.model_copy(update={"stage": "applied"}))
-    conn.close()
 
     after = client.get("/queue").json()
     assert len(after) == config.top_k

@@ -15,31 +15,10 @@ from screen.store.repo import (
     upsert_company,
     upsert_opening,
 )
-from screen.types import Assertion, AssertionRuling, Citation, Company, Opening
+from screen.types import AssertionRuling, Company, Opening
+from tests.helpers import canned_assertion, seed_opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
-
-
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=True,
-        source_date=None,
-    )
-
-
-def _assertion(target: str = "craft_direction") -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Synthetic fixture content.",
-        citations=[_citation()],
-        created_at=_NOW,
-    )
 
 
 def test_upsert_company_then_select(tmp_path: Path) -> None:
@@ -88,8 +67,8 @@ def test_append_assertions_then_read_back_in_created_at_order(tmp_path: Path) ->
             created_at=_NOW,
         ),
     )
-    first = _assertion("craft_direction")
-    second = _assertion("trajectory")
+    first = canned_assertion("craft_direction")
+    second = canned_assertion("trajectory")
     append_assertions(conn, [first], opening_id="acme--eng-abc123")
     append_assertions(conn, [second], opening_id="acme--eng-abc123")
 
@@ -222,29 +201,11 @@ def test_upsert_opening_persists_stage_change(tmp_path: Path) -> None:
     assert get_opening(conn, "acme--eng-abc123") == moved
 
 
-def _seed_opening_with_assertion(conn) -> Assertion:  # type: ignore[no-untyped-def]
-    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id="acme--eng-abc123",
-            company_id="acme",
-            title="Staff Engineer",
-            url="https://example.com/jobs/1",
-            research_trace_id="tx0123456789abcdef",
-            created_at=_NOW,
-        ),
-    )
-    assertion = _assertion("craft_direction")
-    append_assertions(conn, [assertion], opening_id="acme--eng-abc123")
-    return assertion
-
-
 def test_assertion_rulings_for_opening_returns_empty_list_when_none_exist(
     tmp_path: Path,
 ) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_opening_with_assertion(conn)
+    seed_opening(conn, assertions=[canned_assertion()])
     assert assertion_rulings_for_opening(conn, "acme--eng-abc123") == []
 
 
@@ -252,7 +213,8 @@ def test_assertion_rulings_for_opening_returns_rulings_for_its_assertions(
     tmp_path: Path,
 ) -> None:
     conn = connect(tmp_path / "screen.db")
-    assertion = _seed_opening_with_assertion(conn)
+    assertion = canned_assertion()
+    seed_opening(conn, assertions=[assertion])
     ruling = AssertionRuling(assertion_id=assertion.id, fit="Mixed", created_at=_NOW)
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
@@ -273,7 +235,8 @@ def test_assertion_rulings_for_opening_returns_rulings_for_its_assertions(
 
 def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    assertion = _seed_opening_with_assertion(conn)
+    assertion = canned_assertion()
+    seed_opening(conn, assertions=[assertion])
     upsert_opening(
         conn,
         Opening(
@@ -285,7 +248,7 @@ def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
             created_at=_NOW,
         ),
     )
-    other_assertion = _assertion("trajectory")
+    other_assertion = canned_assertion("trajectory")
     append_assertions(conn, [other_assertion], opening_id="acme--pm-def456")
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
@@ -305,7 +268,8 @@ def test_assertion_rulings_for_opening_excludes_other_openings(tmp_path: Path) -
 
 def test_upsert_assertion_ruling_then_read_back(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    assertion = _seed_opening_with_assertion(conn)
+    assertion = canned_assertion()
+    seed_opening(conn, assertions=[assertion])
     ruling = AssertionRuling(assertion_id=assertion.id, fit="Mixed", created_at=_NOW)
 
     upsert_assertion_ruling(conn, ruling)
@@ -319,7 +283,8 @@ def test_upsert_assertion_ruling_replaces_prior_ruling_for_same_assertion(
     """Re-rating the same assertion replaces the stored ruling, not appends
     (Approach: "repeated ratings replace the previous one, not append")."""
     conn = connect(tmp_path / "screen.db")
-    assertion = _seed_opening_with_assertion(conn)
+    assertion = canned_assertion()
+    seed_opening(conn, assertions=[assertion])
     upsert_assertion_ruling(
         conn, AssertionRuling(assertion_id=assertion.id, fit="Poor", created_at=_NOW)
     )

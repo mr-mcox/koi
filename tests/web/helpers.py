@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import cast
 
 import httpx
@@ -12,32 +11,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from screen.api.app import AppState
-from screen.store.db import connect
-from screen.store.repo import (
-    append_assertions,
-    upsert_company,
-    upsert_opening,
-)
-from screen.types import (
-    Assertion,
-    Citation,
-    Company,
-    Fit,
-    Opening,
-    Target,
-)
 
 NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
-
-
-CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
 
 
 def settled_compare_page(client: TestClient) -> httpx.Response:
@@ -51,43 +26,6 @@ def settled_compare_page(client: TestClient) -> httpx.Response:
     if "compare-prescreening" not in first.text:
         return first
     return client.get("/compare")
-
-
-def seed_opening(
-    db_path: Path,
-    *,
-    company_id: str,
-    opening_id: str,
-    assertions: list[Assertion] | None = None,
-    stage: str = "screening",
-) -> None:
-    conn = connect(db_path)
-    upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id=opening_id,
-            company_id=company_id,
-            title=f"{opening_id} title",
-            url=f"https://example.com/{opening_id}",
-            research_trace_id=f"tx-{opening_id}",
-            created_at=NOW,
-            stage=stage,  # type: ignore[arg-type]
-        ),
-    )
-    if assertions:
-        append_assertions(conn, assertions, opening_id=opening_id)
-
-
-def make_assertion(target: Target, fit: Fit) -> Assertion:
-    return Assertion(
-        target=target,
-        fit=fit,
-        provenance="ratified",
-        chunk="verbatim source text",
-        citations=[CITATION],
-        created_at=NOW,
-    )
 
 
 def boundary_glyph_positions(text: str) -> tuple[float, float, float]:

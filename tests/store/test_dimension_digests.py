@@ -9,61 +9,22 @@ from screen.store.repo import (
     get_dimension_digest,
     get_dimension_digest_by_id,
     insert_dimension_digest,
-    upsert_company,
-    upsert_opening,
 )
-from screen.types import Assertion, Citation, Company, Opening
+from tests.helpers import canned_assertion, seed_opening
 
 _NOW = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
 
 
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=True,
-        source_date=None,
-    )
-
-
-def _assertion(target: str = "craft_direction") -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Synthetic fixture content.",
-        citations=[_citation()],
-        created_at=_NOW,
-    )
-
-
-def _seed_opening(conn) -> None:
-    upsert_company(conn, Company(id="acme", name="Acme Corp", created_at=_NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id="acme--eng-abc123",
-            company_id="acme",
-            title="Staff Engineer",
-            url="https://example.com/jobs/1",
-            research_trace_id="tx0123456789abcdef",
-            created_at=_NOW,
-        ),
-    )
-
-
 def test_get_dimension_digest_returns_none_when_absent(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn)
     assert get_dimension_digest(conn, "acme--eng-abc123", "craft_direction") is None
 
 
 def test_insert_then_get_dimension_digest_round_trips(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
-    append_assertions(conn, [_assertion("craft_direction")], opening_id="acme--eng-abc123")
+    seed_opening(conn)
+    append_assertions(conn, [canned_assertion("craft_direction")], opening_id="acme--eng-abc123")
 
     insert_dimension_digest(
         conn,
@@ -82,7 +43,7 @@ def test_insert_then_get_dimension_digest_round_trips(tmp_path: Path) -> None:
 
 def test_insert_dimension_digest_preserves_history_but_get_returns_latest(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn)
     insert_dimension_digest(
         conn,
         opening_id="acme--eng-abc123",
@@ -110,7 +71,7 @@ def test_get_dimension_digest_by_id_recovers_a_superseded_version(tmp_path: Path
     latest for `(opening_id, target)`. `get_dimension_digest_by_id` must still recover it
     verbatim, not whatever the current cache row holds."""
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn)
     first = insert_dimension_digest(
         conn,
         opening_id="acme--eng-abc123",
@@ -136,5 +97,5 @@ def test_get_dimension_digest_by_id_recovers_a_superseded_version(tmp_path: Path
 
 def test_get_dimension_digest_by_id_returns_none_when_absent(tmp_path: Path) -> None:
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn)
     assert get_dimension_digest_by_id(conn, "nonexistent-id") is None

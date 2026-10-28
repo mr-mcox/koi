@@ -164,7 +164,7 @@ neutral via additive weight, a constraint would have to outweigh all seven dimen
 combined. That threshold no longer exists (S9) — the queue sorts on `P(rank ≤ top_k)`, so a
 constraint only needs enough weight to sit below the K-th best opening, not below a fixed
 neutral point. Measured: `location` at weight 6 of 31 total sinks an otherwise-Strong
-opening to `P(top 1) < 0.1` against a clean competitor (`tests/test_scorer.py`). Former
+opening to `P(top 1) < 0.1` against a clean competitor (`tests/score/test_scorer.py`). Former
 constraints (`location`, `internal_culture`, `extractive_business`) are now ordinary
 `rubric.yaml` dimensions, scored by the same shrinkage math as every other dimension — no
 separate `ConstraintRange`/tolerability-range machinery, no situation-label vocabulary.
