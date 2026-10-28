@@ -12,31 +12,27 @@ import random
 import sqlite3
 import statistics
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from screen.extract.prompt import PRIVATE_PLACEHOLDERS
 from screen.store.repo import comparisons_for_target, get_dimension_digest
 
-# ---------------------------------------------------------------------------
-# Privacy gate — mirrors tests/test_rubric.py::PRIVATE_PATTERNS
-# ---------------------------------------------------------------------------
-
-_PRIVATE_PATTERNS: tuple[str, ...] = ("$230", "230,000", "230K")
-
 
 class PrivacyViolationError(ValueError):
     """Candidate rubric text contains a private value."""
 
 
-def validate_candidate(text: str) -> None:
-    """Raise PrivacyViolationError if text contains any private pattern."""
-    for pattern in _PRIVATE_PATTERNS:
-        if pattern in text:
+def validate_candidate(text: str, private_values: Mapping[str, str]) -> None:
+    """Raise PrivacyViolationError if text contains a configured private value. The
+    proposer is shown these values, so a candidate can carry one back toward the public
+    `rubric.yaml`."""
+    for name in PRIVATE_PLACEHOLDERS:
+        value = private_values.get(name)
+        if value and value in text:
             raise PrivacyViolationError(
-                f"Candidate rubric text contains private pattern {pattern!r}. "
-                "The proposer hallucinated a private value; discarding candidate."
+                f"Candidate rubric text contains the value of {name}; discarding candidate."
             )
 
 
@@ -535,6 +531,7 @@ def _run_round_iteration(
     costs: CommitCosts,
     brier_floor: float,
     prior_rounds: list[RoundResult],
+    private_values: Mapping[str, str],
     on_stage_done: Callable[[int, str, float], None] = _noop_stage_done,
 ) -> tuple[RoundResult, str, EvaluationResult, Score]:
     """Run one propose/evaluate step and return the new state plus the record."""
@@ -548,7 +545,7 @@ def _run_round_iteration(
     on_stage_done(round_num, "proposal", time.monotonic() - stage_started)
 
     candidate = render_candidate_text(rubric_text, proposal)
-    validate_candidate(candidate)
+    validate_candidate(candidate, private_values)
     require_placeholders_kept(rubric_text, candidate)
 
     stage_started = time.monotonic()
@@ -603,6 +600,7 @@ def run_rounds(
     evaluator: Evaluator,
     costs: CommitCosts,
     brier_floor: float,
+    private_values: Mapping[str, str],
     n_rounds: int = 3,
     baseline_train: EvaluationResult | None = None,
     round_offset: int = 0,
@@ -633,6 +631,7 @@ def run_rounds(
             costs=costs,
             brier_floor=brier_floor,
             prior_rounds=list(rounds),
+            private_values=private_values,
             on_stage_done=on_stage_done,
         )
         rounds.append(round_result)

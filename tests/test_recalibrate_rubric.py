@@ -525,6 +525,7 @@ def test_run_rounds_records_history_and_accepts_on_net() -> None:
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=2,
         baseline_train=baseline_train,
     )
@@ -656,6 +657,7 @@ def test_run_rounds_numbers_rounds_after_a_resume() -> None:
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=2,
         baseline_train=baseline,
         round_offset=3,
@@ -688,6 +690,7 @@ Look for: lots of words that make the baseline long.
         evaluator=evaluator,
         costs=_COSTS,
         brier_floor=0.0,
+        private_values={},
         n_rounds=1,
         on_round=lambda round_result: seen.append(round_result.round_num),
     )
@@ -853,9 +856,12 @@ def test_apply_candidate_writes_every_field_back_to_the_rubric(tmp_path) -> None
     assert dim["look_for"] == "new look for"
 
 
-def test_privacy_gate_rejects_candidate_with_salary_figure() -> None:
-    with pytest.raises(rr.PrivacyViolationError, match="230"):
-        rr.validate_candidate("Anchors: below $230,000 is Poor; above is Strong.")
+def test_privacy_gate_rejects_candidate_carrying_the_configured_baseline() -> None:
+    with pytest.raises(rr.PrivacyViolationError, match="SCREEN_COMPENSATION_BASELINE"):
+        rr.validate_candidate(
+            "Anchors: below $1,234,567 is Poor; above is Strong.",
+            {"SCREEN_COMPENSATION_BASELINE": "$1,234,567"},
+        )
 
 
 def test_candidate_that_drops_a_placeholder_is_rejected() -> None:
@@ -875,11 +881,14 @@ def test_candidate_that_keeps_its_placeholder_is_accepted() -> None:
 
 
 def test_privacy_gate_accepts_clean_candidate() -> None:
-    rr.validate_candidate("""fit_anchors:
+    rr.validate_candidate(
+        """fit_anchors:
   Poor: Relocation required.
   Mixed: Remote offered but team is centrally based.
   Strong: Distributed-first company.
-""")
+""",
+        {"SCREEN_COMPENSATION_BASELINE": "$1,234,567"},
+    )
 
 
 def test_proposer_injects_private_values_when_present_in_rubric() -> None:

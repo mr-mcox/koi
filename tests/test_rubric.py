@@ -18,13 +18,6 @@ from tests.helpers import synthetic_rubric
 
 RUBRIC_PATH = Path(__file__).resolve().parents[1] / "rubric.yaml"
 
-# These names must not appear in any rubric text field (privacy boundary).
-PRIVATE_PATTERNS = [
-    "$230",
-    "230,000",
-    "230K",
-]
-
 
 @pytest.fixture(scope="module")
 def rubric() -> dict:  # type: ignore[type-arg]
@@ -64,18 +57,6 @@ def test_rubric_non_scoring_slugs_carry_namespace_prefix(rubric: dict) -> None: 
         assert entry["slug"].startswith("non_scoring:"), entry["slug"]
 
 
-def test_rubric_compensation_dimension_has_no_baseline_number(rubric: dict) -> None:  # type: ignore[type-arg]
-    """The compensation baseline is private. The rubric definition must not
-    contain the number — only a reference to the config key."""
-    comp = next(d for d in rubric["dimensions"] if d["slug"] == "compensation")
-    definition = str(comp.get("definition", ""))
-    for pattern in PRIVATE_PATTERNS:
-        assert pattern not in definition, (
-            f"Compensation definition contains private baseline pattern '{pattern}'. "
-            "Move it to SCREEN_COMPENSATION_BASELINE env var."
-        )
-
-
 def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None:  # type: ignore[type-arg]
     """The committed rubric names the config key; `resolve_private` swaps in the real
     value at render time. If this reference is ever edited away, the substitution silently
@@ -83,15 +64,6 @@ def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None
     comp = next(d for d in rubric["dimensions"] if d["slug"] == "compensation")
 
     assert "SCREEN_COMPENSATION_BASELINE" in str(comp.get("definition", ""))
-
-
-def test_no_private_data_in_any_text_field(rubric: dict) -> None:  # type: ignore[type-arg]
-    """Walk every string value in the rubric and assert no private patterns appear."""
-    full_text = yaml.dump(rubric)
-    for pattern in PRIVATE_PATTERNS:
-        assert (
-            pattern not in full_text
-        ), f"Private pattern '{pattern}' found in rubric.yaml. Remove it."
 
 
 def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore[type-arg]

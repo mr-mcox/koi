@@ -33,7 +33,7 @@ strand a summary here.
 - **`intake/` never imports `research/`** — dependency direction runs one way · *unenforced*
 - **Private config stays private** — no real company name, salary, résumé content, or
   collected evidence in a committed file → [AGENTS.md](../../AGENTS.md) §Privacy ·
-  `tests/test_rubric.py` pins the compensation baseline out of `rubric.yaml`; the rest is
+  `tests/test_rubric.py` pins the baseline placeholder in `rubric.yaml`; the rest is
   convention, *not* gate-enforced
 - **Discipline gates** → [discipline.md](discipline.md) · `scripts/check.py`
 

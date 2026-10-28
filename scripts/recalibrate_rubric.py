@@ -527,6 +527,7 @@ def recalibrate(
             evaluator=evaluator,
             costs=costs,
             brier_floor=state.brier_noise_floor,
+            private_values=os.environ,
             n_rounds=rounds,
             baseline_train=state.current_train,
             round_offset=state.rounds_completed,
@@ -717,6 +718,7 @@ def _run_compare_mode(
             evaluator=evaluator,
             costs=costs,
             brier_floor=brier_floor,
+            private_values=os.environ,
             n_rounds=rounds,
             baseline_train=baseline_train,
             on_round_start=lambda round_num: click.echo(
