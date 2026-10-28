@@ -53,7 +53,7 @@ Touches: `intake/research_trace_io.py`, `score/types.py`, `score/scorer.py`,
 `score/compare_picker.py`, `store/repo.py`, `scripts/check.py`,
 `scripts/backtest_jev_routing.py`, their tests.
 
-## B. Remove the CLI — *open*
+## B. Remove the CLI — *done* at commit 6b4c200
 
 The operator only uses `./run` to serve the app. `backfill-jev-classification` was a
 one-time migration. `backfill-digests` only fills missing digests (it never forces a
