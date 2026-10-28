@@ -141,7 +141,7 @@ Two branches that the move left under the per-file coverage gate got tests rathe
 exemptions: `resume_opening` with no remaining budget, and the speculative prescreen's
 iteration bound (which gained a `max_iterations` parameter mirroring `run_prescreen`'s).
 
-## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *done*
+## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *done* at 9d6d35e
 
 `screen/compare/` holds the comparison workflow: `picker.py` (was
 `score/compare_picker.py`), `probability.py` (was `score/compare_probability.py`),
