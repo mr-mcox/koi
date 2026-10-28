@@ -1,7 +1,5 @@
-"""Click-independent research batch engine.
-
-Extracted from `intake/cli.py` so the web route can schedule research turns
-via `fastapi.BackgroundTasks` without a Click dependency.
+"""Research batch engine: schedules research turns via `fastapi.BackgroundTasks`,
+independent of any CLI.
 """
 
 from __future__ import annotations

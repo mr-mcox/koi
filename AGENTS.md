@@ -104,9 +104,9 @@ untracked config or the data directory, not in git.
 
 ## Data — the operator's live store is off-limits
 
-`./run` (operator-only — do not invoke it in an agent session) points the CLI/API at
+`./run` (operator-only — do not invoke it in an agent session) points the API at
 `data/live/`, the DB holding the operator's real ratings. Everything an agent runs —
-`uv run python -m screen <command>`, `uv run uvicorn screen.api.main:app`, the test suite —
+`uv run uvicorn screen.api.main:app`, the test suite —
 defaults to `./data` instead (or a `tmp_path` in tests), a disposable scratch DB safe to
 delete. Never set `SCREEN_DATA_DIR` to `data/live` or otherwise target it.
 

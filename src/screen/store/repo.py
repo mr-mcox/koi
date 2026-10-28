@@ -1,5 +1,5 @@
 """Repository functions: Company/Opening upsert, Assertion append-and-read,
-built on `db.connect` + `mappers`. This is the layer `intake/cli.py` calls;
+built on `db.connect` + `mappers`. This is the layer `intake/pipeline.py` calls;
 `mappers.py`/`migrate.py` stay connection-shape-agnostic below it.
 """
 
@@ -82,30 +82,6 @@ def assertions_for_opening(conn: sqlite3.Connection, opening_id: str) -> list[As
         "SELECT * FROM assertions WHERE opening_id = ? ORDER BY created_at", (opening_id,)
     ).fetchall()
     return [a for a in (assertion_from_row(dict(row)) for row in rows) if a is not None]
-
-
-def update_assertion_classification(
-    conn: sqlite3.Connection, assertion_id: str, *, fit: str, confidence: float
-) -> None:
-    """Scoped exception to Wall 6 (decisions.md E6): the one-time Jev-classification
-    backfill updates `fit`/`confidence` on existing rows in place rather than inventing
-    an append-and-supersede read path. Not used by ongoing intake, which still only
-    calls `append_assertions`. `provenance` is untouched — backfill never overrides who
-    the operator ratified."""
-    conn.execute(
-        "UPDATE assertions SET fit = :fit, confidence = :confidence WHERE id = :id",
-        {"fit": fit, "confidence": confidence, "id": assertion_id},
-    )
-    conn.commit()
-
-
-def delete_assertion(conn: sqlite3.Connection, assertion_id: str) -> None:
-    """Scoped exception to Wall 6 (decisions.md E6): removes an assertion the backfill's
-    Jev pass now confidently judges irrelevant. Callers must check
-    `assertion_rulings_for_opening` first — an assertion the operator has already ruled on
-    is never dropped."""
-    conn.execute("DELETE FROM assertions WHERE id = :id", {"id": assertion_id})
-    conn.commit()
 
 
 def upsert_assertion_ruling(conn: sqlite3.Connection, ruling: AssertionRuling) -> None:

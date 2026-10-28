@@ -1,11 +1,11 @@
 # Cleanup backlog
 
 Outstanding structural cleanups from the October 2026 codebase survey. Each item is
-scoped to one PR and written so a fresh session can pick it up from this file alone.
+scoped to one PR or commit and written so a fresh session can pick it up from this file alone.
 
 **Working an item:** read AGENTS.md first. Pass `uv run python scripts/check.py` with no
 `.env` values set (the suite is hermetic, so it must pass without them). When the PR
-merges, mark the item done here with a link to it. Add items in the same shape. Remove an
+or commit lands, mark the item done here with a link to it. Add items in the same shape. Remove an
 item only once it is done or explicitly dropped, and say why.
 
 **Parallel work:** each item lists the files it touches. Items whose lists are disjoint can
@@ -23,7 +23,7 @@ wave before starting the next, because later waves move files the earlier ones e
 
 ---
 
-## A. Delete dead code and fix stale references — *open*
+## A. Delete dead code and fix stale references — *done* at commit 4b39eb7f08d71e25ec09a61658b143b4c59d2c37
 
 Code that nothing in production reaches, kept alive only by its tests:
 - `ResearchTraceLockedError` (`intake/research_trace_io.py`) is never raised. Delete it
@@ -239,4 +239,3 @@ mislabeled, and the mismatch grows with evidence accumulated since the judgment.
 
 Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
 `store/migrations/0010_create_comparisons.sql`, the recalibration tests.
-

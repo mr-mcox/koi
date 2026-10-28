@@ -16,7 +16,6 @@ from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import RubricText
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.baml_identifier import BAMLIdentifier
-from screen.intake.cli import CliDeps
 from screen.intake.pipeline import db_path_for, intake_url
 from screen.paths import data_dir
 from screen.research.baml_planner import BAMLPlanner
@@ -76,13 +75,3 @@ def build_app(environ: Mapping[str, str]) -> FastAPI:
         intake_fn=build_intake_fn(data_root, rubric, environ),
     )
     return create_app(Database(db_path_for(data_root)), deps)
-
-
-def build_cli_deps(environ: Mapping[str, str]) -> CliDeps:
-    rubric = RubricText.load(environ)
-    return CliDeps(
-        db_path=db_path_for(data_dir(environ)),
-        rubric=rubric,
-        digester=BAMLDigester(),
-        classifier=JevAssertionClassifier(rubric),
-    )

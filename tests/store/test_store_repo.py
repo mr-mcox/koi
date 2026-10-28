@@ -1,4 +1,4 @@
-"""Tests for `screen.store.repo` — the layer intake/cli.py calls."""
+"""Tests for `screen.store.repo` — the layer intake/pipeline.py calls."""
 
 from datetime import UTC, datetime
 from pathlib import Path

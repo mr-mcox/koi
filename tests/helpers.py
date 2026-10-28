@@ -13,14 +13,11 @@ from screen.api.app import AppDeps, Database, create_app
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.extract.prompt import RubricText
-from screen.intake.cli import CliDeps
 from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
 from screen.research.batch import BatchEngine, RunDispatchDeps
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.types import Assertion, Citation, IdentificationResult
-from screen.verdict.classification_protocol import AssertionClassification
-from screen.verdict.fakes import FakeAssertionClassifier
 from screen.verdict.protocol import FewShotExample, RubricVerdict
 
 # Synthetic stand-ins for the private values `rubric.yaml` references.
@@ -122,22 +119,6 @@ def fake_app_deps(**overrides: Any) -> AppDeps:
         verdict_provider=_UnconsultedVerdictProvider(),
         batch_engine=BatchEngine(planner_factory=fake_planner, deps_factory=fake_dispatch_deps),
         intake_fn=_intake_not_configured,
-    )
-    return dataclasses.replace(deps, **overrides)
-
-
-def fake_cli_deps(db_path: Path, **overrides: Any) -> CliDeps:
-    deps = CliDeps(
-        db_path=db_path,
-        rubric=synthetic_rubric(),
-        digester=fake_digester(),
-        classifier=FakeAssertionClassifier(
-            [
-                AssertionClassification(
-                    fit="Strong", confidence=0.9, is_relevant=True, relevance_confidence=0.9
-                )
-            ]
-        ),
     )
     return dataclasses.replace(deps, **overrides)
 

@@ -9,11 +9,9 @@ from screen.browser import TavilyBrowser
 from screen.digest.baml_digester import BAMLDigester
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import MissingPrivateConfigError
-from screen.intake.cli import CliDeps
 from screen.research.baml_planner import BAMLPlanner
-from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
-from screen.wiring import build_app, build_cli_deps, build_dispatch_deps
+from screen.wiring import build_app, build_dispatch_deps
 from tests.helpers import SYNTHETIC_PRIVATE, synthetic_rubric
 
 
@@ -37,16 +35,6 @@ def test_dispatch_deps_use_the_live_adapters() -> None:
     assert isinstance(deps.browser, TavilyBrowser)
     assert isinstance(deps.extractor, BAMLExtractor)
     assert isinstance(deps.digester, BAMLDigester)
-
-
-def test_cli_deps_use_the_live_adapters_against_the_configured_data_dir(
-    tmp_path: Path,
-) -> None:
-    deps = build_cli_deps(_environ(tmp_path))
-
-    assert isinstance(deps, CliDeps)
-    assert deps.db_path == tmp_path.resolve() / "screen.db"
-    assert isinstance(deps.classifier, JevAssertionClassifier)
 
 
 def test_app_refuses_to_build_without_the_compensation_baseline(tmp_path: Path) -> None:

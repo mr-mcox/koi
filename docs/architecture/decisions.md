@@ -396,6 +396,13 @@ up first), over either inventing that read-path concept or leaving pre-migration
 unfixed. This does not reopen append-only for ongoing operation — new assertions are still
 never updated or replaced after intake; only this bounded backfill touches old rows, once.
 
+### E7 · E6's scoped exception is closed · `adopted` (2026-10, cleanup item B)
+
+The one-time backfill E6 carved out has run and the CLI that ran it (`intake/cli.py`,
+`repo.update_assertion_classification`, `repo.delete_assertion`) is deleted. Assertions
+are now append-only with no exceptions — E6 no longer describes live code, only the
+historical maintenance pass it covered.
+
 ---
 
 ## Rubric

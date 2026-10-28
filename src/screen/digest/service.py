@@ -21,11 +21,10 @@ def update_digests_for_opening(
     digester: DigesterProtocol,
     rubric_text: str,
     now: datetime,
-    force: bool = False,
 ) -> None:
     """Warm the digest cache for every target that has assertions on this opening.
 
-    Called from the CLI at the end of a research pass, so the rating view never blocks
+    Called from dispatch at the end of a research pass, so the rating view never blocks
     on a cold cache; idempotent by the same assertion-count staleness key
     `digest_for_target` uses.
     """
@@ -38,7 +37,6 @@ def update_digests_for_opening(
             digester=digester,
             rubric_text=rubric_text,
             now=now,
-            force=force,
         )
 
 
@@ -50,7 +48,6 @@ def digest_for_target(
     digester: DigesterProtocol,
     rubric_text: str,
     now: datetime,
-    force: bool = False,
 ) -> str:
     """Return the cached digest text for `(opening_id, target)`. Thin wrapper over
     `digest_record_for_target` for callers that only need the prose, not the version id."""
@@ -61,7 +58,6 @@ def digest_for_target(
         digester=digester,
         rubric_text=rubric_text,
         now=now,
-        force=force,
     ).digest
 
 
@@ -73,18 +69,16 @@ def digest_record_for_target(
     digester: DigesterProtocol,
     rubric_text: str,
     now: datetime,
-    force: bool = False,
 ) -> DimensionDigest:
     """Return the cached `DimensionDigest` record (prose + durable version id) for
     `(opening_id, target)`, regenerating only when the current assertion count has grown
-    past what the cache holds, or when `force` is set (e.g. a backfill that mutated
-    assertions out from under the cache). Callers that need to record which digest version
+    past what the cache holds. Callers that need to record which digest version
     was shown at judgment time (e.g. `Comparison`) should use this, not `digest_for_target`.
     """
     target_assertions = [a for a in assertions_for_opening(conn, opening_id) if a.target == target]
     current_count = len(target_assertions)
     cached = get_dimension_digest(conn, opening_id, target)
-    if not force and cached is not None and cached.assertion_count >= current_count:
+    if cached is not None and cached.assertion_count >= current_count:
         return cached
     digest = digester.digest_dimension(target_assertions, rubric_text)
     return insert_dimension_digest(

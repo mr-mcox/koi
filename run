@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Operator-only entry point. Runs the CLI or API against the live data
+# Operator-only entry point. Serves the API against the live data
 # store (data/live/), not the disposable default (./data) that manual
 # testing and agent sessions use.
 #
@@ -10,22 +10,5 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SCREEN_DATA_DIR="${SCREEN_DATA_DIR:-$REPO_ROOT/data/live}"
 PORT="${SCREEN_API_PORT:-8420}"
 
-cmd="${1:-serve}"
-shift || true
-
-case "$cmd" in
-  serve)
-    echo "Queue: http://localhost:${PORT}/" >&2
-    exec uv run uvicorn screen.api.main:app --port "$PORT" "$@"
-    ;;
-  backfill-digests)
-    exec uv run python -m screen backfill-digests "$@"
-    ;;
-  backfill-jev-classification)
-    exec uv run python -m screen backfill-jev-classification "$@"
-    ;;
-  *)
-    echo "usage: ./run [serve|backfill-digests|backfill-jev-classification]" >&2
-    exit 1
-    ;;
-esac
+echo "Queue: http://localhost:${PORT}/" >&2
+exec uv run uvicorn screen.api.main:app --port "$PORT" "$@"
