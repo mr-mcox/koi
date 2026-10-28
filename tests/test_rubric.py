@@ -1,7 +1,7 @@
 """rubric.yaml structural tests.
 Verifies that the committed rubric has a well-formed shape, does not
 contain private data, and stays in sync with the closed Target vocabulary
-in screen.types. Dimension/non-scoring membership is not pinned here —
+in screen.types. Dimension membership is not pinned here —
 test_rubric_slugs_match_target_literal is the sync check; adding a rubric
 slug only requires updating screen.types alongside rubric.yaml.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from screen.extract.prompt import RubricText, all_dimension_slugs, all_non_scoring_slugs
+from screen.extract.prompt import RubricText, all_dimension_slugs
 from screen.types import Target
 from tests.helpers import synthetic_rubric
 
@@ -52,9 +52,10 @@ def test_rubric_has_no_constraints_section(rubric: dict) -> None:  # type: ignor
     assert "constraints" not in rubric
 
 
-def test_rubric_non_scoring_slugs_carry_namespace_prefix(rubric: dict) -> None:  # type: ignore[type-arg]
-    for entry in rubric.get("non_scoring", []):
-        assert entry["slug"].startswith("non_scoring:"), entry["slug"]
+def test_rubric_has_no_non_scoring_section(rubric: dict) -> None:  # type: ignore[type-arg]
+    """Non-scoring targets retired (cleanup item C): nothing read them, but the research
+    planner spent turns and the extractor spent tokens on them."""
+    assert "non_scoring" not in rubric
 
 
 def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -69,7 +70,6 @@ def test_rubric_file_still_references_the_baseline_by_name(rubric: dict) -> None
 def test_prompt_helper_slugs_match_rubric(rubric: dict) -> None:  # type: ignore[type-arg]
     """prompt.py helper functions must return the same slugs the YAML file declares."""
     assert set(all_dimension_slugs()) == {d["slug"] for d in rubric["dimensions"]}
-    assert set(all_non_scoring_slugs()) == {n["slug"] for n in rubric["non_scoring"]}
 
 
 def test_rubric_text_for_dimension_slices_one_dimension(rubric: dict) -> None:  # type: ignore[type-arg]
@@ -92,14 +92,11 @@ def test_rubric_text_for_dimension_unknown_slug_raises(rubric: dict) -> None:  #
 
 def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignore[type-arg]
     """Every slug in the rubric must appear in the closed Target Literal,
-    and vice versa — the two must stay in sync. This is the drift detector for
-    Wall 3 (Target is hand-listed in screen.types, not generated from the
-    rubric): it is the sole guard, so a new dimension/non-scoring slug must
-    land in both places or this fails."""
+    and vice versa — the two must stay in sync. The Literal is hand-listed in
+    screen.types rather than generated from the rubric, and this is the sole
+    drift detector, so a new dimension slug must land in both places or this fails."""
     literal_values: set[str] = set(typing.get_args(Target))
-    rubric_slugs: set[str] = {d["slug"] for d in rubric["dimensions"]} | {
-        n["slug"] for n in rubric["non_scoring"]
-    }
+    rubric_slugs: set[str] = {d["slug"] for d in rubric["dimensions"]}
     assert literal_values == rubric_slugs, (
         f"Target Literal and rubric slugs diverged.\n"
         f"In Literal but not rubric: {literal_values - rubric_slugs}\n"
@@ -109,7 +106,7 @@ def test_rubric_slugs_match_target_literal(rubric: dict) -> None:  # type: ignor
 
 def test_full_render_with_empty_sections_does_not_crash() -> None:
     """The full render must not raise when optional sections are empty."""
-    result = RubricText({"dimensions": [], "non_scoring": []}, private={}).full()
+    result = RubricText({"dimensions": []}, private={}).full()
     assert "Scored dimensions" in result
 
 
@@ -127,7 +124,6 @@ def test_full_render_of_a_dimension_without_look_for() -> None:
                     # no look_for key
                 }
             ],
-            "non_scoring": [],
         },
         private={},
     ).full()

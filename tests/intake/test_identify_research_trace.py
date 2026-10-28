@@ -237,7 +237,6 @@ def test_identify_research_trace_writes_assertions_to_db(tmp_path: Path) -> None
         "domain",
         "location",
         "internal_culture",
-        "non_scoring:obtainability",
     ]
     assert len(parsed.citations) >= 1
 

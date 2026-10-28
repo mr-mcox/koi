@@ -22,7 +22,6 @@ from screen.digest.service import update_digests_for_opening
 from screen.extract.prompt import (
     RubricText,
     all_dimension_slugs,
-    all_non_scoring_slugs,
 )
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
@@ -147,7 +146,7 @@ def run_dispatch(
     """
     rubric = deps.rubric.full()
     scoring_config = load_scoring_config()
-    targets = all_dimension_slugs() + all_non_scoring_slugs()
+    targets = all_dimension_slugs()
     replay = (
         resume
         if resume is not None

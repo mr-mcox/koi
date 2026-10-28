@@ -183,7 +183,7 @@ def test_assertion_rejects_confidence_score() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Wall 3: closed Target Literal
+# The closed Target Literal
 # ---------------------------------------------------------------------------
 
 
@@ -209,15 +209,11 @@ def test_assertion_rejects_retired_extractive_business_target() -> None:
         Assertion.model_validate(_assertion(target="extractive_business"))
 
 
-def test_assertion_accepts_non_scoring_obtainability() -> None:
-    a = Assertion.model_validate(_assertion(target="non_scoring:obtainability"))
-    assert a.target == "non_scoring:obtainability"
-
-
-def test_assertion_rejects_bare_obtainability() -> None:
-    """Wall 3: `obtainability` without the namespace prefix must be rejected."""
+def test_assertion_rejects_retired_obtainability_target() -> None:
+    """Obtainability retired with the whole non-scoring target family (cleanup item C):
+    the planner spent turns and the extractor spent tokens on a target nothing read."""
     with pytest.raises(ValidationError):
-        Assertion.model_validate(_assertion(target="obtainability"))
+        Assertion.model_validate(_assertion(target="non_scoring:obtainability"))
 
 
 def test_assertion_rejects_unknown_target() -> None:

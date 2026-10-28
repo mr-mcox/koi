@@ -89,7 +89,3 @@ dimensions:
   look_for: Layoff framing and cadence; stated performance-management practices (forced ranking, stack ranking); leadership tenure/turnover; employee review sites, weighted for recency and corroboration.
   slug: internal_culture
   weight: 2
-non_scoring:
-- definition: Warm-path access, referral potential, recruiter source, inbound vs. outbound. Relevant to urgency and application strategy but never to the fit score. Never enters standing (Wall 4).
-  label: Obtainability
-  slug: non_scoring:obtainability

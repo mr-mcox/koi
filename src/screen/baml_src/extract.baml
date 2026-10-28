@@ -18,7 +18,7 @@ class Citation {
 }
 
 class Assertion {
-  target string @description("The rubric slug this claim pertains to. Must be one of the scoring dimension slugs, or 'non_scoring:obtainability'. See the rubric text for the complete closed vocabulary.")
+  target string @description("The rubric slug this claim pertains to. Must be one of the scoring dimension slugs. See the rubric text for the complete closed vocabulary.")
   
   chunk string @description("The verbatim span from the page content that grounded this claim. Must be non-empty.")
   citations Citation[] @description("One or more citations. Always non-empty. For a job posting the URL is the posting URL and the quote is the span supporting the claim.")
@@ -40,7 +40,7 @@ function ExtractAssertions(
 
     ## Rules
     - Each assertion must have a `target` from the rubric's closed slug vocabulary
-      (dimension slugs, or `non_scoring:obtainability`).
+      (the dimension slugs).
     - `chunk` must be a verbatim span copied from the page content below.
     - `citations` must be non-empty. Use the page URL as the citation URL
       and a verbatim span as the quote.
@@ -93,7 +93,6 @@ About You
     rubric_text #"
 Scored dimensions: craft_direction (weight 3), trajectory (weight 2), mission (weight 2), agentic (weight 2), compensation (weight 2), domain (weight 1).
 Additional dimensions: location (weight 6), internal_culture (weight 4).
-Non-scoring slug: non_scoring:obtainability.
     "#
     existing_assertions "[]"
   }

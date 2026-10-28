@@ -553,7 +553,7 @@ problem, not solved by adding structure now.
 
 ## Workflow
 
-### W1 · Obtainability never scores · `demonstrated` (D24), home `adopted`
+### W1 · Obtainability never scores · `demonstrated` (D24), home `adopted` · home superseded by W8
 
 As a fourth multiplicative factor it cost 14–21× in the tail (P(> bar) lives in the tail;
 mean-intuition says ~2× and is wrong), and `open_application`'s ceiling put every cold-apply
@@ -629,6 +629,28 @@ backstop guarded nothing and split one policy across two enforcement points.
 
 *Rejected:* a per-host success-rate threshold that auto-declines. It turns a politeness
 question into a measurement question, and re-admits a host the moment its block loosens.
+
+### W8 · The non-scoring target family retires; obtainability isn't collected at all · `adopted` (2026-10, cleanup item C) · supersedes W1's home
+
+W1 kept obtainability out of the score but gave it a home: assertions against a
+`non_scoring:` target, collected by the same pipeline for display. The home never paid.
+`non_scoring:obtainability` was the only member of the family, nothing read it — the
+scorer iterates `dimension_weights` and never saw it, and no queue lens was built — while
+the research planner spent turns on it and the extractor spent tokens on it every pass.
+It is removed from `rubric.yaml`, the `Target` Literal, and the research and extraction
+prompts. W1's ruling is untouched: obtainability still never scores, and the 14–21× tail
+measurement still stands against re-introducing it as a factor.
+
+Wall 3 ("non-scoring targets never enter rank") guarded this family and now guards
+nothing; it is retired in `domain-model.md`, its slot left numbered so the later walls
+keep their numbers. Existing rows in the live store need no migration — the
+`store/mappers.py` read path drops assertions whose target has left the vocabulary, with
+a warning.
+
+**Rejected:** keeping the family empty as a seam for a future non-scoring target. An empty
+vocabulary with live branches in the renderer, the prompt builder and the planner is cost
+with no reader; the branches are cheap to re-derive from this entry if approach-EV
+(prototype O7) is ever built.
 
 ---
 

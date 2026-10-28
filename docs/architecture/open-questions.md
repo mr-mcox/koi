@@ -132,17 +132,17 @@ judgment a fit-guess-by-search can't supply, but a factual company summary plus 
 retrieval could.
 
 **Settled by:** `PrecedentLookup` reaching build. At that point it needs some input to
-compare against precedent, and whether that's a dedicated non-scoring target (e.g.
-`non_scoring:company_profile`) or just the raw fetched page text already sitting in the
-transcript is a real design choice to make then, with a real consumer in front of it —
-not a guess to make now.
+compare against precedent, and whether that's a dedicated evidence target carrying no
+weight (the `non_scoring:` family that once held obtainability is retired, decisions.md
+W8) or just the raw fetched page text already sitting in the transcript is a real design
+choice to make then, with a real consumer in front of it — not a guess to make now.
 
 **Interim note (2026-09-28):** the operator reaffirmed the split above and advanced it — the *factual* content of a domain (what the business does, how it accomplishes it) **is researchable**; only the *coolness* judgment is operator-only ("don't try to guess at the coolness — I'll weigh in on that"). The "manual entry only, never researched" wording in domain-model.md:45 is therefore stale and will be revised in a separate pass (a girder change: domain-model.md is a girder, rubric text is load-bearing per R4) — not folded into the feature that surfaced it. That feature is `comparison-similarity-kernel` (`docs/features/comparison-similarity-kernel/`): it includes `domain` in provisional similarity ties like every other scored dimension, where the tie correlates openings on *factual* domain similarity (two martech companies cluster) and the operator's coolness ruling stays the load-bearing signal. OQ12's settlement clause is unchanged — `PrecedentLookup` reaching build still settles the dedicated-evidence-target question.
 
 ## 13 · Should `Target`/BAML schema derive from `rubric.yaml`, rather than hand-sync?
 
 Rubric dimension/constraint slugs currently need matching-by-hand updates in three places:
-`rubric.yaml` itself, `screen.types.Target` (closed Literal, wall 3), and the BAML
+`rubric.yaml` itself, `screen.types.Target` (the closed Literal), and the BAML
 `Assertion` schema (`baml_src/extract.baml`). A first rubric revision (v2, draft, splitting
 `schematic` out of `stretch`) already surfaced the gap: the YAML can describe a dimension
 nothing downstream can produce or validate yet, with nothing forcing the sync.

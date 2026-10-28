@@ -59,19 +59,14 @@ def _render_full(data: Mapping[str, Any]) -> str:
     lines: list[str] = ["\n## Scored dimensions"]
     for dim in data.get("dimensions", []):
         lines.extend(_render_one_dimension(dim))
-    lines.append("\n## Non-scoring targets")
-    for ns in data.get("non_scoring", []):
-        lines.append(f"- {ns['slug']}: {ns['definition'].strip()}")
     return "\n".join(lines)
 
 
 def _render_dimension(data: Mapping[str, Any], target: str) -> str:
     by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
-    if target in by_slug:
-        return "\n".join(_render_one_dimension(by_slug[target]))
-    non_scoring_by_slug = {ns["slug"]: ns for ns in data.get("non_scoring", [])}
-    ns = non_scoring_by_slug[target]
-    return f"### {ns['label']} (slug: {ns['slug']}, non-scoring — never enters the rollup)\n{ns['definition'].strip()}"
+    if target not in by_slug:
+        raise KeyError(target)
+    return "\n".join(_render_one_dimension(by_slug[target]))
 
 
 class RubricText:
@@ -92,13 +87,12 @@ class RubricText:
         return cls(_load(), {name: environ.get(name, "") for name in PRIVATE_PLACEHOLDERS})
 
     def full(self) -> str:
-        """Every scored dimension and non-scoring target, for research and extraction."""
+        """Every scored dimension, for research and extraction."""
         return self._full
 
     def for_dimension(self, target: str) -> str:
         """One dimension's text alone, so a per-dimension judgment can't be swayed by
-        other dimensions' anchors. Non-scoring targets render their definition only.
-        Raises `KeyError` for a slug in neither vocabulary."""
+        other dimensions' anchors. Raises `KeyError` for an unknown slug."""
         return resolve_private(_render_dimension(self._data, target), self._private)
 
     def resolve(self, text: str) -> str:
@@ -111,10 +105,6 @@ def all_dimension_slugs() -> list[str]:
     return [d["slug"] for d in _load().get("dimensions", [])]
 
 
-def all_non_scoring_slugs() -> list[str]:
-    return [n["slug"] for n in _load().get("non_scoring", [])]
-
-
 def unresolved_rubric_text_for_dimension(target: str) -> str:
     """One dimension's text with private placeholders left as their names. For callers
     that show rubric text to a model that may rewrite it, or write it back to the public
@@ -123,21 +113,12 @@ def unresolved_rubric_text_for_dimension(target: str) -> str:
 
 
 def fit_anchors_for_dimension(target: str) -> dict[str, str]:
-    """Return one dimension's fit anchor text keyed by the rubric's own labels. A
-    non-scoring target (e.g. `non_scoring:obtainability`) has no fit anchors in
-    `rubric.yaml` — its `fit` is recorded but never scored (Wall 4) — so this returns a
-    placeholder set rather than raising."""
-    data = _load()
-    by_slug = {dim["slug"]: dim for dim in data.get("dimensions", [])}
-    if target in by_slug:
-        return {
-            str(label): str(text).strip()
-            for label, text in by_slug[target].get("fit_anchors", {}).items()
-        }
-    non_scoring_slugs = {ns["slug"] for ns in data.get("non_scoring", [])}
-    if target in non_scoring_slugs:
-        placeholder = (
-            "Not applicable — this target is never scored (Wall 4); fit is recorded but unused."
-        )
-        return {"Poor": placeholder, "Mixed": placeholder, "Strong": placeholder}
-    raise KeyError(target)
+    """Return one dimension's fit anchor text keyed by the rubric's own labels.
+    Raises `KeyError` for an unknown slug."""
+    by_slug = {dim["slug"]: dim for dim in _load().get("dimensions", [])}
+    if target not in by_slug:
+        raise KeyError(target)
+    return {
+        str(label): str(text).strip()
+        for label, text in by_slug[target].get("fit_anchors", {}).items()
+    }

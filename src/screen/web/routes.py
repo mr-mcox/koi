@@ -217,10 +217,10 @@ def _dimension_groups(
     now: datetime,
 ) -> list[_DimensionGroup]:
     """Group assertions by rubric target and attach the cached digest for each group.
-    Dimensions are ordered by their declared weight descending (ties broken by slug). Any
-    non-scoring targets with assertions are appended after. Empty scoring targets still
-    render with a 'not yet examined' digest so the operator can see coverage gaps at a
-    glance.
+    Dimensions are ordered by their declared weight descending (ties broken by slug); any
+    target carrying assertions but missing from the weights is appended after. Empty
+    declared dimensions still render with a 'not yet examined' digest so the operator can
+    see coverage gaps at a glance.
     """
     declared = sorted(
         config.dimension_weights,

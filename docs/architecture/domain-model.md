@@ -54,7 +54,6 @@ known company inherits all company-level evidence free.
 - Role-level dimensions: craft direction, compensation, location compatibility
   (covers both remote/distributed-work quality and physical workability on one ladder,
   decisions.md S13).
-- Non-scoring targets: obtainability / rise-above-the-noise (see the wall below).
 - Affordances — collected data, never directives: where to apply, cover letter accepted,
   posting date, requisition level.
 - Pipeline stage: `screening → pursuing / applied / closed`. Deliberately thin; other
@@ -66,8 +65,7 @@ known company inherits all company-level evidence free.
 One claim, append-only. The prototype's central format finding: granular, auditable,
 pointed at exactly one target.
 
-- `target` — one dimension, at company or opening level. Non-scoring targets accept
-  assertions; the Scorer ignores them.
+- `target` — one dimension, at company or opening level.
 - `fit` — Poor / Mixed / Strong, **or undetermined** (well-sourced fact, verdict genuinely
   open — e.g. a recent acquisition at Company A: narrow on sourcing, wide on meaning). One
   observation may yield several interpretations, each its own assertion against its own
@@ -191,8 +189,8 @@ a to-do generator. Three thin pieces:
 
 - **Queue** — a projection, not an entity. Ordered by pool-scored rank (`P(rank ≤ top_k)`,
   expected-rank tiebreak), with rank bands and a top-K settledness readout; "what changed
-  since you last looked" (re-entry is the primary mode); reorder lenses for urgency and
-  obtainability. `bar` is not a sort key or filter anywhere in this projection
+  since you last looked" (re-entry is the primary mode); a reorder lens for urgency.
+  `bar` is not a sort key or filter anywhere in this projection
   (pairwise-ranking/rank-pool.md; decisions.md S9–S11).
 - **ResearchQueue** — proposed research targets ranked by value of information, where VOI
   means *"would knowing this change what happens to this opening"* rather than "how far does
@@ -219,7 +217,8 @@ tool.
   the operator which human action to take is not the core value. Q4 answered by
   dissolution.
 - **Thick ActionLog** — shrinks to pipeline-stage transitions.
-- **Obtainability as bespoke state table** — now assertions against a non-scoring target.
+- **Obtainability as bespoke state table** — carried briefly as a non-scoring target, then
+  dropped entirely (decisions.md W8).
 
 ---
 
@@ -228,9 +227,11 @@ tool.
 1. **Raw plane positions never reach the Scorer.** A continuous confidence next to a
    multiplication is one careless commit from confidence-as-multiplier (rejected 3×).
 2. **Fit and provenance never blend into one number.** Provenance widens; it never scales.
-3. **Non-scoring targets never enter rank.** Obtainability multiplied in cost 14–21×
-   in the tail and put every cold-apply company over the cliff (D24's measurement) — and it
-   is the one axis an *action changes*, so scoring it inverts the exploration incentive.
+3. ~~**Non-scoring targets never enter rank.**~~ *Retired (decisions.md W8): the
+   non-scoring target family is gone, so this wall guards nothing. The numbers that
+   motivated it stand — obtainability multiplied in cost 14–21× in the tail and put every
+   cold-apply company over the cliff (D24) — and W1 still bars re-scoring it. The slot
+   keeps its number so Walls 4–8 keep theirs.*
 4. **Precision ranks; displays avoid false precision.** A single review must never produce "6.7/10."
 5. **Unexamined ≠ clean, everywhere including display wording.** "Wide because negotiable"
    and "wide because nobody looked" never share a label.
