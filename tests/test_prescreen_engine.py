@@ -541,3 +541,81 @@ def test_speculative_prescreen_is_a_no_op_with_nothing_on_screen(tmp_path: Path)
     )
 
     assert comparisons_for_target(conn, "location") == []
+
+
+def _seed_third_opening(conn, digest: str) -> None:  # type: ignore[no-untyped-def]
+    """A third opening gives the location dimension three comparable pairs, so a
+    speculative walk has more than one auto-ruling available to it."""
+    upsert_company(conn, Company(id="globex", name="Globex", created_at=_NOW))
+    upsert_opening(
+        conn,
+        Opening(
+            id="globex--c",
+            company_id="globex",
+            title="Staff Engineer",
+            url="https://example.com/c",
+            research_trace_id="tx" + "2" * 18,
+            created_at=_NOW,
+        ),
+    )
+    append_assertions(
+        conn,
+        [
+            _assertion("location", "Mixed"),
+            _assertion("craft_direction", "Strong"),
+            _assertion("craft_direction", "Strong"),
+        ],
+        opening_id="globex--c",
+    )
+    insert_dimension_digest(
+        conn,
+        opening_id="globex--c",
+        target="location",
+        digest=digest,
+        assertion_count=1,
+        computed_at=_NOW,
+    )
+
+
+def test_speculative_prescreen_stops_at_its_iteration_bound(tmp_path: Path) -> None:
+    """The bound is what keeps a background speculation from walking the entire
+    remaining pool while the operator reads one comparison. With three comparable
+    openings a maximally confident Jev has two pairs left to auto-rule; a bound of one
+    must leave the second unruled."""
+    conn = connect(tmp_path / "screen.db")
+    _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
+    _seed_third_opening(conn, "US remote, no twin-cities office")
+    config = load_scoring_config()
+    on_screen = ComparisonSuggestion(
+        target="craft_direction", opening_a_id="acme--a", opening_b_id="widgets--b"
+    )
+
+    unbounded_state = CompareState()
+    run_speculative_prescreen(
+        conn,
+        config,
+        verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
+        compare_state=unbounded_state,
+        compare_cache=CompareCache(version=0, suggestion=on_screen),
+    )
+    assert len(comparisons_for_target(conn, "location")) > 1
+
+    conn.close()
+    bounded_conn = connect(tmp_path / "bounded.db")
+    _seed(bounded_conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
+    _seed_third_opening(bounded_conn, "US remote, no twin-cities office")
+    bounded_state = CompareState()
+    run_speculative_prescreen(
+        bounded_conn,
+        config,
+        verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
+        compare_state=bounded_state,
+        compare_cache=CompareCache(version=0, suggestion=on_screen),
+        max_iterations=1,
+    )
+
+    assert len(comparisons_for_target(bounded_conn, "location")) == 1
+    assert bounded_state.version == 1
+    bounded_conn.close()

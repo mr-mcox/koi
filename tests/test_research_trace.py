@@ -1,8 +1,20 @@
-"""Research trace append-only wrapper tests."""
+"""Research trace file-access tests: the append-only wrapper and the
+page-content reader both pass through `screen.research_trace.trace_io`."""
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.intake.research_trace_io import append_line, read_research_trace
+import pytest
+
+from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.trace_io import (
+    ResearchTraceMissingError,
+    append_line,
+    read_page_content,
+    read_research_trace,
+    record_event,
+)
 
 
 def test_append_line_creates_file_when_absent(tmp_path: Path) -> None:
@@ -84,3 +96,117 @@ def test_append_line_accepts_already_terminated(tmp_path: Path) -> None:
     path = tmp_path / "research_trace.jsonl"
     append_line(path, "ok\n")
     assert path.read_text(encoding="utf-8") == "ok\n"
+
+
+def test_read_page_content_skips_blank_lines_and_non_tavily_events(
+    tmp_path: Path,
+) -> None:
+    """Blank lines and non-tavily_extract events are ignored; the first
+    tavily_extract with raw_content wins."""
+    trace_path = tmp_path / "research_traces" / "mixed.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    url = "https://example.com/mixed"
+    trace_path.write_text(
+        "\n"
+        + json.dumps(
+            {
+                "ts": "2026-08-22T12:00:00Z",
+                "tool": "decide_plan",
+                "request": {"opening_id": "x"},
+                "response": {"actions": []},
+            }
+        )
+        + "\n\n"
+        + json.dumps(
+            {
+                "ts": "2026-08-22T12:00:01Z",
+                "tool": "tavily_extract",
+                "request": {"urls": [url]},
+                "response": {"results": [{"url": url, "raw_content": "The real posting."}]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    page_content, found_url = read_page_content(trace_path)
+    assert page_content == "The real posting."
+    assert found_url == url
+
+
+def test_read_page_content_skips_empty_results_and_falls_back_to_event_url(
+    tmp_path: Path,
+) -> None:
+    """A tavily_extract event with no results is skipped; the URL on the request is
+    used when the first result omits its own url."""
+    trace_path = tmp_path / "research_traces" / "empty-then-url.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    url = "https://example.com/fallback"
+    trace_path.write_text(
+        json.dumps(
+            {
+                "ts": "2026-08-22T12:00:00Z",
+                "tool": "tavily_extract",
+                "request": {"urls": [url]},
+                "response": {"results": []},
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "ts": "2026-08-22T12:00:01Z",
+                "tool": "tavily_extract",
+                "request": {"urls": [url]},
+                "response": {"results": [{"raw_content": "Fallback url content."}]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    page_content, found_url = read_page_content(trace_path)
+    assert page_content == "Fallback url content."
+    assert found_url == url
+
+
+def test_read_page_content_raises_when_no_extract_event_has_content(
+    tmp_path: Path,
+) -> None:
+    """A trace with only empty or non-tavily events raises ResearchTraceMissingError."""
+    trace_path = tmp_path / "research_traces" / "no-content.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text(
+        json.dumps(
+            {
+                "ts": "2026-08-22T12:00:00Z",
+                "tool": "tavily_extract",
+                "request": {"urls": ["https://example.com"]},
+                "response": {"results": []},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ResearchTraceMissingError):
+        read_page_content(trace_path)
+
+
+def test_read_page_content_handles_unicode_line_separator_in_page_text(
+    tmp_path: Path,
+) -> None:
+    """Regression: `splitlines()` also breaks on U+2028/U+0085, which scraped
+    text can contain unescaped — present in 18 of the 164 live traces.
+    """
+    trace_path = tmp_path / "research_traces" / "separators.jsonl"
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    url = "https://example.com/separator"
+    event = ResearchTraceEvent(
+        ts=datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC),
+        tool="tavily_extract",
+        request={"urls": [url]},
+        response={"results": [{"url": url, "raw_content": "Line one.\u2028Line two."}]},
+    )
+    record_event(trace_path, event)
+
+    assert "\u2028" in trace_path.read_text(encoding="utf-8")
+    page_content, found_url = read_page_content(trace_path)
+    assert page_content == "Line one.\u2028Line two."
+    assert found_url == url

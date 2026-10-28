@@ -3,8 +3,6 @@
 These record what the last browser action produced so the planner can
 reason about what to source next. They live in research/ — not in browser.py —
 because they are pass-state types, not browser return types.
-
-Dependency rule: this module must never import from screen.intake.
 """
 
 from typing import Annotated

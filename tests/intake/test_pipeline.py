@@ -18,13 +18,10 @@ from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake import pipeline as pipeline_module
 from screen.intake.fakes import FakeTavily
-from screen.intake.research_trace_id import derive_research_trace_id
 from screen.research.actions import FetchAction, StopAction
-from screen.research.batch import (
-    read_page_content,
-    research_trace_path_for,
-)
 from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research_trace.ids import derive_research_trace_id
+from screen.research_trace.trace_io import read_page_content, research_trace_path_for
 from tests.helpers import canned_assertion, fake_dispatch_deps, fake_extractor, fake_identifier
 
 

@@ -1,6 +1,7 @@
-"""The one place that reads the DB to assemble a scored screening pool - both the JSON
-and HTML routers call `rank_screening_pool` rather than each re-deriving
-`comparisons_by_target`/`companies_by_opening` from stored rows.
+"""The comparison pre-screen engine: picks the next pair to judge, consults Jev for a
+provisional ruling, and runs ahead of the operator in the background.
+
+It reads the pool through `screen.pool` rather than assembling one of its own.
 """
 
 from __future__ import annotations
@@ -16,24 +17,21 @@ from uuid import uuid4
 
 import numpy as np
 
-from screen.api.scoring import latest_ruling_by_assertion, pool_for_screening
 from screen.extract.prompt import RubricText
+from screen.pool import rank_screening_pool, screening_pool_inputs
 from screen.score.compare import Comparison as ScoreComparison
 from screen.score.compare_picker import ComparisonSuggestion, select_comparison
 from screen.score.compare_probability import pre_comparison_probability
 from screen.score.rubric_gate import rubric_similarity_verdict
 from screen.score.scorer import stats_for_target
-from screen.score.types import PoolScoreResult, ScoringConfig
+from screen.score.types import ScoringConfig
 from screen.store.db import connect
 from screen.store.repo import (
     append_comparison,
-    assertion_rulings_for_opening,
-    assertions_for_opening,
     comparisons_for_target,
     get_dimension_digest,
-    list_openings,
 )
-from screen.types import Assertion, ComparisonOutcome, Fit, Opening, Target
+from screen.types import Assertion, ComparisonOutcome, Fit, Target
 from screen.types import Comparison as StoredComparison
 from screen.verdict.few_shot import few_shot_examples_from_rulings
 from screen.verdict.protocol import FewShotExample, RubricVerdict, VerdictProvider
@@ -45,105 +43,6 @@ _MAX_SHORT_CIRCUIT_ITERATIONS = 20
 # Throughput instrumentation for the pre-screen pass: paired with `screen.compare` in
 # the web routes, these lines say where a live session's wall-clock time actually went.
 _prescreen_log = logging.getLogger("screen.prescreen")
-
-
-def _to_score_comparison(comparison: StoredComparison) -> ScoreComparison:
-    """Map a stored `screen.types.Comparison` (opening_a/opening_b/outcome) onto the pure
-    fit's `winner`/`loser`/`tie` shape — the fit only ever needs the resolved judgment, and
-    `provenance` rides along so the fit can pick this comparison's beta. Digest versions
-    carry over so `_settled_pairs` can tell whether the evidence shown at judgment time is
-    still current."""
-    if comparison.outcome == "tie":
-        return ScoreComparison(
-            winner=comparison.opening_a_id,
-            loser=comparison.opening_b_id,
-            tie=True,
-            provenance=comparison.provenance,
-            winner_digest_version=comparison.opening_a_digest_version,
-            loser_digest_version=comparison.opening_b_digest_version,
-        )
-    if comparison.outcome == "a":
-        return ScoreComparison(
-            winner=comparison.opening_a_id,
-            loser=comparison.opening_b_id,
-            provenance=comparison.provenance,
-            winner_digest_version=comparison.opening_a_digest_version,
-            loser_digest_version=comparison.opening_b_digest_version,
-        )
-    return ScoreComparison(
-        winner=comparison.opening_b_id,
-        loser=comparison.opening_a_id,
-        provenance=comparison.provenance,
-        winner_digest_version=comparison.opening_b_digest_version,
-        loser_digest_version=comparison.opening_a_digest_version,
-    )
-
-
-def _screening_pool_inputs(
-    conn: sqlite3.Connection,
-    config: ScoringConfig,
-    *,
-    openings: list[Opening] | None = None,
-) -> tuple[
-    list[Opening],
-    dict[str, list[Assertion]],
-    dict[str, dict[str, Fit]],
-    dict[str, list[ScoreComparison]],
-    dict[str, str],
-]:
-    """Collect the raw inputs the pool scorer and comparison picker both need."""
-    openings = openings if openings is not None else list_openings(conn, stage="screening")
-    assertions_by_opening = {o.id: assertions_for_opening(conn, o.id) for o in openings}
-    rulings_by_opening: dict[str, dict[str, Fit]] = {
-        o.id: {
-            ruling.assertion_id: ruling.fit
-            for ruling in latest_ruling_by_assertion(
-                assertion_rulings_for_opening(conn, o.id)
-            ).values()
-        }
-        for o in openings
-    }
-    comparisons_by_target = {
-        target: [_to_score_comparison(c) for c in comparisons_for_target(conn, target)]
-        for target in config.dimension_weights
-    }
-    companies_by_opening = {o.id: o.company_id for o in openings}
-    return (
-        openings,
-        assertions_by_opening,
-        rulings_by_opening,
-        comparisons_by_target,
-        companies_by_opening,
-    )
-
-
-def rank_screening_pool(
-    conn: sqlite3.Connection,
-    config: ScoringConfig,
-    *,
-    openings: list[Opening] | None = None,
-) -> PoolScoreResult:
-    """All screening openings scored jointly with their assertion-level rulings and any
-    stored comparisons — every dimension with a comparison or a same-company pair gets
-    a comparison-fitted posterior instead of its ordinary assertion-derived prior.
-    `openings` defaults to the live screening stage; a caller that needs one opening
-    included regardless of its stage (the single-opening score route) passes its own
-    union."""
-    (
-        openings,
-        assertions_by_opening,
-        rulings_by_opening,
-        comparisons_by_target,
-        companies_by_opening,
-    ) = _screening_pool_inputs(conn, config, openings=openings)
-    return pool_for_screening(
-        openings,
-        assertions_by_opening,
-        rulings_by_opening,
-        config,
-        comparisons_by_target=comparisons_by_target,
-        companies_by_opening=companies_by_opening,
-    )
 
 
 def _outcome_for_pair(
@@ -365,7 +264,7 @@ def _prescreen_step(
         rulings_by_opening,
         comparisons_by_target,
         companies_by_opening,
-    ) = _screening_pool_inputs(conn, config)
+    ) = screening_pool_inputs(conn, config)
     pool_result = rank_screening_pool(conn, config, openings=openings)
     p_top_k_by_opening = {r.opening_id: r.p_top_k for r in pool_result.opening_ranks_unguarded}
     picked_at = time.monotonic()
@@ -529,6 +428,7 @@ def run_speculative_prescreen(
     rubric: RubricText,
     compare_state: CompareState,
     compare_cache: CompareCache,
+    max_iterations: int = _MAX_SHORT_CIRCUIT_ITERATIONS,
 ) -> None:
     """Compute what the operator should see *after* the comparison currently on their
     screen, while they are still deciding it. The on-screen triple is excluded from the
@@ -538,6 +438,8 @@ def run_speculative_prescreen(
 
     Silently returns when the state moved while it was working: the result describes a
     pool that no longer exists, and a stale speculation is worse than none.
+
+    `max_iterations` bounds the auto-ruling chain the same way `run_prescreen`'s does.
     """
     on_screen = compare_cache.suggestion
     if on_screen is None:
@@ -552,7 +454,7 @@ def run_speculative_prescreen(
     rng = np.random.default_rng(config.seed)
     expected_version = start_version
     try:
-        for _ in range(_MAX_SHORT_CIRCUIT_ITERATIONS):
+        for _ in range(max_iterations):
             keep_going, committed_here = _prescreen_step(
                 conn,
                 config,

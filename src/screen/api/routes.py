@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from screen.api.deps import get_db
-from screen.api.pool import rank_screening_pool
+from screen.pool import rank_screening_pool
 from screen.score.loader import load_scoring_config
 from screen.score.types import OpeningRank
 from screen.store.repo import (

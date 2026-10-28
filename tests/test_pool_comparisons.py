@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from screen.api.scoring import pool_for_screening
+from screen.pool import pool_for_screening
 from screen.score.compare import Comparison
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig

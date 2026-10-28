@@ -28,15 +28,14 @@ from screen.api.pool import (
     CompareCache,
     CompareProgress,
     CompareState,
-    rank_screening_pool,
     run_prescreen_in_background,
     run_speculative_prescreen_in_background,
 )
-from screen.api.scoring import latest_ruling_by_assertion
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_record_for_target
 from screen.intake.admission import declined_host_for, declined_submission_message
+from screen.pool import latest_ruling_by_assertion, rank_screening_pool
 from screen.research.batch import eta_text
 from screen.score.compare_picker import ComparisonSuggestion
 from screen.score.compare_probability import pre_comparison_probability

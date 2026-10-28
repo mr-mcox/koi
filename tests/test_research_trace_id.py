@@ -2,7 +2,7 @@
 
 import hashlib
 
-from screen.intake.research_trace_id import derive_research_trace_id
+from screen.research_trace.ids import derive_research_trace_id
 
 
 def test_derive_research_trace_id_is_stable_for_same_url() -> None:

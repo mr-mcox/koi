@@ -11,8 +11,8 @@ from typing import Annotated, Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
-from screen.intake.research_trace_io import read_research_trace
+from screen.research_trace.events import ResearchTraceEvent, TavilyExtractResponse
+from screen.research_trace.trace_io import read_research_trace
 
 
 class TraceReplay(BaseModel):

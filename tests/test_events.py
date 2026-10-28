@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from screen.intake.events import ResearchTraceEvent
+from screen.research_trace.events import ResearchTraceEvent
 
 
 def _event(**overrides) -> dict:

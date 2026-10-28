@@ -15,12 +15,12 @@ from datetime import UTC, datetime
 from screen.browser import BrowserError, BrowserProtocol
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import ExtractorProtocol
-from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.baml_planner import select_primary_target
 from screen.research.context import FetchContext, SearchContext
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState, PassSummary
+from screen.research_trace.events import ResearchTraceEvent
 from screen.score.types import ScoringConfig
 from screen.types import Assertion
 

@@ -18,11 +18,11 @@ import pytest
 from pydantic import ConfigDict
 
 from screen.extract.fakes import FakeExtractor
-from screen.intake.events import ResearchTraceEvent
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research.state import LoopState, PassSummary
+from screen.research_trace.events import ResearchTraceEvent
 from screen.score.loader import load_scoring_config
 from screen.types import Assertion, Citation
 

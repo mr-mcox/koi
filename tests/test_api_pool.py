@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from screen.api.pool import _outcome_for_pair, _to_score_comparison, rank_screening_pool
+from screen.api.pool import _outcome_for_pair
+from screen.pool import _to_score_comparison, rank_screening_pool
 from screen.score.compare import Comparison as ScoreComparison
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig

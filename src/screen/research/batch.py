@@ -15,7 +15,6 @@ from typing import cast
 
 import numpy as np
 
-from screen.api.pool import rank_screening_pool
 from screen.browser import BrowserProtocol
 from screen.digest.protocol import DigesterProtocol
 from screen.digest.service import update_digests_for_opening
@@ -24,12 +23,12 @@ from screen.extract.prompt import (
     all_dimension_slugs,
 )
 from screen.extract.protocol import ExtractorProtocol
-from screen.intake.events import ResearchTraceEvent, TavilyExtractResponse
-from screen.intake.research_trace_io import append_line
-from screen.intake.research_trace_replay import TraceReplay, replay_research_trace
+from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import PlannerProtocol
 from screen.research.state import LoopState
+from screen.research_trace.replay import TraceReplay, replay_research_trace
+from screen.research_trace.trace_io import read_page_content, record_event, research_trace_path_for
 from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
@@ -57,46 +56,8 @@ class ResumeResult:
     stopped_reason: str
 
 
-class ResearchTraceMissingError(RuntimeError):
-    """Raised when an opening's research trace file is missing or has no
-    tavily_extract event with raw_content."""
-
-
 def _noop_on_event(_event: object) -> None:
     """Placeholder on_event used until a real subscriber is injected."""
-
-
-def record_event(research_trace_path: Path, event: ResearchTraceEvent) -> None:
-    append_line(research_trace_path, event.model_dump_json())
-
-
-def research_trace_path_for(data_root: Path, research_trace_id: str) -> Path:
-    return data_root / "research_traces" / f"{research_trace_id}.jsonl"
-
-
-def read_page_content(research_trace_path: Path) -> tuple[str, str]:
-    """Return (raw_content, url) from the first tavily_extract event."""
-    if not research_trace_path.exists():
-        raise ResearchTraceMissingError(f"research trace missing at {research_trace_path}")
-    # `split`, not `splitlines`: the latter also breaks on U+2028 and kin,
-    # which scraped text contains and `model_dump_json` leaves unescaped.
-    for raw_line in research_trace_path.read_text(encoding="utf-8").split("\n"):
-        if not raw_line:
-            continue
-        event = ResearchTraceEvent.model_validate_json(raw_line)
-        if event.tool != "tavily_extract":
-            continue
-        response = cast(TavilyExtractResponse, event.response)
-        results = response.get("results") or []
-        if not results:
-            continue
-        first = results[0]
-        url = first.get("url") or (event.request.get("urls") or [""])[0]
-        raw_content = first.get("raw_content", "")
-        return str(raw_content), str(url)
-    raise ResearchTraceMissingError(
-        f"no tavily_extract event with raw_content in {research_trace_path}"
-    )
 
 
 @dataclass

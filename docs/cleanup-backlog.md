@@ -118,24 +118,27 @@ split it into two keys, or keep one number and rename it (e.g. `research_block_t
 Touches: `scoring.yaml`, `score/loader.py`, `score/types.py`, `research/batch.py`,
 `intake/pipeline.py`, `wiring.py`, `tests/intake/`, `tests/test_research_batch.py`.
 
-## E. Break the intake↔research import cycle and enforce dependency direction — *open*
+## E. Break the intake↔research import cycle and enforce dependency direction — *done*, pending commit
 
-`research/batch.py` and `research/dispatcher.py` import `intake.events`,
-`intake.research_trace_io` and `intake.research_trace_replay`, while `intake/pipeline.py`
-imports `research.batch`. `research/batch.py` also imports `api.pool`, so research logic
-depends on the web layer.
+The research trace now lives in `screen/research_trace/` (`events.py`, `trace_io.py`,
+`replay.py`, `ids.py`), which both intake and research import; `trace_io.py` also holds
+`research_trace_path_for`, `read_page_content`, `record_event` and
+`ResearchTraceMissingError`, moved out of `research/batch.py`.
 
-- Move the research trace (`intake/events.py`, `research_trace_io.py`,
-  `research_trace_replay.py`, `research_trace_id.py`, plus `research_trace_path_for`,
-  `read_page_content` and `record_event` from `research/batch.py`) into a
-  `screen/research_trace/` package that both intake and research import.
-- Move `rank_screening_pool` (and `api/scoring.py`'s pool helpers) out of `api/` so
-  `research/batch.py` stops importing it. Coordinate where it lands with F.
-- Add a test that parses imports with `ast` and asserts the allowed directions, so the
-  rule docs/architecture/README.md marks *unenforced* becomes a wall.
+`api/scoring.py` and `rank_screening_pool`/`screening_pool_inputs` moved to
+`screen/pool.py`, below `api/` and `web/`, so `research/batch.py` ranks the pool without
+importing the web layer. `api/pool.py` is now only the prescreen engine — F folds it into
+`screen/compare/` and may move `screen/pool.py` with it.
 
-Touches: `intake/`, `research/`, `api/pool.py`, `api/scoring.py`, `web/routes.py`
-(imports), and the tests that import those modules.
+`tests/test_import_direction.py` parses imports with `ast` and asserts the layering
+(every top-level module must be placed in a layer; imports never point up; `research/`
+never imports `intake/`). `screen/api/main.py` is the one declared exception, as the ASGI
+entrypoint that calls the composition root. The README girder line no longer says
+*unenforced*.
+
+Two branches that the move left under the per-file coverage gate got tests rather than
+exemptions: `resume_opening` with no remaining budget, and the speculative prescreen's
+iteration bound (which gained a `max_iterations` parameter mirroring `run_prescreen`'s).
 
 ## F. Split pairwise comparison out of `score/` and the prescreen engine out of `api/` — *open, after E*
 

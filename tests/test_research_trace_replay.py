@@ -9,9 +9,9 @@ so replay is a fold over a fixed set of event shapes, not an open parse.
 from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.intake.events import ResearchTraceEvent
-from screen.intake.research_trace_io import append_line
-from screen.intake.research_trace_replay import replay_research_trace
+from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.replay import replay_research_trace
+from screen.research_trace.trace_io import append_line
 
 
 def _extract_event(url: str, raw_content: str = "content") -> ResearchTraceEvent:

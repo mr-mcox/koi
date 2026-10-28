@@ -1,5 +1,5 @@
 """Batch Laplace fit for pairwise dimension comparisons. Pure `(priors, comparisons, beta)
--> (means, covariance)` — no I/O, mirroring `scorer.py`. `screen.api.scoring` turns this
+-> (means, covariance)` — no I/O, mirroring `scorer.py`. `screen.pool` turns this
 output into the `DimensionPosterior` `rank_pool` consumes; this module never touches
 `rank_pool` itself.
 
@@ -122,7 +122,7 @@ def fit_pairwise(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fit one dimension's latent values jointly across every opening named in
     `prior_means`. Returns `(means, covariance)` in `prior_means`' key order — the shape
-    `screen.api.scoring` wraps into a `DimensionPosterior`. Zero comparisons returns the
+    `screen.pool` wraps into a `DimensionPosterior`. Zero comparisons returns the
     prior unchanged. Each comparison's `beta` is picked by its own provenance, so operator
     and provisional terms coexist in one fit."""
     keys = list(prior_means)

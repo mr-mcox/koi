@@ -20,17 +20,16 @@ from screen.browser import BrowserError, BrowserProtocol
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import ExtractorProtocol
 from screen.intake.company_id import derive_company_id
-from screen.intake.events import ResearchTraceEvent
 from screen.intake.identify import IdentifierProtocol, identify_opening
 from screen.intake.opening_id import derive_opening_id
-from screen.intake.research_trace_id import derive_research_trace_id
-from screen.research.batch import (
+from screen.research.batch import RunDispatchDeps, run_dispatch
+from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.ids import derive_research_trace_id
+from screen.research_trace.trace_io import (
     ResearchTraceMissingError,
-    RunDispatchDeps,
     read_page_content,
     record_event,
     research_trace_path_for,
-    run_dispatch,
 )
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
