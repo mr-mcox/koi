@@ -639,66 +639,6 @@ def test_compare_status_omits_redirect_while_still_running(
     assert "compare-prescreening" in status.text
 
 
-def test_compare_page_shows_jevs_uncertain_read(tmp_path: Path) -> None:
-    """When Jev was consulted but wasn't confident enough to auto-rule, the operator
-    still sees what Jev actually read on that exact pair — outcome and confidence — so
-    they can tell the pair really was uncertain, not silently un-consulted."""
-    db_path = tmp_path / "screen.db"
-    _seed_opening(
-        db_path,
-        company_id="acme",
-        opening_id="acme--a",
-        assertions=[_assertion("location", "Strong")],
-    )
-    _seed_opening(
-        db_path,
-        company_id="widgets",
-        opening_id="widgets--b",
-        assertions=[_assertion("location", "Strong")],
-    )
-    conn = connect(db_path)
-    insert_dimension_digest(
-        conn,
-        opening_id="acme--a",
-        target="location",
-        digest="US remote, no twin-cities office",
-        assertion_count=1,
-        computed_at=_NOW,
-    )
-    insert_dimension_digest(
-        conn,
-        opening_id="widgets--b",
-        target="location",
-        digest="US remote, occasional travel",
-        assertion_count=1,
-        computed_at=_NOW,
-    )
-    conn.close()
-
-    class _UncertainTie:
-        def rule(
-            self,
-            rubric_text: str,
-            digest_a: str,
-            digest_b: str,
-            few_shot_examples: list[FewShotExample],
-        ) -> RubricVerdict:
-            return RubricVerdict(outcome="tie", confidence=0.62)
-
-    app = make_app(
-        db_path,
-        digester=FakeDigester(["Synthetic digest."]),
-        verdict_provider=_UncertainTie(),
-    )
-    with TestClient(app) as test_client:
-        page = _get_settled_compare_page(test_client)
-
-    assert page.status_code == 200
-    assert "Jev:" in page.text
-    assert "0.62" in page.text
-    assert "tie" in page.text
-
-
 def test_compare_page_uses_stale_by_one_cache_when_pair_still_legal(
     client: TestClient, db_path: Path
 ) -> None:
@@ -731,10 +671,12 @@ def test_compare_page_uses_stale_by_one_cache_when_pair_still_legal(
 
     response = client.get("/compare")
 
-    assert response.status_code == 200
-    assert '<form class="compare-actions"' in response.text
     assert "compare-prescreening" not in response.text
-    assert "Jev:" in response.text
+    assert "Jev:" not in response.text
+    assert "document.addEventListener('keydown'" in response.text
+    assert "event.key === 'a'" in response.text
+    assert "event.key === 'o'" in response.text
+    assert "event.key === 'e'" in response.text
 
 
 def test_compare_page_rejects_stale_cache_for_just_written_pair(

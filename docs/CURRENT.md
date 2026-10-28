@@ -1,1 +1,1 @@
-docs/features/guarded-scoring/bearing.md
+docs/features/compare-workflow/bearing.md

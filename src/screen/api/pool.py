@@ -212,6 +212,7 @@ def _consult_jev_for_suggestion(
         few_shot_examples=few_shot_examples,
         provider=verdict_provider,
         confidence_threshold=config.jev_confidence_threshold,
+        rng=rng,
     )
     if gate.comparison is None:
         return None, gate.verdict

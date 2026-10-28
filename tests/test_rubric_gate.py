@@ -25,7 +25,23 @@ class FakeVerdictProvider:
         return self._verdict
 
 
-def _run_gate(verdict: RubricVerdict):
+class _FixedRandom:
+    def __init__(self, values: list[float]) -> None:
+        self._values = iter(values)
+
+    def random(self) -> float:
+        return next(self._values)
+
+
+class _UnsampledRandom:
+    """Fails the test if the gate samples at all — the below-threshold and
+    exactly-at-threshold paths must decide without consulting the rng."""
+
+    def random(self) -> float:
+        raise AssertionError("gate sampled rng on a path that must not sample")
+
+
+def _run_gate(verdict: RubricVerdict, rng: _FixedRandom | _UnsampledRandom | None = None):
     provider = FakeVerdictProvider(verdict)
     return rubric_similarity_verdict(
         "a",
@@ -36,12 +52,13 @@ def _run_gate(verdict: RubricVerdict):
         few_shot_examples=[],
         provider=provider,
         confidence_threshold=0.9,
+        rng=rng or _UnsampledRandom(),
     )
 
 
 def test_confident_tie_becomes_a_provisional_tie() -> None:
     verdict = RubricVerdict(outcome="tie", confidence=0.95)
-    result = _run_gate(verdict)
+    result = _run_gate(verdict, rng=_FixedRandom([0.0]))
 
     assert result.verdict == verdict
     assert result.comparison == Comparison(
@@ -52,12 +69,12 @@ def test_confident_tie_becomes_a_provisional_tie() -> None:
 def test_confident_win_becomes_a_provisional_win_in_the_ruled_direction() -> None:
     """A win is directional — `outcome="a"` ties `a` as winner, `outcome="b"` reverses it.
     This is the win-propagation the offline tie-only kernel couldn't do."""
-    result_a = _run_gate(RubricVerdict(outcome="a", confidence=0.92))
+    result_a = _run_gate(RubricVerdict(outcome="a", confidence=0.92), rng=_FixedRandom([0.0]))
     assert result_a.comparison == Comparison(
         winner="a", loser="b", tie=False, provenance="provisional", weight=0.92
     )
 
-    result_b = _run_gate(RubricVerdict(outcome="b", confidence=0.92))
+    result_b = _run_gate(RubricVerdict(outcome="b", confidence=0.92), rng=_FixedRandom([0.0]))
     assert result_b.comparison == Comparison(
         winner="b", loser="a", tie=False, provenance="provisional", weight=0.92
     )
@@ -81,3 +98,11 @@ def test_confidence_at_exactly_threshold_counts_as_confident() -> None:
     assert result.comparison == Comparison(
         winner="a", loser="b", tie=True, provenance="provisional", weight=0.9
     )
+
+
+def test_high_confidence_verdict_can_be_sampled_out() -> None:
+    verdict = RubricVerdict(outcome="tie", confidence=0.95)
+    result = _run_gate(verdict, rng=_FixedRandom([0.99]))
+
+    assert result.verdict == verdict
+    assert result.comparison is None
