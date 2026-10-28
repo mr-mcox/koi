@@ -7,7 +7,7 @@ from __future__ import annotations
 import dataclasses
 import sqlite3
 import time
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -267,13 +267,14 @@ def print_draw_event(event: DrawEvent) -> None:
 @dataclass
 class BatchProgress:
     """Mutable progress state shared between the background worker and the
-    polling web route. Single-uvicorn-worker assumption; not persisted."""
+    polling web route. Single-uvicorn-worker assumption; not persisted. `rate` is
+    seconds per turn."""
 
-    total: int
+    total: int = 0
     spent: int = 0
     current_opening_id: str | None = None
     touched: list[str] = field(default_factory=list)
-    running: bool = True
+    running: bool = False
     started_at: float | None = None
     rate: float | None = None
     eta_seconds: float | None = None
@@ -318,7 +319,7 @@ def _run_batch_turn(
     batch_size: int,
     total_spent: int,
     touched: list[str],
-    progress: MutableMapping[str, object] | None,
+    progress: BatchProgress,
     planner_factory: Callable[[], PlannerProtocol] | None,
     deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
@@ -330,8 +331,7 @@ def _run_batch_turn(
     """
     opening_id = draw_opening(weights, rng)
     opening = cast(Opening, get_opening(conn, opening_id))
-    if progress is not None:
-        progress["current_opening_id"] = opening_id
+    progress.current_opening_id = opening_id
     turn_deps = (
         dataclasses.replace(deps, planner=planner_factory())
         if planner_factory is not None
@@ -368,35 +368,27 @@ def _run_batch_turn(
     )
 
 
-def _begin_progress(
-    progress: MutableMapping[str, object] | None, batch_size: int, now_fn: Callable[[], float]
-) -> None:
-    if progress is not None:
-        progress["total"] = batch_size
-        progress["running"] = True
-        progress["started_at"] = now_fn()
-        progress["rate"] = None
-        progress["eta_seconds"] = None
+def _begin_progress(progress: BatchProgress, batch_size: int, now_fn: Callable[[], float]) -> None:
+    progress.total = batch_size
+    progress.running = True
+    progress.started_at = now_fn()
+    progress.rate = None
+    progress.eta_seconds = None
 
 
-def _end_progress(
-    progress: MutableMapping[str, object] | None,
-    total_spent: int,
-    touched: list[str],
-) -> None:
-    if progress is not None:
-        progress["spent"] = total_spent
-        progress["touched"] = touched
-        progress["running"] = False
-        progress["current_opening_id"] = None
-        progress["eta_seconds"] = None
+def _end_progress(progress: BatchProgress, total_spent: int, touched: list[str]) -> None:
+    progress.spent = total_spent
+    progress.touched = touched
+    progress.running = False
+    progress.current_opening_id = None
+    progress.eta_seconds = None
 
 
 _ETA_SMOOTHING = 0.3  # tqdm's default smoothing factor for its speed EMA
 
 
 def _update_eta(
-    progress: MutableMapping[str, object] | None,
+    progress: BatchProgress,
     *,
     turns_spent_this_call: int,
     total_spent: int,
@@ -407,24 +399,24 @@ def _update_eta(
     """Update the seconds-per-turn EMA and the remaining-time estimate it implies.
     Mirrors tqdm's own rate smoothing (search, tqdm docs): a fresh sample only ever
     nudges the average, so one slow turn doesn't swing the ETA."""
-    if progress is None or turns_spent_this_call <= 0 or elapsed <= 0:
+    if elapsed <= 0:
         return
     sample_rate = elapsed / turns_spent_this_call
-    prior_rate = cast(float | None, progress.get("rate"))
+    prior_rate = progress.rate
     rate = (
         sample_rate
         if prior_rate is None
         else _ETA_SMOOTHING * sample_rate + (1 - _ETA_SMOOTHING) * prior_rate
     )
-    progress["rate"] = rate
-    progress["eta_seconds"] = max(batch_size - total_spent, 0) * rate
+    progress.rate = rate
+    progress.eta_seconds = max(batch_size - total_spent, 0) * rate
 
 
 def run_batch(
     conn: sqlite3.Connection,
     data_root: Path,
     batch_size: int,
-    progress: MutableMapping[str, object] | None = None,
+    progress: BatchProgress | None = None,
     *,
     deps: RunDispatchDeps,
     config: ScoringConfig | None = None,
@@ -453,6 +445,7 @@ def run_batch(
     reused for every draw instead.
     """
     cfg = config if config is not None else load_scoring_config()
+    progress = progress if progress is not None else BatchProgress()
     rng = np.random.default_rng(cfg.seed)
     touched: list[str] = []
     stalled: set[str] = set()
@@ -493,9 +486,8 @@ def run_batch(
             elapsed=now_fn() - turn_started,
             now_fn=now_fn,
         )
-        if progress is not None:
-            progress["spent"] = total_spent
-            progress["touched"] = touched
+        progress.spent = total_spent
+        progress.touched = touched
         if on_draw is not None:
             on_draw(draw_event)
     _end_progress(progress, total_spent, touched)
@@ -527,7 +519,7 @@ class BatchEngine:
         self,
         db_path: Path,
         batch_size: int,
-        progress: MutableMapping[str, object],
+        progress: BatchProgress,
     ) -> None:
         """Open a dedicated connection and run the batch. Meant for
         `fastapi.BackgroundTasks`; the request that scheduled it has already

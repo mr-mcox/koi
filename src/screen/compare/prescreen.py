@@ -196,9 +196,7 @@ class CompareProgress:
     final_suggestion_jev_read: RubricVerdict | None = None
 
 
-def _comparison_key(
-    opening_a_id: str, opening_b_id: str, target: str
-) -> tuple[frozenset[str], str]:
+def comparison_key(opening_a_id: str, opening_b_id: str, target: str) -> tuple[frozenset[str], str]:
     return frozenset({opening_a_id, opening_b_id}), target
 
 
@@ -342,7 +340,7 @@ def _prescreen_step(
 
     append_comparison(conn, comparison)
     compare_state.version += 1
-    compare_state.last_write = _comparison_key(
+    compare_state.last_write = comparison_key(
         comparison.opening_a_id, comparison.opening_b_id, comparison.target
     )
     _prescreen_log.debug(
@@ -446,7 +444,7 @@ def run_speculative_prescreen(
         return
     start_version = compare_state.version
     started_at = time.monotonic()
-    excluded = _comparison_key(on_screen.opening_a_id, on_screen.opening_b_id, on_screen.target)
+    excluded = comparison_key(on_screen.opening_a_id, on_screen.opening_b_id, on_screen.target)
     _prescreen_log.debug("speculative start (compare_version=%s)", start_version)
     compare_cache.speculative = None
     compare_cache.speculative_jev_read = None

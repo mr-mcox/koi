@@ -3,13 +3,10 @@ via GET, both against `TestClient`."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
-from screen.digest.fakes import FakeDigester
 from screen.intake.admission import DECLINED_HOSTS
 from screen.store.db import connect
 from screen.store.repo import (
@@ -18,19 +15,6 @@ from screen.store.repo import (
     list_intake_queue,
     mark_intake_url_failed,
 )
-from tests.helpers import make_app
-
-
-@pytest.fixture
-def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "screen.db"
-
-
-@pytest.fixture
-def client(db_path: Path) -> Iterator[TestClient]:
-    app = make_app(db_path, digester=FakeDigester(["Synthetic digest."]))
-    with TestClient(app) as test_client:
-        yield test_client
 
 
 def test_post_intake_queue_enqueues_url_synchronously(client: TestClient, db_path: Path) -> None:

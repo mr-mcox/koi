@@ -14,21 +14,21 @@ import contextlib
 import logging
 import sqlite3
 from collections.abc import AsyncGenerator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI
 
 from screen.api.routes import router as api_router
-from screen.compare.prescreen import CompareCache, CompareProgress, CompareState
+from screen.compare.session import CompareSession
 from screen.digest.protocol import DigesterProtocol
 from screen.extract.prompt import RubricText
 from screen.intake.worker import run_intake_worker
-from screen.research.batch import BatchEngine
+from screen.research.batch import BatchEngine, BatchProgress
 from screen.store.db import connect as db_connect
 from screen.verdict.protocol import VerdictProvider
+from screen.web.common import static_files
 from screen.web.routes import router as web_router
-from screen.web.routes import static_files
 
 
 class Database:
@@ -54,6 +54,15 @@ class AppDeps:
     intake_fn: Callable[[str], str]
 
 
+@dataclass
+class AppState:
+    """The app's mutable in-process state, shared between request handlers and the
+    background tasks they schedule. Single-uvicorn-worker assumption; not persisted."""
+
+    batch: BatchProgress = field(default_factory=BatchProgress)
+    compare: CompareSession = field(default_factory=CompareSession)
+
+
 def _enable_compare_instrumentation() -> None:
     """Make the compare-throughput loggers visible under uvicorn, which configures only
     its own loggers. Without a handler these records are swallowed, and the live session
@@ -70,7 +79,8 @@ def _enable_compare_instrumentation() -> None:
 
 def create_app(database: Database, deps: AppDeps) -> FastAPI:
     """Application factory. `app.state.database` is what `screen.api.deps.get_db` reads
-    per request; `app.state.deps` is what `screen.api.deps.app_deps` reads."""
+    per request; `app.state.deps` and `app.state.live` are what `screen.api.deps.app_deps`
+    and `screen.api.deps.app_state` read."""
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -91,17 +101,7 @@ def create_app(database: Database, deps: AppDeps) -> FastAPI:
     app = FastAPI(title="screen", lifespan=lifespan)
     app.state.database = database
     app.state.deps = deps
-    app.state.batch_status = {
-        "running": False,
-        "total": 0,
-        "spent": 0,
-        "current_opening_id": None,
-        "touched": [],
-    }
-    app.state.compare_progress = CompareProgress()
-    app.state.compare_state = CompareState()
-    app.state.compare_cache = CompareCache()
-    app.state.speculation_in_flight_for = None
+    app.state.live = AppState()
     _enable_compare_instrumentation()
     app.include_router(web_router)
     app.include_router(api_router)
