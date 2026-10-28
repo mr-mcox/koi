@@ -118,7 +118,7 @@ split it into two keys, or keep one number and rename it (e.g. `research_block_t
 Touches: `scoring.yaml`, `score/loader.py`, `score/types.py`, `research/batch.py`,
 `intake/pipeline.py`, `wiring.py`, `tests/intake/`, `tests/test_research_batch.py`.
 
-## E. Break the intake↔research import cycle and enforce dependency direction — *done*, pending commit
+## E. Break the intake↔research import cycle and enforce dependency direction — *done* in 0e93aee
 
 The research trace now lives in `screen/research_trace/` (`events.py`, `trace_io.py`,
 `replay.py`, `ids.py`), which both intake and research import; `trace_io.py` also holds
