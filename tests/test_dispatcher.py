@@ -70,6 +70,7 @@ def _state(
         "rubric_text": "craft_direction: ...",
         "assertions": assertions if assertions is not None else [_assertion()],
         "turn_budget": 5,
+        "active_target_action_cap": 5,
         "turns_used": turns_used,
         "visited_urls": visited_urls if visited_urls is not None else [],
     }

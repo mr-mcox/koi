@@ -45,10 +45,6 @@ from screen.store.repo import (
 )
 from screen.types import Assertion, Fit, Opening
 
-# Bounds the single dispatch pass intake runs before an opening reaches the batch loop;
-# batch passes size their own budgets from what remains of the batch.
-INTAKE_FIRST_PASS_TURN_BUDGET = 5
-
 
 class NoSuchOpeningError(RuntimeError):
     """Raised when an opening id doesn't exist in the DB."""
@@ -167,7 +163,7 @@ def run_dispatch(
         visited_urls=replay.visited_urls,
         prior_queries=replay.prior_queries,
         targets=targets,
-        active_target_action_cap=scoring_config.research_target_action_cap,
+        active_target_action_cap=scoring_config.research_block_turns,
         target_stall_counts=replay.target_stalls,
     )
 
@@ -204,7 +200,7 @@ def resume_opening(
     deps: RunDispatchDeps,
 ) -> ResumeResult:
     """Resume one opening's research from its trace, spending `turns_requested` more
-    turns (the caller caps this by the per-target action cap and the remaining batch
+    turns (the caller caps this by `research_block_turns` and the remaining batch
     size — there is no separate per-opening lifetime cap). Returns the number of turns
     actually spent and the dispatch stop reason.
     """
@@ -367,7 +363,7 @@ def _run_batch_turn(
     deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
     """Draw one opening and spend up to one block of actions on it before the next
-    draw. The block size is capped by the per-target action cap and the remaining
+    draw. The block size is capped by `research_block_turns` and the remaining
     batch budget. Returns `(opening_id, actions_spent, draw_event)`; `draw_event` is
     `None` when the planner stalled without spending any actions, so the caller can
     stop redrawing it this batch.
@@ -381,7 +377,7 @@ def _run_batch_turn(
         if planner_factory is not None
         else deps
     )
-    block_size = min(cfg.research_target_action_cap, batch_size - total_spent)
+    block_size = min(cfg.research_block_turns, batch_size - total_spent)
     if block_size <= 0:
         return opening_id, 0, None
     assertions_before = len(assertions_for_opening(conn, opening_id))
@@ -477,7 +473,7 @@ def run_batch(
     now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
     """Spend up to `batch_size` actions on opportunities drawn by aggregate remaining
-    uncertainty. Each opportunity is a block of up to `research_target_action_cap`
+    uncertainty. Each opportunity is a block of up to `research_block_turns`
     actions on one opening, capped by the opening's remaining budget and the remaining
     batch budget, so the planner can work down a line of inquiry before the next draw.
     The draw is seeded from `config.seed`, so a batch run against an unchanged DB snapshot

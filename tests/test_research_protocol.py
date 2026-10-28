@@ -43,6 +43,7 @@ def _state() -> LoopState:
         rubric_text="craft_direction: ...",
         assertions=[assertion],
         turn_budget=5,
+        active_target_action_cap=5,
         turns_used=0,
     )
 

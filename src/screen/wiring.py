@@ -19,7 +19,7 @@ from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.pipeline import db_path_for, intake_url
 from screen.paths import data_dir
 from screen.research.baml_planner import BAMLPlanner
-from screen.research.batch import INTAKE_FIRST_PASS_TURN_BUDGET, BatchEngine, RunDispatchDeps
+from screen.research.batch import BatchEngine, RunDispatchDeps
 from screen.score.loader import load_scoring_config
 from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
@@ -46,8 +46,7 @@ def build_dispatch_deps(rubric: RubricText, environ: Mapping[str, str]) -> RunDi
 def build_intake_fn(
     data_root: Path, rubric: RubricText, environ: Mapping[str, str]
 ) -> Callable[[str], str]:
-    """The intake pipeline for one URL. `SCREEN_TURN_BUDGET` overrides the first-pass
-    research budget."""
+    """The intake pipeline for one URL."""
     return functools.partial(
         intake_url,
         data_dir=data_root,
@@ -55,7 +54,6 @@ def build_intake_fn(
         identifier_factory=BAMLIdentifier,
         extractor_factory=lambda: build_extractor(rubric),
         deps_factory=lambda: build_dispatch_deps(rubric, environ),
-        turn_budget=int(environ.get("SCREEN_TURN_BUDGET", INTAKE_FIRST_PASS_TURN_BUDGET)),
     )
 
 

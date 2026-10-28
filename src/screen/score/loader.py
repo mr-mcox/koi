@@ -38,7 +38,7 @@ def load_scoring_config(
         guard_upside=float(scoring["guard_upside_multiplier"]),
         top_k=int(scoring["top_k"]),
         boundary_weight_floor=float(scoring["boundary_weight_floor"]),
-        research_target_action_cap=int(scoring["research_target_action_cap"]),
+        research_block_turns=int(scoring["research_block_turns"]),
         comparison_beta=ComparisonBetaParams(
             operator=float(scoring["comparison_beta"]["operator"]),
             provisional=float(scoring["comparison_beta"]["provisional"]),

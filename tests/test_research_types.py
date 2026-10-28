@@ -53,6 +53,7 @@ def _loop_state(**kwargs: object) -> LoopState:
         "rubric_text": "craft_direction: ...",
         "assertions": [_assertion()],
         "turn_budget": 5,
+        "active_target_action_cap": 5,
         "turns_used": 0,
     }
     defaults.update(kwargs)
@@ -86,6 +87,7 @@ def test_loop_state_extra_forbid() -> None:
             rubric_text="r",
             assertions=[],
             turn_budget=5,
+            active_target_action_cap=5,
             turns_used=0,
             unexpected_field="boom",  # type: ignore[call-arg]
         )

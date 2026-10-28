@@ -59,12 +59,15 @@ boundary_weight_floor: 0.1
 guard_downside_multiplier: 3.0
 guard_upside_multiplier: 0.3
 
-# Research targeting. Per-target
-# action cap while a target is sticky: once the planner picks a primary target, it
-# stays on that target for up to this many actions before the ranking is allowed to
-# switch. Prevents mid-chain thrash when a fetch on one target incidentally yields an
-# assertion about another target. Unmeasured placeholder, same status as top_k above.
-research_target_action_cap: 3
+# Research targeting. One number sizes every unit of research work:
+#   - the turn budget of the single dispatch pass intake runs on a new opening,
+#   - the block of turns a batch pass spends on an opening before redrawing,
+#   - the per-target sticky action cap: once the planner picks a primary target it
+#     stays on it for this many actions before the ranking may switch, which keeps a
+#     fetch that incidentally yields another target's assertion from causing thrash.
+# They are the same quantity — how far one line of inquiry is carried before attention
+# is reallocated — so they move together. Unmeasured placeholder, same status as top_k.
+research_block_turns: 5
 
 # Pairwise comparisons. `beta` scales the Thurstone/probit comparison likelihood: how
 # decisively a win/tie separates two latent values. Provisional (similarity) ties carry a

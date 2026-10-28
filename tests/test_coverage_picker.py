@@ -60,7 +60,7 @@ def test_pair_priority_floor_keeps_pair_selectable():
         samples=1000,
         provenance_weight={"model_proposed": 1.0, "unexamined": 0.0},
         top_k=5,
-        research_target_action_cap=3,
+        research_block_turns=3,
         jev_confidence_threshold=0.85,
         jev_few_shot_examples=12,
         comparison_jitter_sigma=0.3,

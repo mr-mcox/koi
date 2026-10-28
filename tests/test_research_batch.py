@@ -438,7 +438,7 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
 
 def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
     """A single bandit draw should give the planner up to
-    `research_target_action_cap` actions to work down a line of inquiry on the
+    `research_block_turns` actions to work down a line of inquiry on the
     same opening, instead of resetting after one action — the sticky-target continuity
     (sticky target + per-target cap)."""
     url = "https://example.com/acme--eng/second-page"
@@ -508,12 +508,12 @@ def test_batch_engine_prints_opportunity_summary(
 
 
 def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -> None:
-    """A misconfigured `research_target_action_cap=0` caps every block at zero
+    """A misconfigured `research_block_turns=0` caps every block at zero
     actions rather than crashing — the opening is marked stalled and the batch moves on."""
     _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
-    zero_cap_config = dataclasses.replace(load_scoring_config(), research_target_action_cap=0)
+    zero_cap_config = dataclasses.replace(load_scoring_config(), research_block_turns=0)
     total, touched = run_batch(
         conn,
         tmp_path,

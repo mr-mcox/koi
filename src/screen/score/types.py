@@ -39,7 +39,7 @@ class ScoringConfig:
     guard_upside: float
     top_k: int
     boundary_weight_floor: float
-    research_target_action_cap: int
+    research_block_turns: int
     comparison_beta: ComparisonBetaParams
     jev_confidence_threshold: float
     jev_few_shot_examples: int

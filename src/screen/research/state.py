@@ -45,7 +45,7 @@ class LoopState(BaseModel):
     # a fetch on one target incidentally yields assertions about another.
     active_target: str | None = None
     active_target_actions: int = 0
-    active_target_action_cap: int = 3
+    active_target_action_cap: Annotated[int, Field(ge=0)]
     # Derived from the research trace on resume: how many contiguous runs on each
     # target ended without adding an assertion for that target. Multiplied into the
     # per-target uncertainty ranking so failed targets sink without becoming permanently

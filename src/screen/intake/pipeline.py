@@ -25,7 +25,6 @@ from screen.intake.identify import IdentifierProtocol, identify_opening
 from screen.intake.opening_id import derive_opening_id
 from screen.intake.research_trace_id import derive_research_trace_id
 from screen.research.batch import (
-    INTAKE_FIRST_PASS_TURN_BUDGET,
     ResearchTraceMissingError,
     RunDispatchDeps,
     read_page_content,
@@ -33,6 +32,7 @@ from screen.research.batch import (
     research_trace_path_for,
     run_dispatch,
 )
+from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
@@ -146,7 +146,6 @@ def identify_research_trace(
     identifier_factory: Callable[[], IdentifierProtocol],
     extractor_factory: Callable[[], ExtractorProtocol],
     deps_factory: Callable[[], RunDispatchDeps],
-    turn_budget: int = INTAKE_FIRST_PASS_TURN_BUDGET,
 ) -> str:
     """Run the research trace -> Company + Opening + Assertions step. Returns
     the dispatch stop reason (the CLI echoes it; the queue worker ignores it).
@@ -194,7 +193,7 @@ def identify_research_trace(
         page_content=page_content,
         company_name=identification.company_name,
         opening_title=identification.opening_title,
-        turn_budget=turn_budget,
+        turn_budget=load_scoring_config().research_block_turns,
         deps=deps,
     )
 
@@ -207,7 +206,6 @@ def intake_url(
     identifier_factory: Callable[[], IdentifierProtocol],
     extractor_factory: Callable[[], ExtractorProtocol],
     deps_factory: Callable[[], RunDispatchDeps],
-    turn_budget: int = INTAKE_FIRST_PASS_TURN_BUDGET,
 ) -> str:
     """Run the full pipeline for one URL: fetch, identify, persist, dispatch.
     Returns the dispatch stop reason. Raises `IntakePipelineError` on failure
@@ -221,5 +219,4 @@ def intake_url(
         identifier_factory=identifier_factory,
         extractor_factory=extractor_factory,
         deps_factory=deps_factory,
-        turn_budget=turn_budget,
     )
