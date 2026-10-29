@@ -251,7 +251,7 @@ request/response payloads (`research_trace/events.py`, `research/dispatcher._pla
 and Tavily and YAML responses (`browser.py`, the fakes, `extract/prompt.py`). N and O
 type the Tavily and YAML ones where they enter.
 
-## L. Recalibration should read the digest the operator actually saw — *done*
+## L. Recalibration should read the digest the operator actually saw — *done* in [#8](https://github.com/mr-mcox/koi/pull/8)
 
 `recalibration.judged_digests` resolves each side of a comparison to the digest the
 operator saw, by its recorded `opening_*_digest_version` through
