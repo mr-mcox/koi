@@ -22,6 +22,8 @@ wave before starting the next, because later waves move files the earlier ones e
 | any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
 | after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
+| after M | O | Touches files across `src/`; run it alone |
+| after M | P | Touches only `compare/prescreen.py` and its tests |
 
 ---
 
@@ -301,8 +303,8 @@ How each listed gap was closed:
   branch to test. A test could not have told the memo from repeated lookups.
 - In the speculative prescreen, a step that doesn't commit returns `keep_going=True` only
   when the version moved, so the "keep going without committing" branch was unreachable.
-  `_prescreen_step` now returns one `_StepOutcome` (`committed`, `stale`, `stopped`)
-  instead of a pair of bools, each of which only one caller read. The speculative loop
+  `_prescreen_step` now returns one `_StepOutcome` enum (`COMMITTED`, `STALE`,
+  `STOPPED`) instead of a pair of bools, each of which only one caller read. The speculative loop
   ends after any step that doesn't commit.
 - New tests cover the planner's 0-hit summary and `RunState.brier_noise_floor` (it must
   compare train against noise, not one run against itself).
@@ -339,3 +341,45 @@ regression each one catches:
 Touches: `browser.py`, `intake/fakes.py`, `intake/pipeline.py`, `research/fakes.py`,
 `research/dispatcher.py`, `research/batch.py`, `wiring.py`, `tests/test_browser.py`,
 `tests/research/test_protocol.py`, `tests/intake/test_pipeline.py`, `tests/helpers.py`.
+
+## O. Turn on pyright strict mode — *open, after M*
+
+`[tool.pyright]` in `pyproject.toml` says "Strict mode turns on the full set of checks",
+and `check.py` labels the gate "strict type checks", but `typeCheckingMode` is never set,
+so pyright runs in its default mode. One consequence: a misspelled `Literal` in a
+comparison (`outcome == "stoped"`) passes silently. `reportUnnecessaryComparison` catches
+that, and strict turns it on.
+
+Setting `typeCheckingMode = "strict"` reports 146 errors (as of PR #5). 103 are in
+`recalibration_run.py`; `browser.py` has 13 and no other file more than 4. Nearly all are
+`reportUnknown*`: values typed `Any` by `json.loads`, numpy, yaml and the Tavily
+responses. Fix them by typing the data where it enters, e.g. parse
+`recalibration_run.py`'s state into typed structures once on load. Don't scatter `cast`s
+through the code.
+
+- Set `typeCheckingMode = "strict"`, and fix the comment and the gate label so they
+  describe the real config.
+- Disabling a strict rule is a decision, recorded with its reason next to the setting.
+
+Touches: `pyproject.toml`, `scripts/check.py`, `recalibration_run.py`, `browser.py`, and
+the other files the errors name.
+
+## P. Split `_prescreen_step` along its contract — *open, after M*
+
+`compare/prescreen._prescreen_step` is private but has a contract its two callers depend
+on, which breaks the AGENTS.md rule on private functions. Its callers read its outcome
+differently: `run_prescreen` retries on `STALE`, while the speculative walk gives up and
+also checks the version itself. `speculating_for` switches where an uncommitted result is
+cached, and whether a commit updates `progress` and the operator cache. Nothing tests the
+step on its own. The unreachable "keep going without committing" branch that M deleted
+sat where those two contracts met.
+
+Split it into:
+- a side-effect-free step that picks the next suggestion and consults Jev, returning the
+  suggestion, Jev's read, and the comparison to commit (if any), and
+- the writes: append and bump the version, or cache for the operator or for speculation.
+
+Each loop then owns its own policy when the version has moved. Test the pick-and-consult
+step directly, and leave each loop's tests to cover its policy.
+
+Touches: `compare/prescreen.py`, `tests/compare/test_prescreen.py`.

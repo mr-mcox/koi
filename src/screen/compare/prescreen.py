@@ -11,8 +11,9 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import Enum, auto
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 from uuid import uuid4
 
 import numpy as np
@@ -233,9 +234,12 @@ def _cache_speculative_suggestion(
     compare_cache.speculative_for = excluded
 
 
-# What one prescreen step did: appended a comparison, found the version moved under its Jev
-# consult (nothing written), or stopped with nothing left to auto-rule.
-_StepOutcome = Literal["committed", "stale", "stopped"]
+class _StepOutcome(Enum):
+    """What one prescreen step did."""
+
+    COMMITTED = auto()  # appended a comparison
+    STALE = auto()  # the version moved during the Jev consult; nothing written
+    STOPPED = auto()  # nothing left to auto-rule
 
 
 def _prescreen_step(
@@ -288,7 +292,7 @@ def _prescreen_step(
                 compare_cache, progress, version=start_version, suggestion=None, jev_read=None
             )
             _prescreen_log.debug("prescreen done: nothing left to suggest")
-        return "stopped"
+        return _StepOutcome.STOPPED
 
     jev_started = time.monotonic()
     comparison, jev_read = _consult_jev_for_suggestion(
@@ -310,7 +314,7 @@ def _prescreen_step(
     )
     if compare_state.version != start_version:
         _prescreen_log.debug("prescreen dropping ruling: version moved during jev consult")
-        return "stale"
+        return _StepOutcome.STALE
     if comparison is None:
         if speculating_for is not None:
             _cache_speculative_suggestion(
@@ -334,7 +338,7 @@ def _prescreen_step(
             _prescreen_log.debug(
                 "prescreen cached suggestion for operator (compare_version=%s)", start_version
             )
-        return "stopped"
+        return _StepOutcome.STOPPED
 
     append_comparison(conn, comparison)
     compare_state.version += 1
@@ -354,7 +358,7 @@ def _prescreen_step(
         # operator's current page and must survive an auto-ruling that happens behind
         # it — only the shared version/last_write above move, and only `.speculative*`
         # is ever touched for this pass, on a later non-committing step.
-        return "committed"
+        return _StepOutcome.COMMITTED
     progress.ruled.append(comparison)
     _cache_operator_suggestion(
         compare_cache,
@@ -363,7 +367,7 @@ def _prescreen_step(
         suggestion=None,
         jev_read=None,
     )
-    return "committed"
+    return _StepOutcome.COMMITTED
 
 
 def run_prescreen(
@@ -403,7 +407,7 @@ def run_prescreen(
                 progress=progress,
                 rng=rng,
             )
-            if outcome == "stopped":
+            if outcome is _StepOutcome.STOPPED:
                 return
     finally:
         progress.running = False
@@ -462,7 +466,7 @@ def run_speculative_prescreen(
                 rng=rng,
                 speculating_for=excluded,
             )
-            if outcome == "committed":
+            if outcome is _StepOutcome.COMMITTED:
                 expected_version = compare_state.version
                 continue
             if compare_state.version != expected_version:
