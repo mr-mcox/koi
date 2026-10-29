@@ -18,7 +18,6 @@ wave before starting the next, because later waves move files the earlier ones e
 | 2 | E, then F and G | F and G both touch `web/routes.py` imports of `api/pool.py`, so serialize them or agree on module names first |
 | 3 | H | Moves every test file; run it alone |
 | 4 | I, J | Touch nearly every file; run each alone |
-| any | K | Operator decision, not code |
 | any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
 | after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
@@ -252,13 +251,6 @@ boundary with no single shape: SQLite rows (`store/mappers.py`), the research-tr
 request/response payloads (`research_trace/events.py`, `research/dispatcher._plan_request`),
 and Tavily and YAML responses (`browser.py`, the fakes, `extract/prompt.py`). N and O
 type the Tavily and YAML ones where they enter.
-
-## K. Purge the salary figure from git history — *open, operator decision*
-
-Commit 6deb320 removed the hardcoded baseline from the tracked files, but earlier commits
-still contain it. Purging means rewriting `main` and force-pushing, which breaks
-existing clones and forks. Because the repo is public, the figure may already have been
-copied. Do this only on the operator's explicit go-ahead.
 
 ## L. Recalibration should read the digest the operator actually saw — *open*
 
