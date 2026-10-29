@@ -352,25 +352,30 @@ The errors were fixed by typing data where it enters:
   module-level function registered with `add_api_route`.
 - One `cast` remains in `replay._counts`. Q removes it when it types the trace payloads.
 
-## P. Split `_prescreen_step` along its contract — *open, after M*
+## P. Split `_prescreen_step` along its contract — *done* in [#11](https://github.com/mr-mcox/koi/pull/11)
 
-`compare/prescreen._prescreen_step` is private but has a contract its two callers depend
-on, which breaks the AGENTS.md rule on private functions. Its callers read its outcome
-differently: `run_prescreen` retries on `STALE`, while the speculative walk gives up and
-also checks the version itself. `speculating_for` switches where an uncommitted result is
-cached, and whether a commit updates `progress` and the operator cache. Nothing tests the
-step on its own. The unreachable "keep going without committing" branch that M deleted
-sat where those two contracts met.
+`_prescreen_step` is gone. `compare/prescreen.pick_and_consult` is the public,
+side-effect-free step: it picks the next suggestion (honouring an `excluded` triple),
+consults Jev, and returns a `PrescreenPick` of the suggestion and the provisional ruling
+to commit, if any. It returns `None` when the picker has nothing left. It writes nothing
+and never reads `CompareState`. The writes stay private: `_commit_ruling` appends and
+bumps the version, and `_cache_operator_suggestion` / `_cache_speculative_suggestion`
+publish.
 
-Split it into:
-- a side-effect-free step that picks the next suggestion and consults Jev, returning the
-  suggestion, Jev's read, and the comparison to commit (if any), and
-- the writes: append and bump the version, or cache for the operator or for speculation.
+Each loop owns its policy when the version moves. `run_prescreen` drops the pick and picks
+again. `run_speculative_prescreen` gives up. It now compares against the version after its
+own last write rather than each step's start, so an operator write between two
+speculative steps also discards the result. Before, that result was still cached.
 
-Each loop then owns its own policy when the version has moved. Test the pick-and-consult
-step directly, and leave each loop's tests to cover its policy.
+Jev's raw read on a pair it didn't rule is no longer carried. Its only consumer was the
+compare-page confidence banner, removed in `4dd2020`. `rubric_similarity_verdict`
+returns `Comparison | None` instead of a `GateOutcome`, and the `jev_read` fields on
+`CompareCache`, `CompareProgress` and `PrescreenPick` are gone. Confident rulings are
+committed exactly as before.
 
-Touches: `compare/prescreen.py`, `tests/compare/test_prescreen.py`.
+`pick_and_consult` is tested directly (a confident ruling is returned but not written,
+the excluded triple is never suggested, no digest means no consult, few-shot sourcing
+skips rulings with a missing digest). The loop tests cover only the loops' policies.
 
 ## Q. Type the research-trace payloads — *open, after N*
 

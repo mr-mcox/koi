@@ -15,7 +15,6 @@ from screen.store.repo import (
 from screen.types import (
     Comparison,
 )
-from screen.verdict.protocol import RubricVerdict
 from tests.helpers import canned_assertion, seed_opening
 from tests.web.helpers import (
     NOW,
@@ -342,7 +341,6 @@ def test_compare_page_uses_stale_by_one_cache_when_pair_still_legal(
             opening_a_id="acme--a",
             opening_b_id="widgets--b",
         ),
-        jev_read=RubricVerdict(outcome="tie", confidence=0.62),
     )
     live_state(client).compare.state.version = 1
     live_state(client).compare.state.last_write = (frozenset({"other--a", "other--b"}), "location")
@@ -379,7 +377,6 @@ def test_compare_page_rejects_stale_cache_for_just_written_pair(
             opening_a_id="acme--a",
             opening_b_id="widgets--b",
         ),
-        jev_read=RubricVerdict(outcome="tie", confidence=0.62),
     )
     live_state(client).compare.state.version = 1
     live_state(client).compare.state.last_write = (frozenset({"acme--a", "widgets--b"}), "location")
@@ -636,9 +633,7 @@ def test_compare_page_refuses_an_unusable_cached_suggestion(
         "widgets--b",
         assertions=[canned_assertion("location", "Strong", "ratified")],
     )
-    live_state(client).compare.cache = CompareCache(
-        version=cache_version, suggestion=suggestion, jev_read=None
-    )
+    live_state(client).compare.cache = CompareCache(version=cache_version, suggestion=suggestion)
     live_state(client).compare.state.version = cache_version + (1 if last_write is None else 2)
     live_state(client).compare.state.last_write = last_write
 
