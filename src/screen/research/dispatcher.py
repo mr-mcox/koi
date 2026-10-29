@@ -27,9 +27,8 @@ from screen.types import Assertion
 
 @dataclass(frozen=True)
 class DispatchDeps:
-    """The dispatch loop's effect ports, bundled so adding a new hook (as
-    `on_assertions` did) touches this one type instead of every handler's
-    signature and every call site that relays it."""
+    """The dispatch loop's effect ports, bundled so a new hook touches this one type
+    instead of every handler's signature and every call site that relays it."""
 
     browser: BrowserProtocol
     extractor: ExtractorProtocol

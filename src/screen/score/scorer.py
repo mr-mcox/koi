@@ -4,8 +4,7 @@ from config loading; `screen.score.loader` does the I/O).
 
 Implements S1/S2/S3/S8 (docs/architecture/decisions.md): an unexamined target is a wide
 Uniform(-1, +1); a target with counted evidence shrinks toward its sample mean; provenance
-sets the effective weight of each piece of evidence, in place of the prototype's binary
-Medium/High confidence gate. Every scored target, including `location` and
+sets the effective weight of each piece of evidence. Every scored target, including `location` and
 `internal_culture`, is a dimension in the same weighted rollup — there is no
 separate constraint or multiplicative scoring path.
 """

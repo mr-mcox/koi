@@ -1,6 +1,6 @@
 """BAML adapter: bridges generated `baml_client` extraction results to the domain.
 
-BAML now only extracts assertions (target, chunk, citations, created_at). Jev classifies
+BAML only extracts assertions (`ExtractedAssertion`). Jev classifies
 those extracted assertions into the final `screen.types.Assertion` shape, and anything
 Jev confidently judges irrelevant to its target is dropped before persistence.
 """

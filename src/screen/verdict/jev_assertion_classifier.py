@@ -1,7 +1,7 @@
 """Live `AssertionClassifier` adapter: Jev (TypeSafe's System One model) classifies
 unclassified assertions for fit (Poor/Mixed/Strong) and relevance.
 
-Exempt from unit-test coverage (see `pyproject.toml` / `scripts/check.py` OMIT lists):
+Exempt from unit-test coverage (`[tool.coverage.run] omit` in `pyproject.toml`):
 calls the paid TypeSafe API. Unit tests inject a fake `AssertionClassifier` via the
 Protocol instead.
 """
