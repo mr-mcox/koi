@@ -1,7 +1,5 @@
 """Builders and readers shared by the review-surface tests."""
 
-from __future__ import annotations
-
 import re
 from datetime import UTC, datetime
 from typing import cast

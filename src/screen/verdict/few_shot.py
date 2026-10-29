@@ -3,8 +3,6 @@ stored rulings — the rubric nuance the rubric text alone doesn't capture is in
 operator has actually judged real pairs, not a hand-written example set.
 """
 
-from __future__ import annotations
-
 import numpy as np
 
 from screen.types import Comparison

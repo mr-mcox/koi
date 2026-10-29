@@ -3,8 +3,6 @@
 settledness are computed from it on read, never stored fields of their own.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 import numpy as np

@@ -3,6 +3,7 @@
 via an HTMX partial swap."""
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from screen.api.deps import app_deps, app_state
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from screen.pool import latest_ruling_by_assertion, rank_screening_pool
 from screen.score.loader import load_scoring_config
 from screen.score.types import FIT_VALUES
@@ -22,20 +23,52 @@ from screen.store.repo import (
     list_openings,
     upsert_assertion_ruling,
 )
-from screen.types import AssertionRuling, Fit
+from screen.types import AssertionRuling, Company, Fit, Opening
 from screen.web.common import (
+    BoundaryGlyph,
     Conn,
+    DimensionGroup,
     accent_hues,
     boundary_glyph_for_score,
     company_for,
     dimension_groups,
+    template_context,
     templates,
 )
 
 router = APIRouter()
 
 
-def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
+@dataclass(frozen=True)
+class QueueItem:
+    """One row of the ranked queue."""
+
+    opening_id: str
+    company_name: str
+    opening_title: str
+    company_hue: float
+    opening_hue: float
+    glyph: BoundaryGlyph
+    p_top_k: float
+    is_stale: bool
+    age_days: int
+
+
+@dataclass(frozen=True)
+class RatingContext:
+    """What `rating.html` and its `_rating_content.html` partial render."""
+
+    opening: Opening
+    company: Company
+    groups: list[DimensionGroup]
+    score_glyph: BoundaryGlyph
+    rulings: dict[str, AssertionRuling]
+    fit_values: list[Fit]
+    company_hue: float
+    opening_hue: float
+
+
+def _queue_items(conn: sqlite3.Connection) -> list[QueueItem]:
     """Build the same ranked list the JSON `/queue` returns, shaped for the template."""
     config = load_scoring_config()
     openings = list_openings(conn, stage="screening")
@@ -45,7 +78,7 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
         result.opening_ranks,
         key=lambda r: (-r.p_top_k, r.expected_rank, r.opening_id),
     )
-    items = []
+    items: list[QueueItem] = []
     for i, rank in enumerate(ordered):
         opening = openings_by_id[rank.opening_id]
         company = company_for(conn, opening)
@@ -55,21 +88,21 @@ def _queue_items(conn: sqlite3.Connection) -> list[dict[str, object]]:
         threshold = max(14, 28 - i)
         is_stale = age_days > threshold
         items.append(
-            {
-                "opening_id": opening.id,
-                "company_name": company.name,
-                "opening_title": opening.title,
-                "company_hue": company_hue,
-                "opening_hue": opening_hue,
-                "glyph": boundary_glyph_for_score(
+            QueueItem(
+                opening_id=opening.id,
+                company_name=company.name,
+                opening_title=opening.title,
+                company_hue=company_hue,
+                opening_hue=opening_hue,
+                glyph=boundary_glyph_for_score(
                     rank,
                     top_k=result.top_k,
                     total=len(result.opening_ids),
                 ),
-                "p_top_k": rank.p_top_k,
-                "is_stale": is_stale,
-                "age_days": age_days,
-            }
+                p_top_k=rank.p_top_k,
+                is_stale=is_stale,
+                age_days=age_days,
+            )
         )
     return items
 
@@ -91,9 +124,9 @@ def index(request: Request, conn: Conn) -> HTMLResponse:
 @router.post("/prune-stale", response_class=RedirectResponse)
 def prune_stale(conn: Conn) -> RedirectResponse:
     """Move all stale openings in the screening queue to 'closed' in one batch."""
-    stale_items = [item for item in _queue_items(conn) if item["is_stale"]]
+    stale_items = [item for item in _queue_items(conn) if item.is_stale]
     for item in stale_items:
-        conn.execute("UPDATE openings SET stage = ? WHERE id = ?", ("closed", item["opening_id"]))
+        conn.execute("UPDATE openings SET stage = ? WHERE id = ?", ("closed", item.opening_id))
     conn.commit()
     return RedirectResponse(url="/", status_code=303)
 
@@ -102,10 +135,10 @@ def _rating_context(
     conn: sqlite3.Connection,
     opening_id: str,
     *,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
-) -> dict[str, object]:
+) -> RatingContext:
     """Everything the rating page (and its HTMX partial) render — shared so a fresh
     GET and a post-ruling swap can never drift out of agreement (Approach: HTMX swaps
     the whole rating-content block, not hand-picked sub-fragments)."""
@@ -128,25 +161,25 @@ def _rating_context(
         rubric_text=rubric_text,
         now=now,
     )
-    return {
-        "opening": opening,
-        "company": company,
-        "groups": groups,
-        "score_glyph": boundary_glyph_for_score(
+    return RatingContext(
+        opening=opening,
+        company=company,
+        groups=groups,
+        score_glyph=boundary_glyph_for_score(
             rank,
             top_k=result.top_k,
             total=len(result.opening_ids),
         ),
-        "rulings": rulings,
-        "fit_values": list(FIT_VALUES),
-        "company_hue": company_hue,
-        "opening_hue": opening_hue,
-    }
+        rulings=rulings,
+        fit_values=list(FIT_VALUES),
+        company_hue=company_hue,
+        opening_hue=opening_hue,
+    )
 
 
 def _rating_context_for_request(
     request: Request, conn: sqlite3.Connection, opening_id: str
-) -> dict[str, object]:
+) -> RatingContext:
     """`_rating_context` with the app's digester and rubric — shared by the GET and the
     assertion-ruling-submit route."""
     return _rating_context(
@@ -164,7 +197,7 @@ def rate_opening(request: Request, opening_id: str, conn: Conn) -> HTMLResponse:
     (each with a cached digest), and any recorded rulings, with per-assertion
     override controls."""
     context = _rating_context_for_request(request, conn, opening_id)
-    return templates.TemplateResponse(request, "rating.html", context)
+    return templates.TemplateResponse(request, "rating.html", template_context(context))
 
 
 @router.post(
@@ -197,4 +230,4 @@ def submit_ruling(
     if redirect_to is not None and redirect_to.startswith("/") and not redirect_to.startswith("//"):
         return RedirectResponse(redirect_to, status_code=303)
     context = _rating_context_for_request(request, conn, opening_id)
-    return templates.TemplateResponse(request, "_rating_content.html", context)
+    return templates.TemplateResponse(request, "_rating_content.html", template_context(context))

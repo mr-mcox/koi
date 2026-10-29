@@ -3,8 +3,6 @@
 See decisions.md W7 for the policy and why it is enforced only here.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from urllib.parse import urlparse
 

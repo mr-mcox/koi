@@ -1,17 +1,17 @@
-"""Tests for PlannerProtocol structural typing and FakePlanner.
-- FakePlanner satisfies PlannerProtocol via runtime_checkable
+"""Tests for Planner structural typing and FakePlanner.
+- FakePlanner satisfies Planner via runtime_checkable
 - FakePlanner returns its configured action list unchanged
 - default FakePlanner returns [StopAction()]
 - FakePlanner in sequence mode advances per call and repeats last
-- FakeBrowser satisfies BrowserProtocol
+- FakeBrowser satisfies Browser
 """
 
 import pytest
 
-from screen.browser import BrowserError, BrowserProtocol
+from screen.browser import Browser, BrowserError
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.fakes import FakeBrowser, FakePlanner
-from screen.research.protocol import PlannerProtocol
+from screen.research.protocol import Planner
 from screen.research.state import LoopState
 from screen.types import Assertion, Citation
 
@@ -50,7 +50,7 @@ def _state() -> LoopState:
 
 def test_fake_planner_satisfies_protocol() -> None:
     planner = FakePlanner()
-    assert isinstance(planner, PlannerProtocol)
+    assert isinstance(planner, Planner)
 
 
 def test_fake_planner_default_returns_stop() -> None:
@@ -125,7 +125,7 @@ def test_fake_planner_sequence_mode_with_action_types() -> None:
 
 def test_fake_browser_satisfies_browser_protocol() -> None:
     browser = FakeBrowser()
-    assert isinstance(browser, BrowserProtocol)
+    assert isinstance(browser, Browser)
 
 
 def test_fake_browser_search_returns_fixture() -> None:

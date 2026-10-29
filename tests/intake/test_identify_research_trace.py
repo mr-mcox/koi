@@ -2,8 +2,6 @@
 Assertions step, called directly rather than through Click.
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 from pathlib import Path

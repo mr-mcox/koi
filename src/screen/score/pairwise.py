@@ -9,8 +9,6 @@ log-posterior (Gaussian prior + comparison log-likelihoods); the negative Hessia
 inverse at the MAP is the returned covariance. numpy/`math.erf` only — no scipy dependency.
 """
 
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
 

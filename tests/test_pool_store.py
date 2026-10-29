@@ -4,8 +4,6 @@ covers the end-to-end HTTP path; this covers the branches that path alone doesn'
 reach (tie/b outcomes, the explicit `openings` override). The comparison pre-screen
 orchestration itself (`run_prescreen`) lives in `tests/compare/test_prescreen.py`."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from pathlib import Path
 

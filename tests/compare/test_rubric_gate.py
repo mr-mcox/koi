@@ -5,8 +5,6 @@ operator unchanged rather than auto-closing an uncertain judgment, but the raw v
 still returned so a caller can show the operator what Jev said. Wins are in scope
 alongside ties."""
 
-from __future__ import annotations
-
 from screen.compare.rubric_gate import rubric_similarity_verdict
 from screen.score.pairwise import Comparison
 from screen.verdict.protocol import RubricVerdict

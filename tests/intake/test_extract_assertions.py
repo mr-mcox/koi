@@ -1,7 +1,5 @@
 """Unit tests for `extract_and_persist_assertions` — extract-and-persist, called directly."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from screen.extract.fakes import FakeExtractor

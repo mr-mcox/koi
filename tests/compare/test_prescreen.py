@@ -3,8 +3,6 @@ verdicts to completion (or a turn cap), reporting each one to a progress dict so
 polling web route can render them landing live — same shape as `BatchEngine`/`run_batch`,
 applied to the comparison gate instead of research turns."""
 
-from __future__ import annotations
-
 import sqlite3
 from datetime import UTC, datetime
 from functools import partial

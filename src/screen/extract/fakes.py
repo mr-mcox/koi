@@ -1,4 +1,4 @@
-"""Hand-written fakes satisfying `ExtractorProtocol`.
+"""Hand-written fakes satisfying `Extractor`.
 
 Kept in `extract/` (not `intake/fakes.py`) so the module boundary
 between `intake/` and `extract/` stays clean.
@@ -10,7 +10,7 @@ from screen.types import Assertion
 
 
 class FakeExtractor:
-    """Satisfies `ExtractorProtocol`. Returns canned results in order; repeats last when exhausted."""
+    """Satisfies `Extractor`. Returns canned results in order; repeats last when exhausted."""
 
     def __init__(self, results: Iterable[list[Assertion]]) -> None:
         self._results: list[list[Assertion]] = list(results)

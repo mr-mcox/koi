@@ -4,8 +4,6 @@ chosen over reading real seed data so this suite doesn't depend on an
 uncommitted, gitignored `data/` directory sticking around in its current shape.
 """
 
-from __future__ import annotations
-
 import dataclasses
 
 import numpy as np

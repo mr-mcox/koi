@@ -5,8 +5,6 @@ and the paired-acceptance rule. The paid proposer and CLI plumbing live in
 `scripts/recalibrate_rubric.py` so this file stays small enough for the coverage gate.
 """
 
-from __future__ import annotations
-
 import math
 import random
 import sqlite3

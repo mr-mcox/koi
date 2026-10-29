@@ -5,7 +5,7 @@ import inspect
 import pytest
 
 from screen.intake.fakes import FakeIdentifier
-from screen.intake.identify import IdentifierProtocol, identify_opening
+from screen.intake.identify import Identifier, identify_opening
 from screen.types import IdentificationResult
 
 
@@ -59,7 +59,7 @@ def test_identify_accepts_any_protocol_implementation() -> None:
 
 def test_identifier_protocol_has_typed_signature() -> None:
     """The Protocol's return type must match IdentificationResult — adapters rely on this."""
-    method = IdentifierProtocol.identify_opening
+    method = Identifier.identify_opening
     sig = inspect.signature(method)
     assert "page_content" in sig.parameters
     assert "IdentificationResult" in str(sig.return_annotation)

@@ -2,8 +2,6 @@
 and leading-dash bullets, the only formatting the digest prompt is allowed to
 produce) into safe, structured HTML for the rating view template."""
 
-from __future__ import annotations
-
 from screen.digest.render import render_digest_html
 
 

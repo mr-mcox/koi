@@ -1,7 +1,5 @@
 """Research batch engine: schedules research turns via `fastapi.BackgroundTasks`."""
 
-from __future__ import annotations
-
 import dataclasses
 import sqlite3
 import time
@@ -13,17 +11,17 @@ from typing import cast
 
 import numpy as np
 
-from screen.browser import BrowserProtocol
-from screen.digest.protocol import DigesterProtocol
+from screen.browser import Browser
+from screen.digest.protocol import Digester
 from screen.digest.service import update_digests_for_opening
 from screen.extract.prompt import (
     RubricText,
     all_dimension_slugs,
 )
-from screen.extract.protocol import ExtractorProtocol
+from screen.extract.protocol import Extractor
 from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.protocol import PlannerProtocol
+from screen.research.protocol import Planner
 from screen.research.state import LoopState
 from screen.research_trace.replay import TraceReplay, replay_research_trace
 from screen.research_trace.trace_io import read_page_content, record_event, research_trace_path_for
@@ -66,10 +64,10 @@ class RunDispatchDeps:
     instead of `run_dispatch`'s signature and every call site that relays it.
     Production instances come from `screen.wiring`."""
 
-    planner: PlannerProtocol
-    browser: BrowserProtocol
-    extractor: ExtractorProtocol
-    digester: DigesterProtocol
+    planner: Planner
+    browser: Browser
+    extractor: Extractor
+    digester: Digester
     rubric: RubricText
     on_event: Callable[..., None] = field(default=_noop_on_event)
     update_digests: Callable[..., None] = field(default=update_digests_for_opening)
@@ -313,7 +311,7 @@ def _run_batch_turn(
     total_spent: int,
     touched: list[str],
     progress: BatchProgress,
-    planner_factory: Callable[[], PlannerProtocol] | None,
+    planner_factory: Callable[[], Planner] | None,
     deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
     """Draw one opening and spend up to one block of actions on it before the next
@@ -413,7 +411,7 @@ def run_batch(
     *,
     deps: RunDispatchDeps,
     config: ScoringConfig | None = None,
-    planner_factory: Callable[[], PlannerProtocol] | None = None,
+    planner_factory: Callable[[], Planner] | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
     now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
@@ -504,7 +502,7 @@ class BatchEngine:
     """Runs a research batch off the request thread. `planner_factory` supplies a fresh
     planner per draw; `deps_factory` the batch's other collaborators."""
 
-    planner_factory: Callable[[], PlannerProtocol]
+    planner_factory: Callable[[], Planner]
     deps_factory: Callable[[], RunDispatchDeps]
 
     def run(

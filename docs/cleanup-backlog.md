@@ -24,6 +24,8 @@ wave before starting the next, because later waves move files the earlier ones e
 | after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
 | after M | O | Touches files across `src/`; run it alone |
 | after M | P | Touches only `compare/prescreen.py` and its tests |
+| after N | Q | Edits `research/dispatcher.py` and `intake/pipeline.py`, which N also edits |
+| any | R | Touches only `store/`, `web/queue.py` and their tests |
 
 ---
 
@@ -228,16 +230,28 @@ Docstrings and comments in `src/` now describe product state:
 Left for M: the `eligible_weights` fallback sentence, which M's decision on that branch
 rewrites or deletes.
 
-## J. Coding-standard consistency — *open, last*
+## J. Coding-standard consistency — *done* in [#6](https://github.com/mr-mcox/koi/pull/6)
 
-- Drop `from __future__ import annotations` (present in some files and not others; not
-  needed on Python 3.14).
-- Pick one Protocol naming style (`FooProtocol` vs `VerdictProvider`) and one
-  protocol-file name (`protocol.py` vs `classification_protocol.py`).
-- Replace the remaining untyped `dict[str, object]` / `dict[str, Any]` values in `src`
-  (mostly template contexts in `web/`) with typed structures where a shape is known.
+- `from __future__ import annotations` is gone from `src/`, `tests/` and `scripts/`.
+  Python 3.14 defers annotation evaluation, so forward references need no import.
+- Protocols take the role name with no suffix (`Planner`, `Browser`, `Digester`,
+  `Identifier`, `Extractor`, alongside `VerdictProvider` and `AssertionClassifier`).
+  Implementations are named for what backs them (`BamlPlanner`, `TavilyBrowser`).
+  Each package keeps its protocols in one `protocol.py`, so `verdict/classification_protocol.py`
+  was merged into `verdict/protocol.py`.
+- Template contexts in `web/` are frozen dataclasses (`QueueItem`, `RatingContext`,
+  `ComparePreview`). `web/common.template_context` turns one into the mapping
+  Starlette's `TemplateResponse` takes. It is shallow, so nested dataclasses keep their
+  properties. TypedDicts weren't used because Starlette types the context as `dict[str, Any]`.
+  Typing the compare context showed that `predicted_a_beats_b` and the per-side
+  `stats_for_target` calls were computed but never rendered, so they were deleted.
+  `submit_comparison` still computes the prediction when it records a comparison.
 
-Touches: most of `src/`.
+These `dict[str, Any]` / `dict[str, object]` uses were left alone because each sits at a
+boundary with no single shape: SQLite rows (`store/mappers.py`), the research-trace
+request/response payloads (`research_trace/events.py`, `research/dispatcher._plan_request`),
+and Tavily and YAML responses (`browser.py`, the fakes, `extract/prompt.py`). N and O
+type the Tavily and YAML ones where they enter.
 
 ## K. Purge the salary figure from git history — *open, operator decision*
 
@@ -315,7 +329,7 @@ How each listed gap was closed:
 
 ## N. Narrow the browser protocol and merge its two fakes — *open, after M*
 
-`BrowserProtocol` (`browser.py`) is wider than any of its callers:
+The `Browser` protocol (`browser.py`) is wider than any of its callers:
 - `extract` is on the protocol, but no caller uses it through the protocol. Only
   `TavilyBrowser.fetch` calls it, internally. Drop it from the protocol, and make it
   private on `TavilyBrowser` unless a caller turns up.
@@ -383,3 +397,64 @@ Each loop then owns its own policy when the version has moved. Test the pick-and
 step directly, and leave each loop's tests to cover its policy.
 
 Touches: `compare/prescreen.py`, `tests/compare/test_prescreen.py`.
+
+## Q. Type the research-trace payloads — *open, after N*
+
+`ResearchTraceEvent.request` and `.response` (`research_trace/events.py`) are
+`dict[str, Any]`. Their writers and readers agree only through string keys, across files
+and across time, because traces are persisted JSONL that the code reads back on resume:
+- `research/dispatcher._plan_request` writes the `decide_plan` snapshot.
+  `research_trace/replay.py` reads `target_assertion_counts`, `targets_covered`,
+  `active_target` and `primary_target` back from it to rebuild stall state.
+- The search and extract events write `query`, `urls` and `results`. `replay.py` and
+  `trace_io.read_page_content` read them back. `intake/pipeline.py` writes the
+  intake-time extract event, including the no-`results` fatal shape that `replay` counts
+  as "not a pass turn".
+
+If someone renames a key on the write side, the read side gets `None` or an empty set
+and raises nothing: stall detection on resume quietly gets worse, and the suite still
+passes unless a test pins that exact key.
+
+- Give each tool a Pydantic request model and a response model (decide-plan, search,
+  extract), and have the writers and readers import the same ones. Make
+  `ResearchTraceEvent` a union discriminated on `tool`, so loading an event validates
+  its payload.
+- Fields that older traces lack are optional with a default. Say what their absence
+  means once, in the model, not in each reader (`_counts` already treats a missing
+  `target_assertion_counts` as "fall back to membership").
+- Compatibility rule, recorded in decisions.md: new payload fields are optional with a
+  default; never rename or retype an existing field. Enforce it with a committed fixture
+  of trace lines in the current shape, plus one per older shape `replay` still handles,
+  which must keep loading. Use synthetic companies and URLs only, never lines from a
+  real trace.
+- `TavilyExtractResponse` and the `cast`s in `replay.py` and `trace_io.py` go away once
+  the extract response is a model.
+
+Avro or another schema registry is out of scope: one codebase writes and reads these, and
+Pydantic already provides the schema and the validation.
+
+Touches: `research_trace/events.py`, `research_trace/replay.py`,
+`research_trace/trace_io.py`, `research/dispatcher.py`, `intake/pipeline.py`,
+`docs/architecture/decisions.md`, `tests/research_trace/`, `tests/research/test_dispatcher.py`,
+`tests/intake/test_pipeline.py`.
+
+## R. Check the row mappers against the migrated schema — *open*
+
+The tests in `tests/store/test_mappers.py` check each mapper only against its inverse.
+Suppose a migration adds a column with a default and `*_to_row` isn't updated. Every
+write then stores the default, every round trip still passes, and the value is lost
+without an error.
+
+- Add a test that runs the migrations and asserts that each `*_to_row` produces exactly
+  the column set of its table (`PRAGMA table_info`). Then a missing or misspelled key
+  fails the test, not the operator's data.
+- `web/queue.prune_stale` runs `UPDATE openings SET stage` itself. It is the only SQL
+  outside `store/`. Route it through the repo, the way `web/archive.submit_stage` uses
+  `upsert_opening`, or through a bulk stage setter in `repo.py` if one pass over the
+  stale set needs it.
+
+A dataclass per row, or a query wrapper, is out of scope: rows exist only inside
+`mappers.py`, between the SQL schema and the Pydantic domain models, and a third copy of
+each shape would add drift, not guard against it.
+
+Touches: `store/repo.py`, `web/queue.py`, `tests/store/`, `tests/web/test_queue.py`.

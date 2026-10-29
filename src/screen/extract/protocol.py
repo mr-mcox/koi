@@ -1,6 +1,6 @@
 """Protocol surface for assertion extractors.
 
-Any object satisfying `ExtractorProtocol` can be injected into
+Any object satisfying `Extractor` can be injected into
 `extract_assertions`. The live adapter (`BAMLExtractor`) and the fake
 (`FakeExtractor`) both satisfy it.
 """
@@ -11,7 +11,7 @@ from screen.types import Assertion
 
 
 @runtime_checkable
-class ExtractorProtocol(Protocol):
+class Extractor(Protocol):
     def extract_assertions(
         self,
         chunk: str,

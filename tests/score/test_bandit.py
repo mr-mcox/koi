@@ -1,8 +1,6 @@
 """Tests for screen.score.bandit: aggregate remaining-uncertainty per opening, the
 weighting signal for research-batch's per-turn draw."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import numpy as np

@@ -1,6 +1,6 @@
 """Tests for the shared browser seam: screen.browser.
 
-BrowserProtocol is the neutral contract. TavilyBrowser is the real
+Browser is the neutral contract. TavilyBrowser is the real
 implementation; FakeTavily (in intake/fakes.py) is the test double used
 throughout the intake test suite.
 """
@@ -8,8 +8,8 @@ throughout the intake test suite.
 from typing import Any
 
 from screen.browser import (
+    Browser,
     BrowserError,
-    BrowserProtocol,
     SearchHit,
     TavilyBrowser,
     failures_are_permanent,
@@ -59,15 +59,15 @@ class _RaisingTavilyClient:
 
 
 def test_browser_protocol_is_runtime_checkable() -> None:
-    """BrowserProtocol is decorated @runtime_checkable so isinstance works."""
+    """Browser is decorated @runtime_checkable so isinstance works."""
     fake = FakeTavily()
-    assert isinstance(fake, BrowserProtocol)
+    assert isinstance(fake, Browser)
 
 
 def test_tavily_browser_satisfies_protocol() -> None:
-    """TavilyBrowser satisfies BrowserProtocol by shape — no real key needed."""
+    """TavilyBrowser satisfies Browser by shape — no real key needed."""
     client = TavilyBrowser(api_key="test-key-not-real")
-    assert isinstance(client, BrowserProtocol)
+    assert isinstance(client, Browser)
 
 
 def test_tavily_browser_has_no_extract_one() -> None:
@@ -78,13 +78,13 @@ def test_tavily_browser_has_no_extract_one() -> None:
 
 
 def test_fake_tavily_satisfies_browser_protocol() -> None:
-    """FakeTavily is the test double for BrowserProtocol callers."""
+    """FakeTavily is the test double for Browser callers."""
     fake = FakeTavily()
-    assert isinstance(fake, BrowserProtocol)
+    assert isinstance(fake, Browser)
 
 
 def test_fake_tavily_has_no_extract_one() -> None:
-    """FakeTavily's public surface matches BrowserProtocol — no extract_one."""
+    """FakeTavily's public surface matches Browser — no extract_one."""
     fake = FakeTavily()
     assert not hasattr(fake, "extract_one")
 

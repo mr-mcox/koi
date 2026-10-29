@@ -5,8 +5,6 @@ directory layout, and the resume refusal when `rubric.yaml` has drifted away fro
 the baseline the run was measured against.
 """
 
-from __future__ import annotations
-
 import json
 from dataclasses import replace
 from pathlib import Path

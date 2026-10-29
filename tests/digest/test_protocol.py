@@ -3,7 +3,7 @@
 import pytest
 
 from screen.digest.fakes import FakeDigester
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from tests.helpers import canned_assertion
 
 
@@ -27,4 +27,4 @@ def test_fake_digester_repeats_last_when_exhausted() -> None:
 
 def test_fake_digester_satisfies_protocol() -> None:
     fake = FakeDigester(["some digest"])
-    assert isinstance(fake, DigesterProtocol)
+    assert isinstance(fake, Digester)

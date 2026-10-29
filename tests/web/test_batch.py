@@ -1,7 +1,5 @@
 """Integration tests for starting and polling a research batch."""
 
-from __future__ import annotations
-
 import contextlib
 import socket
 import threading

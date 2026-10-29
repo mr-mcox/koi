@@ -6,8 +6,6 @@ comparison data, so it stays the same regardless of which comparisons are select
 the next fit.
 """
 
-from __future__ import annotations
-
 
 def _point_vs_point(mean_a: float, mean_b: float) -> float:
     if mean_a > mean_b:

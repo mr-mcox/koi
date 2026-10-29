@@ -1,7 +1,5 @@
 """Unit tests for the click-independent batch engine in `screen.research.batch`."""
 
-from __future__ import annotations
-
 import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path

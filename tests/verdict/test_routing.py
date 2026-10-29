@@ -5,8 +5,6 @@ These tests are organized by the decision boundary:
 - operator cases show the exact verdicts we expect to surface with a hint
 """
 
-from __future__ import annotations
-
 import pytest
 
 from screen.verdict.protocol import JevRuling, NoulJudgment

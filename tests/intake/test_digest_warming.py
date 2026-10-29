@@ -2,8 +2,6 @@
 digest cache for every target with assertions before the pass is considered
 complete."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from screen.digest.fakes import FakeDigester

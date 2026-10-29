@@ -5,8 +5,6 @@ This separates Jev's I/O (calling the API, parsing answers) from decision logic,
 the latter testable and understandable independent of the TypeSafe SDK.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from screen.verdict.protocol import JevRuling, RubricVerdict, VerdictOutcome

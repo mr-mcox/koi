@@ -13,8 +13,6 @@ priority. It never asks about a dimension where either side has no assertions â€
 `domain` included.
 """
 
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
 

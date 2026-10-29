@@ -5,8 +5,6 @@ SQLite database in a temporary directory, seeded directly via `screen.store.repo
 (the same interface the CLI writes through) rather than via HTTP.
 """
 
-from __future__ import annotations
-
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime

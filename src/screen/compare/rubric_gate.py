@@ -8,8 +8,6 @@ pair it couldn't settle — otherwise an uncertain read is indistinguishable fro
 having been asked.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Protocol
 
