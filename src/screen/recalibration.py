@@ -304,8 +304,8 @@ class EvaluationResult:
 
 @dataclass(frozen=True)
 class PairDelta:
-    fixed: list[LabeledCase] = field(default_factory=list)
-    broken: list[LabeledCase] = field(default_factory=list)
+    fixed: list[LabeledCase] = field(default_factory=list[LabeledCase])
+    broken: list[LabeledCase] = field(default_factory=list[LabeledCase])
 
 
 @dataclass
@@ -357,8 +357,8 @@ class RoundResult:
     train_buckets: BucketCounts | None = None
     train_cases: list[LabeledCase] | None = None
     held_out_cases: list[LabeledCase] | None = None
-    fixed_cases: list[LabeledCase] = field(default_factory=list)
-    broken_cases: list[LabeledCase] = field(default_factory=list)
+    fixed_cases: list[LabeledCase] = field(default_factory=list[LabeledCase])
+    broken_cases: list[LabeledCase] = field(default_factory=list[LabeledCase])
     train_net: float = 0.0
     train_brier: float = 0.0
     accepted: bool = False

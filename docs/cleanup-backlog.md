@@ -328,27 +328,29 @@ itself: the `FakeTavily` tests, both `has_no_extract_one` tests, the protocol
 and `FakeBrowser`'s fixture and `extract` tests in `tests/research/test_protocol.py`.
 The advanced-depth test now goes through `fetch`.
 
-## O. Turn on pyright strict mode — *open, after M*
+## O. Turn on pyright strict mode — *done* in [#9](https://github.com/mr-mcox/koi/pull/9)
 
-`[tool.pyright]` in `pyproject.toml` says "Strict mode turns on the full set of checks",
-and `check.py` labels the gate "strict type checks", but `typeCheckingMode` is never set,
-so pyright runs in its default mode. One consequence: a misspelled `Literal` in a
-comparison (`outcome == "stoped"`) passes silently. `reportUnnecessaryComparison` catches
-that, and strict turns it on.
+`typeCheckingMode = "strict"` is set with no strict rule disabled, so a misspelled
+`Literal` in a comparison now fails `reportUnnecessaryComparison`. The gate is labelled
+"pyright strict".
 
-Setting `typeCheckingMode = "strict"` reports 146 errors (as of PR #5). 103 are in
-`recalibration_run.py`; `browser.py` has 13 and no other file more than 4. Nearly all are
-`reportUnknown*`: values typed `Any` by `json.loads`, numpy, yaml and the Tavily
-responses. Fix them by typing the data where it enters, e.g. parse
-`recalibration_run.py`'s state into typed structures once on load. Don't scatter `cast`s
-through the code.
-
-- Set `typeCheckingMode = "strict"`, and fix the comment and the gate label so they
-  describe the real config.
-- Disabling a strict rule is a decision, recorded with its reason next to the setting.
-
-Touches: `pyproject.toml`, `scripts/check.py`, `recalibration_run.py`, `browser.py`, and
-the other files the errors name.
+The errors were fixed by typing data where it enters:
+- `recalibration_run.py` parses `state.json` and transcript lines through Pydantic
+  record models (`_StateRecord`, `_RoundRecord`, `_EvaluationRecord`) that validate the
+  stdlib dataclasses directly. The same models write the record, so the two sides
+  share one schema. Older records still load: fields added later keep their defaults.
+  The pre-Brier refusal still checks the raw payload first.
+- `browser.search` casts Tavily's response once to `_TavilySearchResponse`. The
+  `tavily` stub now declares `search`.
+- `typesafe_sdk` writes its recursive JSON aliases as string-form `TypeAliasType`, which
+  pyright reads as Unknown. `stubs/typesafe_sdk/_core/json_types.pyi` overrides only that
+  module with `type` statements, and the rest of the package resolves from the install.
+- `DispatchDeps.on_event` and `RunDispatchDeps.on_event` take `Callable[[ResearchTraceEvent], None]`,
+  and the trace writers bind `record_event` with `functools.partial`.
+- `rank_pool`'s readouts are computed column-wise over a typed `NDArray[np.intp]`, and
+  bare `default_factory=list` / `set()` got their element types. `/health` is a
+  module-level function registered with `add_api_route`.
+- One `cast` remains in `replay._counts`. Q removes it when it types the trace payloads.
 
 ## P. Split `_prescreen_step` along its contract — *open, after M*
 

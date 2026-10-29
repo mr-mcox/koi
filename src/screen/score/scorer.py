@@ -14,6 +14,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 
 from screen.score.types import (
     FIT_VALUES,
@@ -106,7 +107,7 @@ def _sample_dimension(
     from its own assertion-derived stats. An opening no comparison has touched keeps
     exactly its prior."""
     draw = np.empty((len(opening_ids), samples))
-    covered = set(posterior.opening_ids) if posterior is not None else set()
+    covered: set[str] = set(posterior.opening_ids) if posterior is not None else set()
     uncovered = [oid for oid in opening_ids if oid not in covered]
     if uncovered:
         means = np.array([stats[oid].mean for oid in uncovered])
@@ -165,7 +166,7 @@ def _to_unit_interval(weighted: np.ndarray, config: ScoringConfig) -> np.ndarray
 
 def _sample_ranks(
     overall: np.ndarray, deterministic_quality: np.ndarray, tiebreak_keys: np.ndarray
-) -> np.ndarray:
+) -> npt.NDArray[np.intp]:
     """Rank each sample (column) independently, `1` best: `overall` decides it whenever
     samples differ; `deterministic_quality` then `opening_id`'s hash break exact ties (e.g.
     two unexamined openings, or two killed by the same dimension) the same way regardless
@@ -177,15 +178,20 @@ def _sample_ranks(
     return ranks
 
 
-def _rank_readouts(ranks: np.ndarray, opening_ids: list[str], top_k: int) -> list[OpeningRank]:
+def _rank_readouts(
+    ranks: npt.NDArray[np.intp], opening_ids: list[str], top_k: int
+) -> list[OpeningRank]:
+    expected = np.mean(ranks, axis=1)
+    p_top_k = np.mean(ranks <= top_k, axis=1)
+    q10, q50, q90 = np.quantile(ranks, [0.10, 0.50, 0.90], axis=1)
     return [
         OpeningRank(
             opening_id=oid,
-            expected_rank=float(np.mean(ranks[i])),
-            p_top_k=float(np.mean(ranks[i] <= top_k)),
-            rank_q10=float(np.quantile(ranks[i], 0.10)),
-            rank_q50=float(np.quantile(ranks[i], 0.50)),
-            rank_q90=float(np.quantile(ranks[i], 0.90)),
+            expected_rank=float(expected[i]),
+            p_top_k=float(p_top_k[i]),
+            rank_q10=float(q10[i]),
+            rank_q50=float(q50[i]),
+            rank_q90=float(q90[i]),
         )
         for i, oid in enumerate(opening_ids)
     ]

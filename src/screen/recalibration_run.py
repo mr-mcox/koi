@@ -10,9 +10,12 @@ text, which names real companies.
 """
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from screen.recalibration import (
     BucketCounts,
@@ -61,7 +64,7 @@ class RunState:
     propose_pairs: list[UsablePair]
     held_pairs: list[UsablePair]
     unversioned_digests: UnversionedDigests
-    rounds: list[RoundResult] = field(default_factory=list)
+    rounds: list[RoundResult] = field(default_factory=list[RoundResult])
 
     @property
     def state_path(self) -> Path:
@@ -158,114 +161,152 @@ def record_round(state: RunState, round_result: RoundResult) -> None:
 
 def save_state(state: RunState) -> None:
     state.run_dir.mkdir(parents=True, exist_ok=True)
-    state.state_path.write_text(json.dumps(_state_to_dict(state), indent=2), encoding="utf-8")
+    state.state_path.write_text(_StateRecord.of(state).model_dump_json(indent=2), encoding="utf-8")
 
 
 def load_state(state_path: Path) -> RunState:
-    data = json.loads(state_path.read_text(encoding="utf-8"))
-    if any("p_clear" not in case for case in data["baseline_train"]["cases"]):
+    text = state_path.read_text(encoding="utf-8")
+    raw: Any = json.loads(text)
+    if any("p_clear" not in case for case in raw["baseline_train"]["cases"]):
         raise ResumeRefusedError(
             f"{state_path} predates per-case Jev probabilities, which the Brier score "
             "needs. Start a new run."
         )
+    record = _StateRecord.model_validate(raw)
     return RunState(
         run_dir=state_path.parent,
-        target=data["target"],
-        seed=int(data["seed"]),
-        floor=int(data["floor"]),
-        context_mode=data["context_mode"],
-        baseline_rubric_text=data["baseline_rubric_text"],
-        baseline_train=_evaluation_from_dict(data["baseline_train"]),
-        baseline_noise=_evaluation_from_dict(data["baseline_noise"]),
-        current_rubric_text=data["current_rubric_text"],
-        current_train=_evaluation_from_dict(data["current_train"]),
-        propose_pairs=[UsablePair(**item) for item in data["propose_pairs"]],
-        held_pairs=[UsablePair(**item) for item in data["held_pairs"]],
-        unversioned_digests=UnversionedDigests(
-            data.get("unversioned_digests", UnversionedDigests.LATEST)
-        ),
-        rounds=[_round_from_dict(item) for item in data.get("rounds", [])],
+        target=record.target,
+        seed=record.seed,
+        floor=record.floor,
+        context_mode=record.context_mode,
+        baseline_rubric_text=record.baseline_rubric_text,
+        baseline_train=record.baseline_train.result(),
+        baseline_noise=record.baseline_noise.result(),
+        current_rubric_text=record.current_rubric_text,
+        current_train=record.current_train.result(),
+        propose_pairs=record.propose_pairs,
+        held_pairs=record.held_pairs,
+        unversioned_digests=record.unversioned_digests,
+        rounds=[item.result() for item in record.rounds],
     )
 
 
 def _append_transcript(state: RunState, round_result: RoundResult) -> None:
     state.run_dir.mkdir(parents=True, exist_ok=True)
-    record = {
-        "round": _round_to_dict(round_result),
-        "current_rubric_text": state.current_rubric_text,
-        "current_train": _evaluation_to_dict(state.current_train),
-    }
+    record = _TranscriptRecord(
+        round=_RoundRecord.of(round_result),
+        current_rubric_text=state.current_rubric_text,
+        current_train=_EvaluationRecord.of(state.current_train),
+    )
     with state.transcript_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record))
+        handle.write(record.model_dump_json())
         handle.write("\n")
 
 
-def _state_to_dict(state: RunState) -> dict:
-    return {
-        "target": state.target,
-        "seed": state.seed,
-        "floor": state.floor,
-        "context_mode": state.context_mode,
-        "baseline_rubric_text": state.baseline_rubric_text,
-        "baseline_train": _evaluation_to_dict(state.baseline_train),
-        "baseline_noise": _evaluation_to_dict(state.baseline_noise),
-        "current_rubric_text": state.current_rubric_text,
-        "current_train": _evaluation_to_dict(state.current_train),
-        "propose_pairs": [asdict(pair) for pair in state.propose_pairs],
-        "held_pairs": [asdict(pair) for pair in state.held_pairs],
-        "unversioned_digests": state.unversioned_digests.value,
-        "rounds": [_round_to_dict(item) for item in state.rounds],
-    }
+class _EvaluationRecord(BaseModel):
+    buckets: BucketCounts
+    cases: list[LabeledCase]
+    confusion: ConfusionMatrix
+
+    @classmethod
+    def of(cls, result: EvaluationResult) -> _EvaluationRecord:
+        return cls(buckets=result.buckets, cases=result.cases, confusion=result.confusion)
+
+    def result(self) -> EvaluationResult:
+        return EvaluationResult(buckets=self.buckets, cases=self.cases, confusion=self.confusion)
 
 
-def _evaluation_to_dict(result: EvaluationResult) -> dict:
-    return {
-        "buckets": asdict(result.buckets),
-        "cases": [asdict(case) for case in result.cases],
-        "confusion": asdict(result.confusion),
-    }
+class _RoundRecord(BaseModel):
+    """A round as persisted. Fields with defaults are absent from records saved before
+    they were measured; a round with no train measurement loads with empty case lists."""
+
+    round_num: int
+    candidate_rubric_text: str
+    held_out_buckets: BucketCounts
+    theory: str
+    expected_effect: str = ""
+    train_buckets: BucketCounts | None = None
+    train_cases: list[LabeledCase] = Field(default_factory=list[LabeledCase])
+    held_out_cases: list[LabeledCase] = Field(default_factory=list[LabeledCase])
+    fixed_cases: list[LabeledCase] = Field(default_factory=list[LabeledCase])
+    broken_cases: list[LabeledCase] = Field(default_factory=list[LabeledCase])
+    train_net: float = 0.0
+    train_brier: float = 0.0
+    accepted: bool = False
+
+    @classmethod
+    def of(cls, result: RoundResult) -> _RoundRecord:
+        return cls(
+            round_num=result.round_num,
+            candidate_rubric_text=result.candidate_rubric_text,
+            held_out_buckets=result.held_out_buckets,
+            theory=result.theory,
+            expected_effect=result.expected_effect,
+            train_buckets=result.train_buckets,
+            train_cases=result.train_cases or [],
+            held_out_cases=result.held_out_cases or [],
+            fixed_cases=result.fixed_cases,
+            broken_cases=result.broken_cases,
+            train_net=result.train_net,
+            train_brier=result.train_brier,
+            accepted=result.accepted,
+        )
+
+    def result(self) -> RoundResult:
+        return RoundResult(
+            round_num=self.round_num,
+            candidate_rubric_text=self.candidate_rubric_text,
+            held_out_buckets=self.held_out_buckets,
+            theory=self.theory,
+            expected_effect=self.expected_effect,
+            train_buckets=self.train_buckets,
+            train_cases=self.train_cases,
+            held_out_cases=self.held_out_cases,
+            fixed_cases=self.fixed_cases,
+            broken_cases=self.broken_cases,
+            train_net=self.train_net,
+            train_brier=self.train_brier,
+            accepted=self.accepted,
+        )
 
 
-def _evaluation_from_dict(data: dict) -> EvaluationResult:
-    return EvaluationResult(
-        buckets=BucketCounts(**data["buckets"]),
-        cases=[LabeledCase(**item) for item in data["cases"]],
-        confusion=ConfusionMatrix(**data["confusion"]),
-    )
+class _StateRecord(BaseModel):
+    """`state.json`. `unversioned_digests` defaults for records saved before it existed."""
+
+    target: str
+    seed: int
+    floor: int
+    context_mode: str
+    baseline_rubric_text: str
+    baseline_train: _EvaluationRecord
+    baseline_noise: _EvaluationRecord
+    current_rubric_text: str
+    current_train: _EvaluationRecord
+    propose_pairs: list[UsablePair]
+    held_pairs: list[UsablePair]
+    unversioned_digests: UnversionedDigests = UnversionedDigests.LATEST
+    rounds: list[_RoundRecord] = Field(default_factory=list[_RoundRecord])
+
+    @classmethod
+    def of(cls, state: RunState) -> _StateRecord:
+        return cls(
+            target=state.target,
+            seed=state.seed,
+            floor=state.floor,
+            context_mode=state.context_mode,
+            baseline_rubric_text=state.baseline_rubric_text,
+            baseline_train=_EvaluationRecord.of(state.baseline_train),
+            baseline_noise=_EvaluationRecord.of(state.baseline_noise),
+            current_rubric_text=state.current_rubric_text,
+            current_train=_EvaluationRecord.of(state.current_train),
+            propose_pairs=state.propose_pairs,
+            held_pairs=state.held_pairs,
+            unversioned_digests=state.unversioned_digests,
+            rounds=[_RoundRecord.of(item) for item in state.rounds],
+        )
 
 
-def _round_to_dict(result: RoundResult) -> dict:
-    return {
-        "round_num": result.round_num,
-        "candidate_rubric_text": result.candidate_rubric_text,
-        "held_out_buckets": asdict(result.held_out_buckets),
-        "theory": result.theory,
-        "expected_effect": result.expected_effect,
-        "train_buckets": asdict(result.train_buckets) if result.train_buckets else None,
-        "train_cases": [asdict(case) for case in result.train_cases or []],
-        "held_out_cases": [asdict(case) for case in result.held_out_cases or []],
-        "fixed_cases": [asdict(case) for case in result.fixed_cases],
-        "broken_cases": [asdict(case) for case in result.broken_cases],
-        "train_net": result.train_net,
-        "train_brier": result.train_brier,
-        "accepted": result.accepted,
-    }
-
-
-def _round_from_dict(data: dict) -> RoundResult:
-    train_buckets = data.get("train_buckets")
-    return RoundResult(
-        round_num=int(data["round_num"]),
-        candidate_rubric_text=data["candidate_rubric_text"],
-        held_out_buckets=BucketCounts(**data["held_out_buckets"]),
-        theory=data["theory"],
-        expected_effect=data.get("expected_effect", ""),
-        train_buckets=BucketCounts(**train_buckets) if train_buckets else None,
-        train_cases=[LabeledCase(**item) for item in data.get("train_cases", [])],
-        held_out_cases=[LabeledCase(**item) for item in data.get("held_out_cases", [])],
-        fixed_cases=[LabeledCase(**item) for item in data.get("fixed_cases", [])],
-        broken_cases=[LabeledCase(**item) for item in data.get("broken_cases", [])],
-        train_net=float(data.get("train_net", 0.0)),
-        train_brier=float(data.get("train_brier", 0.0)),
-        accepted=bool(data.get("accepted", False)),
-    )
+class _TranscriptRecord(BaseModel):
+    round: _RoundRecord
+    current_rubric_text: str
+    current_train: _EvaluationRecord

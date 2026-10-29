@@ -88,7 +88,7 @@ def _settled_pairs(
     for c in comparisons:
         latest_comparison[frozenset({c.winner, c.loser})] = c
 
-    settled = set()
+    settled: set[frozenset[str]] = set()
     for pair, c in latest_comparison.items():
         if c.provenance == "provisional":
             settled.add(pair)

@@ -75,6 +75,18 @@ class _TavilyResponse(TypedDict, total=False):
     failed_results: list[dict[str, Any]]
 
 
+class _TavilySearchResult(TypedDict, total=False):
+    url: str
+    title: str
+    raw_content: str | None
+    content: str | None
+    snippet: str | None
+
+
+class _TavilySearchResponse(TypedDict, total=False):
+    results: list[_TavilySearchResult]
+
+
 class Fetcher(Protocol):
     """Fetches one URL's page content."""
 
@@ -157,7 +169,7 @@ class TavilyBrowser:
     def search(self, query: str) -> list[SearchHit]:
         """Search Tavily and return hits."""
         try:
-            response = cast(dict[str, Any], cast(Any, self._client).search(query=query))
+            response = cast(_TavilySearchResponse, self._client.search(query=query))
         except Exception as exc:
             raise BrowserError(str(exc), details={"exception": str(exc)}) from exc
         results = response.get("results") or []
