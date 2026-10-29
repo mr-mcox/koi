@@ -279,8 +279,6 @@ def _prescreen_step(
     )
     if suggestion is None:
         if speculating_for is not None:
-            # Nothing beyond the excluded on-screen triple — leave the on-screen
-            # suggestion alone; there is simply no lookahead to offer this round.
             _prescreen_log.debug("speculative found nothing beyond the on-screen pair")
         else:
             _cache_operator_suggestion(

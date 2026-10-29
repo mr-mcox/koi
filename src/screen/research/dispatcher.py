@@ -138,7 +138,6 @@ def dispatch(
             return result
         current = _advance_active_target(result)
 
-        # Budget guard fires after state is updated, before the next plan() call.
         if current.turns_used >= current.turn_budget:
             return PassSummary(
                 opening_id=current.opening_id,

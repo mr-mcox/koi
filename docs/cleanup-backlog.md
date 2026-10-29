@@ -214,6 +214,13 @@ Docstrings and comments in `src/` now describe product state:
 - The `Assertion` docstring is rewritten: its opening is repaired and it names
   `stats_for_target` instead of repeating the `0.3` confidence floor. `eligible_weights`
   names `bandit.boundary_weight` instead of restating a formula (the wrong one).
+- Inline comments that narrated the next line were removed. Where code needed a comment,
+  it now explains itself instead: `stats_for_target`'s confidence widening is
+  `_confidence_widening` with a named `_CONFIDENCE_FLOOR`; `rank_pool`'s duplicated
+  guarded/unguarded ranking blocks are `_sample_ranks` and `_rank_readouts`; `accepts`
+  names `_BRIER_GAIN_PER_CHAR_SAVED` instead of commenting `/ 10000.0`;
+  `UsablePair.expected` is typed `ComparisonOutcome` instead of commented. The section
+  banners in `recalibration.py` and `types.py` are gone.
 
 Left for M: the `eligible_weights` fallback sentence, which M's decision on that branch
 rewrites or deletes.

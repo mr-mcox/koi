@@ -18,6 +18,7 @@ from typing import Protocol
 
 from screen.extract.prompt import PRIVATE_PLACEHOLDERS
 from screen.store.repo import comparisons_for_target, get_dimension_digest
+from screen.types import ComparisonOutcome
 
 
 class PrivacyViolationError(ValueError):
@@ -53,11 +54,6 @@ def require_placeholders_kept(current_text: str, candidate_text: str) -> None:
             )
 
 
-# ---------------------------------------------------------------------------
-# Data types
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class UsablePair:
     pair_id: str
@@ -65,7 +61,7 @@ class UsablePair:
     opening_b_id: str
     digest_a: str
     digest_b: str
-    expected: str  # "a" | "b" | "tie"
+    expected: ComparisonOutcome
 
 
 @dataclass(frozen=True)
@@ -156,6 +152,9 @@ def mean_brier(cases: list[LabeledCase]) -> float:
     return statistics.fmean(case.brier for case in cases) if cases else 0.0
 
 
+_BRIER_GAIN_PER_CHAR_SAVED = 1e-4
+"""Exchange rate between rubric brevity and Brier gain when net is tied."""
+
 # Two standard errors: a gain this size from jitter alone happens ~5% of the time.
 _NOISE_FLOOR_STANDARD_ERRORS = 2
 _MIN_SAMPLES_FOR_STDEV = 2
@@ -182,21 +181,16 @@ def accepts(
 ) -> bool:
     """Lexicographic: higher net, then a combined Brier and length gain beyond the noise floor.
     A Brier difference inside the floor counts as a tie unless offset by length."""
-    # 1. Net is supreme. Never trade hard correctness for brevity or Brier.
     if not math.isclose(candidate.net, current.net, abs_tol=1e-9):
         return candidate.net > current.net
 
-    # 2. When net is tied, trade off Brier and Brevity.
-    # 100 characters saved = +0.01 to Brier gain.
     brier_gain = current.brier - candidate.brier
     length_gain = len(current_text.strip()) - len(candidate_text.strip())
 
-    adjusted_brier_gain = brier_gain + (length_gain / 10000.0)
+    adjusted_brier_gain = brier_gain + length_gain * _BRIER_GAIN_PER_CHAR_SAVED
 
     if abs(adjusted_brier_gain) > brier_floor:
         return adjusted_brier_gain > 0
-
-    # 3. Final exact tie breaker
     return len(candidate_text.strip()) < len(current_text.strip())
 
 
@@ -367,11 +361,6 @@ class RoundResult:
     accepted: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Protocols
-# ---------------------------------------------------------------------------
-
-
 class Proposer(Protocol):
     def propose(
         self,
@@ -384,11 +373,6 @@ class Proposer(Protocol):
 
 class Evaluator(Protocol):
     def evaluate(self, pairs: list[UsablePair], rubric_text: str) -> EvaluationResult: ...
-
-
-# ---------------------------------------------------------------------------
-# Loading
-# ---------------------------------------------------------------------------
 
 
 def load_pairs(
@@ -421,11 +405,6 @@ def load_pairs(
     return ([] if shortfall else pairs, shortfall)
 
 
-# ---------------------------------------------------------------------------
-# Split
-# ---------------------------------------------------------------------------
-
-
 def split_pairs(
     pairs: list[UsablePair],
     seed: int = 42,
@@ -437,11 +416,6 @@ def split_pairs(
     rng.shuffle(shuffled)
     n_held = max(1, round(len(shuffled) * held_fraction))
     return shuffled[n_held:], shuffled[:n_held]
-
-
-# ---------------------------------------------------------------------------
-# Render helpers
-# ---------------------------------------------------------------------------
 
 
 def parse_rubric_fields(rubric_text: str) -> dict[str, str]:
@@ -500,11 +474,6 @@ def render_candidate_text(current_rubric_text: str, proposal: RubricProposal) ->
     if look_for:
         rendered.append(f"Look for: {look_for}")
     return "\n".join(rendered)
-
-
-# ---------------------------------------------------------------------------
-# Round loop
-# ---------------------------------------------------------------------------
 
 
 def _noop_round_start(round_num: int) -> None:

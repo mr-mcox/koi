@@ -68,10 +68,6 @@ class IdentificationResult(BaseModel):
     opening_notes: Annotated[str, Field(min_length=0)]
 
 
-# ---------------------------------------------------------------------------
-# Assertion and supporting types
-# ---------------------------------------------------------------------------
-
 # Scoring dimension slugs (domain-model.md §Scored dimensions). Every slug here is
 # an ordinary weighted dimension — there is no separate constraint or multiplicative
 # scoring path.
@@ -87,8 +83,6 @@ _SCORING_TARGETS = [
     "internal_culture",
 ]
 
-# Closed vocabulary; any value outside this set is rejected at
-# validation time, not by scorer logic.
 Target = Literal[
     "craft_direction",
     "schematic",
@@ -105,7 +99,6 @@ Target = Literal[
 # Stored as strings, not integers — unblended with confidence (D2).
 Fit = Literal["Poor", "Mixed", "Strong"]
 
-# Provenance tracks how an assertion came to exist.
 # `model_proposed` is the initial state for all BAML-extracted assertions.
 Provenance = Literal[
     "unexamined",

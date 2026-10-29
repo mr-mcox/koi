@@ -35,5 +35,4 @@ class FetchAction(BaseModel):
     url: Annotated[str, Field(min_length=1)]
 
 
-# Closed union. The dispatcher implements one handler per tag.
 Action = StopAction | SearchAction | FetchAction
