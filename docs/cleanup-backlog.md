@@ -230,7 +230,7 @@ Docstrings and comments in `src/` now describe product state:
 Left for M: the `eligible_weights` fallback sentence, which M's decision on that branch
 rewrites or deletes.
 
-## J. Coding-standard consistency — *done* on `claude/cleanup-backlog-item-j-bb953a`
+## J. Coding-standard consistency — *done* in [#6](https://github.com/mr-mcox/koi/pull/6)
 
 - `from __future__ import annotations` is gone from `src/`, `tests/` and `scripts/`.
   Python 3.14 defers annotation evaluation, so forward references need no import.
