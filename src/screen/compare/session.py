@@ -115,7 +115,5 @@ def record_operator_write(session: CompareSession, judged: tuple[frozenset[str],
     )
     cache.version = session.state.version - 1
     cache.suggestion = cache.speculative
-    cache.jev_read = cache.speculative_jev_read
     cache.speculative = None
-    cache.speculative_jev_read = None
     cache.speculative_for = None

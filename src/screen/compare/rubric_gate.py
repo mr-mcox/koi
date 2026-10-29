@@ -2,31 +2,17 @@
 emit a provisional win or tie `Comparison` only when the provider is confident
 (unanimous) — below the confidence threshold, emit nothing so the pair surfaces to the
 operator unchanged. An uncertain verdict is never auto-closed; there is no default
-outcome for a pair the provider itself isn't sure about. The raw verdict rides along
-regardless of confidence, so a caller can show the operator what Jev actually said on a
-pair it couldn't settle — otherwise an uncertain read is indistinguishable from Jev never
-having been asked.
+outcome for a pair the provider itself isn't sure about.
 """
 
-from dataclasses import dataclass
 from typing import Protocol
 
 from screen.score.pairwise import Comparison
-from screen.verdict.protocol import FewShotExample, RubricVerdict, VerdictProvider
+from screen.verdict.protocol import FewShotExample, VerdictProvider
 
 
 class RandomSource(Protocol):
     def random(self) -> float: ...
-
-
-@dataclass(frozen=True)
-class GateOutcome:
-    """Jev's full read on a candidate pair. `verdict` is always populated — Jev was
-    consulted to produce this outcome at all. `comparison` is `None` below the
-    confidence threshold; the operator-facing surface renders `verdict` either way."""
-
-    verdict: RubricVerdict
-    comparison: Comparison | None
 
 
 def _auto_commit_probability(confidence: float, threshold: float) -> float:
@@ -49,9 +35,9 @@ def rubric_similarity_verdict(
     provider: VerdictProvider,
     confidence_threshold: float,
     rng: RandomSource,
-) -> GateOutcome:
-    """Rule on one candidate pair. `comparison` is `None` when the provider's confidence
-    is below threshold — there is no default verdict for an uncertain pair; the picker
+) -> Comparison | None:
+    """Rule on one candidate pair. `None` when the provider's confidence is below
+    threshold — there is no default verdict for an uncertain pair; the picker
     keeps surfacing it to the operator exactly as it would without the kernel.
 
     Above the threshold, the gate samples auto-commit probability so very confident pairs
@@ -59,21 +45,20 @@ def rubric_similarity_verdict(
     """
     verdict = provider.rule(rubric_text, digest_a, digest_b, few_shot_examples)
     if verdict.confidence < confidence_threshold:
-        return GateOutcome(verdict=verdict, comparison=None)
+        return None
     if verdict.confidence > confidence_threshold:
         if rng.random() >= _auto_commit_probability(verdict.confidence, confidence_threshold):
-            return GateOutcome(verdict=verdict, comparison=None)
+            return None
     if verdict.outcome == "tie":
         winner, loser, tie = opening_a_id, opening_b_id, True
     elif verdict.outcome == "a":
         winner, loser, tie = opening_a_id, opening_b_id, False
     else:
         winner, loser, tie = opening_b_id, opening_a_id, False
-    comparison = Comparison(
+    return Comparison(
         winner=winner,
         loser=loser,
         tie=tie,
         provenance="provisional",
         weight=verdict.confidence,
     )
-    return GateOutcome(verdict=verdict, comparison=comparison)

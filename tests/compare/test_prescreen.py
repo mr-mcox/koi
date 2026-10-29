@@ -132,7 +132,7 @@ def test_pick_and_consult_returns_a_confident_ruling_without_writing_it(
         rng=np.random.default_rng(config.seed),
     )
 
-    assert pick.suggestion is not None
+    assert pick is not None
     assert pick.ruling is not None
     assert pick.ruling.provenance == "provisional"
     assert pick.ruling.outcome == "tie"
@@ -141,26 +141,7 @@ def test_pick_and_consult_returns_a_confident_ruling_without_writing_it(
         pick.suggestion.opening_a_id,
         pick.suggestion.opening_b_id,
     }
-    assert pick.jev_read == RubricVerdict(outcome="tie", confidence=1.0)
     assert comparisons_for_target(conn, "location") == []
-
-
-def test_pick_and_consult_carries_jev_read_when_jev_is_not_confident(tmp_path: Path) -> None:
-    conn = connect(tmp_path / "screen.db")
-    _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
-    config = load_scoring_config()
-
-    pick = pick_and_consult(
-        conn,
-        config,
-        verdict_provider=_FixedVerdict("a", 0.1),
-        rubric=synthetic_rubric(),
-        rng=np.random.default_rng(config.seed),
-    )
-
-    assert pick.suggestion is not None
-    assert pick.ruling is None
-    assert pick.jev_read == RubricVerdict(outcome="a", confidence=0.1)
 
 
 def test_pick_and_consult_never_suggests_the_excluded_triple(tmp_path: Path) -> None:
@@ -178,7 +159,7 @@ def test_pick_and_consult_never_suggests_the_excluded_triple(tmp_path: Path) -> 
         excluded=(frozenset({"acme--a", "widgets--b"}), "location"),
     )
 
-    assert pick.suggestion is not None
+    assert pick is not None
     assert pick.suggestion.target == "craft_direction"
 
 
@@ -212,10 +193,9 @@ def test_run_prescreen_persists_confident_verdicts_and_reports_progress(
     assert progress.final_suggestion.target == "craft_direction"
 
 
-def test_run_prescreen_reports_nothing_when_jev_is_never_confident(tmp_path: Path) -> None:
-    """Below threshold, the operator still sees what Jev actually read (outcome and
-    confidence) on the pair it couldn't settle — so an uncertain verdict is visibly
-    different from Jev never having been asked at all."""
+def test_run_prescreen_hands_the_pair_to_the_operator_when_jev_is_not_confident(
+    tmp_path: Path,
+) -> None:
     conn = connect(tmp_path / "screen.db")
     _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
     config = load_scoring_config()
@@ -234,13 +214,11 @@ def test_run_prescreen_reports_nothing_when_jev_is_never_confident(tmp_path: Pat
     assert comparisons_for_target(conn, "location") == []
     assert progress.final_suggestion is not None
     assert progress.final_suggestion.target == "location"
-    assert progress.final_suggestion_jev_read == RubricVerdict(outcome="tie", confidence=0.1)
 
 
-def test_pick_and_consult_reports_no_jev_read_without_a_cached_digest(tmp_path: Path) -> None:
-    """When there's no cached digest, Jev is never consulted at all — the suggestion is
-    set but `jev_read` stays `None`, distinguishing "never asked" from "asked but
-    uncertain"."""
+def test_pick_and_consult_skips_jev_without_a_cached_digest(tmp_path: Path) -> None:
+    """Jev rules on digests, so a pair missing one is handed to the operator unruled
+    rather than sent to Jev with nothing to read."""
     conn = connect(tmp_path / "screen.db")
     upsert_company(conn, Company(id="acme", name="Acme", created_at=_NOW))
     upsert_company(conn, Company(id="widgets", name="Widgets", created_at=_NOW))
@@ -288,9 +266,8 @@ def test_pick_and_consult_reports_no_jev_read_without_a_cached_digest(tmp_path: 
         rng=np.random.default_rng(config.seed),
     )
 
-    assert pick.suggestion is not None
+    assert pick is not None
     assert pick.suggestion.target == "location"
-    assert pick.jev_read is None
     assert pick.ruling is None
 
 
@@ -326,7 +303,6 @@ def test_run_prescreen_completes_with_no_suggestion_when_pool_cannot_pair(
     assert progress.completed is True
     assert progress.ruled == []
     assert progress.final_suggestion is None
-    assert progress.final_suggestion_jev_read is None
 
 
 def test_pick_and_consult_sources_few_shot_examples_from_operator_rulings(
@@ -424,6 +400,7 @@ def test_pick_and_consult_sources_few_shot_examples_from_operator_rulings(
         rng=np.random.default_rng(config.seed),
     )
 
+    assert pick is not None
     assert pick.ruling is not None
     assert seen_examples == [[]]
 

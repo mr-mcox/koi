@@ -356,20 +356,26 @@ The errors were fixed by typing data where it enters:
 
 `_prescreen_step` is gone. `compare/prescreen.pick_and_consult` is the public,
 side-effect-free step: it picks the next suggestion (honouring an `excluded` triple),
-consults Jev, and returns a `PrescreenPick` of the suggestion, Jev's read, and the
-provisional ruling to commit, if any. It writes nothing and never reads `CompareState`.
-The writes stay private: `_commit_ruling` appends and bumps the version, and
-`_cache_operator_suggestion` / `_cache_speculative_suggestion` publish.
+consults Jev, and returns a `PrescreenPick` of the suggestion and the provisional ruling
+to commit, if any. It returns `None` when the picker has nothing left. It writes nothing
+and never reads `CompareState`. The writes stay private: `_commit_ruling` appends and
+bumps the version, and `_cache_operator_suggestion` / `_cache_speculative_suggestion`
+publish.
 
 Each loop owns its policy when the version moves. `run_prescreen` drops the pick and picks
 again. `run_speculative_prescreen` gives up. It now compares against the version after its
 own last write rather than each step's start, so an operator write between two
 speculative steps also discards the result. Before, that result was still cached.
 
-`pick_and_consult` is tested directly (a confident ruling is returned but not written, an
-unconfident read is carried, the excluded triple is never suggested, no digest means no
-consult, few-shot sourcing skips rulings with a missing digest). The loop tests cover
-only the loops' policies.
+Jev's raw read on a pair it didn't rule is no longer carried. Its only consumer was the
+compare-page confidence banner, removed in `4dd2020`. `rubric_similarity_verdict`
+returns `Comparison | None` instead of a `GateOutcome`, and the `jev_read` fields on
+`CompareCache`, `CompareProgress` and `PrescreenPick` are gone. Confident rulings are
+committed exactly as before.
+
+`pick_and_consult` is tested directly (a confident ruling is returned but not written,
+the excluded triple is never suggested, no digest means no consult, few-shot sourcing
+skips rulings with a missing digest). The loop tests cover only the loops' policies.
 
 ## Q. Type the research-trace payloads — *open, after N*
 
