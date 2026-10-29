@@ -412,7 +412,7 @@ Touches: `research_trace/events.py`, `research_trace/replay.py`,
 `docs/architecture/decisions.md`, `tests/research_trace/`, `tests/research/test_dispatcher.py`,
 `tests/intake/test_pipeline.py`.
 
-## R. Check the row mappers against the migrated schema — *done*
+## R. Check the row mappers against the migrated schema — *done* in [#10](https://github.com/mr-mcox/koi/pull/10)
 
 `tests/store/test_schema.py` runs the real migrations and asserts that each `*_to_row`
 produces exactly its table's `PRAGMA table_info` columns. A second test fails when a
