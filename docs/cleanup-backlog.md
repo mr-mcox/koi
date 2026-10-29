@@ -261,7 +261,7 @@ mislabeled, and the mismatch grows with evidence accumulated since the judgment.
 Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
 `store/migrations/0010_create_comparisons.sql`, the recalibration tests.
 
-## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *done*
+## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *done* in [#5](https://github.com/mr-mcox/koi/pull/5)
 
 `scripts/check.py` gates every file at 100% line and branch. `EXEMPT_FILES` and its
 budget are gone, so `[tool.coverage.run] omit` in `pyproject.toml` is the only list of
