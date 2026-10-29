@@ -1,6 +1,7 @@
 """Research batch engine: schedules research turns via `fastapi.BackgroundTasks`."""
 
 import dataclasses
+import functools
 import sqlite3
 import time
 from collections.abc import Callable
@@ -23,6 +24,7 @@ from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import Planner
 from screen.research.state import LoopState
+from screen.research_trace.events import ResearchTraceEvent
 from screen.research_trace.replay import TraceReplay, replay_research_trace
 from screen.research_trace.trace_io import read_page_content, record_event, research_trace_path_for
 from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
@@ -69,7 +71,7 @@ class RunDispatchDeps:
     extractor: Extractor
     digester: Digester
     rubric: RubricText
-    on_event: Callable[..., None] = field(default=_noop_on_event)
+    on_event: Callable[[ResearchTraceEvent], None] = field(default=_noop_on_event)
     update_digests: Callable[..., None] = field(default=update_digests_for_opening)
 
 
@@ -172,7 +174,7 @@ def resume_opening(
 
     assertions = assertions_for_opening(conn, opening.id)
     dispatch_deps = dataclasses.replace(
-        deps, on_event=lambda event: record_event(research_trace_path, event)
+        deps, on_event=functools.partial(record_event, research_trace_path)
     )
     stopped_reason = run_dispatch(
         conn,
@@ -264,7 +266,7 @@ class BatchProgress:
     total: int = 0
     spent: int = 0
     current_opening_id: str | None = None
-    touched: list[str] = field(default_factory=list)
+    touched: list[str] = field(default_factory=list[str])
     running: bool = False
     started_at: float | None = None
     rate: float | None = None

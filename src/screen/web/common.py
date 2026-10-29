@@ -178,7 +178,7 @@ def dimension_groups(
     for a in assertions:
         by_target[a.target].append(a)
     all_targets = list(dict.fromkeys(declared + [a.target for a in assertions]))
-    groups = []
+    groups: list[DimensionGroup] = []
     for target in all_targets:
         target_assertions = by_target.get(target, [])
         if target_assertions:

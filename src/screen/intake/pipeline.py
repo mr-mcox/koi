@@ -7,6 +7,7 @@ record *which stage* failed, and move on to the next queued URL.
 """
 
 import dataclasses
+import functools
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -176,7 +177,7 @@ def identify_research_trace(
     deps = dataclasses.replace(
         base_deps,
         extractor=extractor_factory(),
-        on_event=lambda event: record_event(research_trace_path, event),
+        on_event=functools.partial(record_event, research_trace_path),
     )
     return run_dispatch(
         conn,

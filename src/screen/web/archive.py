@@ -40,7 +40,7 @@ def archive(request: Request, conn: Conn, stage: Stage | None = None) -> HTMLRes
     it stops being ranked. Unranked: display order is stage then company, never
     standing."""
     stages_to_show = (stage,) if stage is not None else tuple(s for s in STAGES if s != "screening")
-    items = []
+    items: list[dict[str, object]] = []
     for show_stage in stages_to_show:
         for opening in list_openings(conn, stage=show_stage):
             company = company_for(conn, opening)

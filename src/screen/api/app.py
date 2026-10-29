@@ -77,6 +77,10 @@ def _enable_compare_instrumentation() -> None:
         logger.propagate = False
 
 
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 def create_app(database: Database, deps: AppDeps) -> FastAPI:
     """Application factory. `app.state.database` is what `screen.api.deps.get_db` reads
     per request; `app.state.deps` and `app.state.live` are what `screen.api.deps.app_deps`
@@ -107,8 +111,6 @@ def create_app(database: Database, deps: AppDeps) -> FastAPI:
     app.include_router(api_router)
     app.mount("/static", static_files, name="static")
 
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    app.add_api_route("/health", health, methods=["GET"])
 
     return app

@@ -187,7 +187,7 @@ class CompareProgress:
     running: bool = False
     completed: bool = False
     version: int | None = None
-    ruled: list[StoredComparison] = field(default_factory=list)
+    ruled: list[StoredComparison] = field(default_factory=list[StoredComparison])
     final_suggestion: ComparisonSuggestion | None = None
     final_suggestion_jev_read: RubricVerdict | None = None
 

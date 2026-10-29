@@ -153,7 +153,7 @@ CHECKS: list[tuple[str, str, str, CheckFn]] = [
     ("pytest", "test suite with branch coverage", "uv run pytest --cov=src/screen --cov-branch", _check_pytest),
     ("ruff", "lint (unused, complexity, imports)", "uv run ruff check src tests", _check_ruff),
     ("black", "formatting", "uv run black src tests", _check_black),
-    ("pyright", "strict type checks", "uv run pyright", _check_pyright),
+    ("pyright", "pyright strict", "uv run pyright", _check_pyright),
     ("coverage", "per-file coverage 100% line and branch", "uv run pytest --cov=src/screen --cov-branch --cov-report=json:coverage/coverage.json", _check_coverage_tier),
     ("no-type-ignore", "no `# type: ignore` / `# noqa` in src", "scripts/check.py", _check_no_type_ignore_markers),
     ("pragma-reason", "every `# pragma: no cover` in src gives a reason", "scripts/check.py", _check_no_cover_pragmas_have_reasons),

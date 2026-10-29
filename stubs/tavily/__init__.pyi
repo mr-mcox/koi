@@ -1,8 +1,9 @@
 """Type stubs for the third-party `tavily` package, which ships without
 PEP 484 annotations. We declare only the surface `screen` actually
-crosses — `TavilyClient.extract` returns our `TavilyResponse` shape.
-The vendor surface (search, crawl, async client) is intentionally not
-declared here; we never call it.
+crosses: `TavilyClient.extract` and `TavilyClient.search`, whose
+responses `browser.py` types where they enter. The rest of the vendor
+surface (crawl, async client) is intentionally not declared here; we never
+call it.
 """
 
 from typing import Any
@@ -23,3 +24,4 @@ class TavilyClient:
         chunks_per_source: int | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]: ...
+    def search(self, query: str, **kwargs: Any) -> dict[str, Any]: ...

@@ -71,7 +71,7 @@ def _counts(event: ResearchTraceEvent) -> dict[str, int] | None:
     """
     raw = event.request.get("target_assertion_counts")
     if isinstance(raw, dict):
-        return {str(k): int(v) for k, v in raw.items()}
+        return {str(k): int(v) for k, v in cast(dict[str, int], raw).items()}
     return None
 
 

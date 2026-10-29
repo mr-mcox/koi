@@ -32,7 +32,7 @@ class DispatchDeps:
 
     browser: Browser
     extractor: Extractor
-    on_event: Callable[..., None]
+    on_event: Callable[[ResearchTraceEvent], None]
     on_assertions: Callable[[list[Assertion]], None] | None = None
 
 
