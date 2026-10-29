@@ -69,6 +69,7 @@ def _insert_pair(
     provenance: str = "operator",
     digest_a: str | None = None,
     digest_b: str | None = None,
+    record_versions: bool = True,
 ) -> None:
     oid_a = f"{pair_id}_a"
     oid_b = f"{pair_id}_b"
@@ -83,8 +84,8 @@ def _insert_pair(
             provenance,
             "2026-01-01T00:00:00",
             0.5,
-            None,
-            None,
+            f"{oid_a}-{target}" if record_versions else None,
+            f"{oid_b}-{target}" if record_versions else None,
         ),
     )
     for oid, label in [
@@ -140,9 +141,9 @@ def test_load_pairs_rejects_target_below_floor() -> None:
     for i in range(5):
         _insert_pair(conn, pair_id=f"p{i}", target="trajectory")
 
-    pairs, shortfall = rr.load_pairs(conn, target="trajectory", floor=70)
-    assert pairs == []
-    assert shortfall == 65
+    loaded = rr.load_pairs(conn, target="trajectory", floor=70)
+    assert loaded.pairs == []
+    assert loaded.shortfall == 65
     conn.close()
 
 
@@ -153,9 +154,62 @@ def test_load_pairs_accepts_target_at_floor_and_skips_non_operator() -> None:
     for i in range(10):
         _insert_pair(conn, pair_id=f"prov{i}", target="location", provenance="provisional")
 
-    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
-    assert len(pairs) == 70
-    assert shortfall == 0
+    loaded = rr.load_pairs(conn, target="location", floor=70)
+    assert len(loaded.pairs) == 70
+    assert loaded.shortfall == 0
+    conn.close()
+
+
+def _supersede_digest(conn: sqlite3.Connection, opening_id: str, target: str, text: str) -> None:
+    conn.execute(
+        "INSERT INTO dimension_digests VALUES (?,?,?,?,?,?)",
+        (f"{opening_id}-{target}-v2", opening_id, target, text, 2, "2026-02-01T00:00:00"),
+    )
+    conn.commit()
+
+
+def test_load_pairs_replays_the_digest_version_the_operator_judged() -> None:
+    """The regression: reading the latest digest replays Jev against evidence gathered
+    after the ruling, so the case is labeled with a judgment of a different digest."""
+    conn = _make_conn()
+    _insert_pair(conn, pair_id="p0", target="location", digest_a="judged a")
+    _supersede_digest(conn, "p0_a", "location", "newer a")
+
+    loaded = rr.load_pairs(conn, target="location", floor=1)
+
+    assert loaded.pairs[0].digest_a == "judged a"
+    assert loaded.unversioned == 0
+    conn.close()
+
+
+def _versioned_and_unversioned_pairs() -> sqlite3.Connection:
+    conn = _make_conn()
+    _insert_pair(conn, pair_id="old", target="location", record_versions=False)
+    _supersede_digest(conn, "old_a", "location", "newer a")
+    _insert_pair(conn, pair_id="new", target="location")
+    return conn
+
+
+def test_load_pairs_replays_the_latest_digest_for_an_unversioned_comparison_by_default() -> None:
+    conn = _versioned_and_unversioned_pairs()
+
+    loaded = rr.load_pairs(conn, target="location", floor=2)
+
+    by_id = {pair.pair_id: pair for pair in loaded.pairs}
+    assert by_id["old"].digest_a == "newer a"
+    assert loaded.unversioned == 1
+    conn.close()
+
+
+def test_load_pairs_drops_unversioned_comparisons_when_excluded() -> None:
+    conn = _versioned_and_unversioned_pairs()
+
+    loaded = rr.load_pairs(
+        conn, target="location", floor=1, unversioned=rr.UnversionedDigests.EXCLUDE
+    )
+
+    assert [pair.pair_id for pair in loaded.pairs] == ["new"]
+    assert loaded.unversioned == 0
     conn.close()
 
 
@@ -572,8 +626,9 @@ def test_load_pairs_skips_missing_digest_and_split_pairs_is_deterministic() -> N
     conn.execute("DELETE FROM dimension_digests WHERE opening_id = 'p0_a'")
     conn.commit()
 
-    pairs, shortfall = rr.load_pairs(conn, target="location", floor=70)
-    assert shortfall == 0
+    loaded = rr.load_pairs(conn, target="location", floor=70)
+    pairs = loaded.pairs
+    assert loaded.shortfall == 0
     assert len(pairs) == 79
 
     propose_a, held_a = rr.split_pairs(pairs, seed=42)

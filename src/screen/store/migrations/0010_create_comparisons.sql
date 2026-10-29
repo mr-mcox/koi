@@ -2,9 +2,9 @@
 -- Append-only: every judgment is kept, never updated or replaced. The batch fit reads the
 -- latest per (unordered pair, dimension); the calibration log keeps them all regardless.
 --
--- `opening_a_digest_version`/`opening_b_digest_version` are nullable placeholders: they
--- reference `dimension_digests` rows once that table becomes append-only; until then both
--- stay NULL.
+-- `opening_a_digest_version`/`opening_b_digest_version` reference the `dimension_digests`
+-- rows shown at judgment time. NULL on rows recorded before the version was captured, or
+-- for a side that had no digest yet.
 CREATE TABLE comparisons (
     id TEXT PRIMARY KEY,
     opening_a_id TEXT NOT NULL REFERENCES openings (id),
