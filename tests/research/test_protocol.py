@@ -3,14 +3,12 @@
 - FakePlanner returns its configured action list unchanged
 - default FakePlanner returns [StopAction()]
 - FakePlanner in sequence mode advances per call and repeats last
-- FakeBrowser satisfies Browser
 """
 
 import pytest
 
-from screen.browser import Browser, BrowserError
 from screen.research.actions import FetchAction, SearchAction, StopAction
-from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.fakes import FakePlanner
 from screen.research.protocol import Planner
 from screen.research.state import LoopState
 from screen.types import Assertion, Citation
@@ -116,52 +114,6 @@ def test_fake_planner_sequence_mode_with_action_types() -> None:
     assert planner.plan(_state()) == [search]
     assert planner.plan(_state()) == [fetch]
     assert planner.plan(_state()) == [stop]
-
-
-# ---------------------------------------------------------------------------
-# FakeBrowser
-# ---------------------------------------------------------------------------
-
-
-def test_fake_browser_satisfies_browser_protocol() -> None:
-    browser = FakeBrowser()
-    assert isinstance(browser, Browser)
-
-
-def test_fake_browser_search_returns_fixture() -> None:
-    hits = [{"url": "https://levels.fyi/", "title": "Levels", "snippet": "Staff $400k."}]
-    browser = FakeBrowser(search_fixtures={"staff eng comp": hits})
-    result = browser.search("staff eng comp")
-    assert result == hits
-    assert browser.search_calls == ["staff eng comp"]
-
-
-def test_fake_browser_search_missing_fixture_raises() -> None:
-    browser = FakeBrowser()
-    with pytest.raises(BrowserError, match="no search fixture"):
-        browser.search("unknown query")
-
-
-def test_fake_browser_fetch_returns_fixture() -> None:
-    browser = FakeBrowser(fetch_fixtures={"https://x.com": {"raw_content": "page content"}})
-    hit = browser.fetch("https://x.com")
-    assert hit["url"] == "https://x.com"
-    assert hit["raw_content"] == "page content"
-    assert browser.fetch_calls == ["https://x.com"]
-
-
-def test_fake_browser_fetch_missing_fixture_raises() -> None:
-    browser = FakeBrowser()
-    with pytest.raises(BrowserError, match="no fixture"):
-        browser.fetch("https://missing.com")
-
-
-def test_fake_browser_extract_records_calls() -> None:
-    browser = FakeBrowser(fetch_fixtures={"https://x.com": {"raw_content": "content"}})
-    result = browser.extract(["https://x.com", "https://missing.com"])
-    assert len(result["results"]) == 1
-    assert len(result["failed_results"]) == 1
-    assert browser.extract_calls == [["https://x.com", "https://missing.com"]]
 
 
 def test_fake_planner_empty_sequence_raises() -> None:

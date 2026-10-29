@@ -1,13 +1,13 @@
 """Shared browser seam — the neutral contract between intake and research.
 
 `research/` may not import from `intake/`; this module belongs to neither.
-Every call site that fetches a URL by protocol should depend on
-`Browser`, not on the Tavily SDK directly.
+Call sites depend on the narrowest protocol they use — `Fetcher` for intake,
+`Browser` for research — never on the Tavily SDK directly.
 """
 
 import time
 from collections.abc import Callable, Iterable
-from typing import Any, Protocol, TypedDict, cast, runtime_checkable
+from typing import Any, Protocol, TypedDict, cast
 
 from tavily import TavilyClient
 
@@ -75,20 +75,21 @@ class _TavilyResponse(TypedDict, total=False):
     failed_results: list[dict[str, Any]]
 
 
-@runtime_checkable
-class Browser(Protocol):
-    """The shape every browser/fetcher implementation must satisfy."""
-
-    def extract(self, urls: Iterable[str]) -> dict[str, Any]: ...
+class Fetcher(Protocol):
+    """Fetches one URL's page content."""
 
     def fetch(self, url: str) -> SearchHit: ...
+
+
+class Browser(Fetcher, Protocol):
+    """Fetches pages and searches the web."""
 
     def search(self, query: str) -> list[SearchHit]: ...
 
 
 class TavilyBrowser:
     """Real Tavily implementation of Browser. Constructor stores the
-    API key; no network I/O until extract() or fetch() is called."""
+    API key; no network I/O until fetch() or search() is called."""
 
     def __init__(
         self,
@@ -102,7 +103,7 @@ class TavilyBrowser:
         self._retry_backoff_seconds = retry_backoff_seconds
         self._sleep = sleep
 
-    def extract(self, urls: Iterable[str]) -> dict[str, Any]:
+    def _extract(self, urls: Iterable[str]) -> dict[str, Any]:
         try:
             return cast(
                 dict[str, Any],
@@ -114,7 +115,7 @@ class TavilyBrowser:
     def _fetch_once(self, url: str) -> SearchHit | BrowserError:
         """One attempt: the hit, or the error a retry would face."""
         try:
-            response = cast(_TavilyResponse, self.extract([url]))
+            response = cast(_TavilyResponse, self._extract([url]))
         except BrowserError as exc:
             return exc
         results = response.get("results") or []

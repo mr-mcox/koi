@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.browser import Browser, BrowserError
+from screen.browser import BrowserError, Fetcher
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import Extractor
 from screen.intake.company_id import derive_company_id
@@ -80,13 +80,12 @@ def persist_company_and_opening(
     return company, opening
 
 
-def fetch_url(url: str, client: Browser, data_dir: Path) -> Path:
+def fetch_url(url: str, client: Fetcher, data_dir: Path) -> Path:
     """Run the URL -> research trace step. On fetch failure, record the
     partial research trace and re-raise as an `IntakePipelineError`.
 
-    Goes through `fetch`, not `extract`: a failed extraction is an HTTP 200
-    with empty results, which `extract` returns and `fetch` raises on. `fetch`
-    also carries the retry.
+    `fetch` raises on a failed extraction, which Tavily reports as an HTTP
+    200 with empty results, and carries the retry.
     """
     research_trace_id = derive_research_trace_id(url)
     research_trace_path = research_trace_path_for(data_dir, research_trace_id)
@@ -197,7 +196,7 @@ def intake_url(
     url: str,
     data_dir: Path,
     *,
-    client_factory: Callable[[], Browser],
+    client_factory: Callable[[], Fetcher],
     identifier_factory: Callable[[], Identifier],
     extractor_factory: Callable[[], Extractor],
     deps_factory: Callable[[], RunDispatchDeps],
