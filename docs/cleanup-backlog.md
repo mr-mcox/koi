@@ -21,6 +21,7 @@ wave before starting the next, because later waves move files the earlier ones e
 | any | K | Operator decision, not code |
 | any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
+| after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
 
 ---
 
@@ -300,8 +301,41 @@ How each listed gap was closed:
   branch to test. A test could not have told the memo from repeated lookups.
 - In the speculative prescreen, a step that doesn't commit returns `keep_going=True` only
   when the version moved, so the "keep going without committing" branch was unreachable.
-  The loop now ends after any step that doesn't commit, and a comment says why.
+  `_prescreen_step` now returns one `_StepOutcome` (`committed`, `stale`, `stopped`)
+  instead of a pair of bools, each of which only one caller read. The speculative loop
+  ends after any step that doesn't commit.
 - New tests cover the planner's 0-hit summary and `RunState.brier_noise_floor` (it must
   compare train against noise, not one run against itself).
-- The two pragmas that had no reason (`baml_planner.py`'s `assert_never`,
-  `FakeTavily.search`) now give one.
+- `baml_planner.last_context_text` renders the search context as its unconditional
+  tail, so it needs neither `assert_never` nor a pragma. Pyright still fails if a new
+  context type joins the union. `FakeTavily.search`'s pragma now gives a reason; N
+  removes the method.
+
+## N. Narrow the browser protocol and merge its two fakes — *open, after M*
+
+`BrowserProtocol` (`browser.py`) is wider than any of its callers:
+- `extract` is on the protocol, but no caller uses it through the protocol. Only
+  `TavilyBrowser.fetch` calls it, internally. Drop it from the protocol, and make it
+  private on `TavilyBrowser` unless a caller turns up.
+- Intake only fetches (`intake/pipeline.fetch_url`, `intake_url`'s `client_factory`) but
+  is typed against the whole protocol. That is why `FakeTavily.search` exists only to
+  raise `NotImplementedError`, with an unused argument and a pragma. Give intake a
+  fetch-only protocol, and let research's dispatcher keep `fetch` + `search`.
+
+There are two fakes for the one seam. `intake/fakes.FakeTavily` takes Tavily-shaped
+`extract` fixtures. `research/fakes.FakeBrowser` takes raw-content fixtures and records
+calls. `tests/intake/test_pipeline.py` uses both. Keep one fake (`FakeBrowser` already
+covers search and call recording), and move `FakeTavily`'s fixture semantics into it only
+where a test needs them.
+
+Tests that cover only the fakes, or a method that no longer exists, fail the AGENTS.md
+test: none of them catches a regression in production code. Delete them, or name the
+regression each one catches:
+- `tests/test_browser.py`: the `FakeTavily` tests (satisfies the protocol, fetch returns
+  a hit or raises, error details) and both `has_no_extract_one` tests.
+- `tests/research/test_protocol.py`: `test_fake_browser_extract_records_calls`, and the
+  `FakeBrowser` fixture tests.
+
+Touches: `browser.py`, `intake/fakes.py`, `intake/pipeline.py`, `research/fakes.py`,
+`research/dispatcher.py`, `research/batch.py`, `wiring.py`, `tests/test_browser.py`,
+`tests/research/test_protocol.py`, `tests/intake/test_pipeline.py`, `tests/helpers.py`.

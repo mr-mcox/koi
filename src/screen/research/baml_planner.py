@@ -10,11 +10,10 @@ current assertions and operator rulings, never a stored history.
 """
 
 import math
-from typing import assert_never
 
 from screen.baml_client.sync_client import BamlSyncClient, b
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
-from screen.research.context import FetchContext, SearchContext
+from screen.research.context import FetchContext
 from screen.research.state import LoopState
 from screen.score.bandit import target_suppression
 from screen.score.types import ScoringConfig
@@ -47,17 +46,15 @@ def last_context_text(state: LoopState) -> str:
             f"Last action: fetched {ctx.url}. "
             f"Assertions added for targets: {targets}.{snippet_line}"
         )
-    if isinstance(ctx, SearchContext):
-        if not ctx.hits:
-            return f"Last action: searched {ctx.query!r}. Got 0 hits."
-        lines = [f"Last action: searched {ctx.query!r}. Results:"]
-        for i, hit in enumerate(ctx.hits, start=1):
-            title = hit.get("title") or hit.get("url", "")
-            url = hit.get("url", "")
-            snippet = hit.get("snippet") or hit.get("raw_content", "")[:300]
-            lines.append(f"{i}. {title} — {url}\n   {snippet}")
-        return "\n".join(lines)
-    assert_never(ctx)  # pragma: no cover — exhaustiveness guard; pyright proves it unreachable
+    if not ctx.hits:
+        return f"Last action: searched {ctx.query!r}. Got 0 hits."
+    lines = [f"Last action: searched {ctx.query!r}. Results:"]
+    for i, hit in enumerate(ctx.hits, start=1):
+        title = hit.get("title") or hit.get("url", "")
+        url = hit.get("url", "")
+        snippet = hit.get("snippet") or hit.get("raw_content", "")[:300]
+        lines.append(f"{i}. {title} — {url}\n   {snippet}")
+    return "\n".join(lines)
 
 
 def _assertion_weight_by_target(

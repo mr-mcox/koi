@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 from uuid import uuid4
 
 import numpy as np
@@ -233,6 +233,11 @@ def _cache_speculative_suggestion(
     compare_cache.speculative_for = excluded
 
 
+# What one prescreen step did: appended a comparison, found the version moved under its Jev
+# consult (nothing written), or stopped with nothing left to auto-rule.
+_StepOutcome = Literal["committed", "stale", "stopped"]
+
+
 def _prescreen_step(
     conn: sqlite3.Connection,
     config: ScoringConfig,
@@ -244,10 +249,8 @@ def _prescreen_step(
     progress: CompareProgress,
     rng: np.random.Generator,
     speculating_for: tuple[frozenset[str], str] | None = None,
-) -> tuple[bool, bool]:
-    """One pick-and-maybe-rule cycle. Returns `(keep_going, committed_here)`: `keep_going`
-    says whether the loop should continue, and `committed_here` says whether this step
-    appended a comparison to the DB. `speculating_for`, when set, is the on-screen
+) -> _StepOutcome:
+    """One pick-and-maybe-rule cycle. `speculating_for`, when set, is the on-screen
     (pair, dimension) excluded from the picker and the key any uncommitted result is
     cached under as `compare_cache.speculative*` instead of the live `compare_cache.
     suggestion` — the on-screen suggestion must survive this call either way."""
@@ -285,7 +288,7 @@ def _prescreen_step(
                 compare_cache, progress, version=start_version, suggestion=None, jev_read=None
             )
             _prescreen_log.debug("prescreen done: nothing left to suggest")
-        return False, False
+        return "stopped"
 
     jev_started = time.monotonic()
     comparison, jev_read = _consult_jev_for_suggestion(
@@ -307,7 +310,7 @@ def _prescreen_step(
     )
     if compare_state.version != start_version:
         _prescreen_log.debug("prescreen dropping ruling: version moved during jev consult")
-        return True, False
+        return "stale"
     if comparison is None:
         if speculating_for is not None:
             _cache_speculative_suggestion(
@@ -331,7 +334,7 @@ def _prescreen_step(
             _prescreen_log.debug(
                 "prescreen cached suggestion for operator (compare_version=%s)", start_version
             )
-        return False, False
+        return "stopped"
 
     append_comparison(conn, comparison)
     compare_state.version += 1
@@ -351,7 +354,7 @@ def _prescreen_step(
         # operator's current page and must survive an auto-ruling that happens behind
         # it — only the shared version/last_write above move, and only `.speculative*`
         # is ever touched for this pass, on a later non-committing step.
-        return True, True
+        return "committed"
     progress.ruled.append(comparison)
     _cache_operator_suggestion(
         compare_cache,
@@ -360,7 +363,7 @@ def _prescreen_step(
         suggestion=None,
         jev_read=None,
     )
-    return True, True
+    return "committed"
 
 
 def run_prescreen(
@@ -390,7 +393,7 @@ def run_prescreen(
     _prescreen_log.debug("prescreen start (compare_version=%s)", compare_state.version)
     try:
         for _ in range(max_iterations):
-            keep_going, _ = _prescreen_step(
+            outcome = _prescreen_step(
                 conn,
                 config,
                 verdict_provider=verdict_provider,
@@ -400,7 +403,7 @@ def run_prescreen(
                 progress=progress,
                 rng=rng,
             )
-            if not keep_going:
+            if outcome == "stopped":
                 return
     finally:
         progress.running = False
@@ -448,7 +451,7 @@ def run_speculative_prescreen(
     expected_version = start_version
     try:
         for _ in range(max_iterations):
-            _, committed_here = _prescreen_step(
+            outcome = _prescreen_step(
                 conn,
                 config,
                 verdict_provider=verdict_provider,
@@ -459,13 +462,9 @@ def run_speculative_prescreen(
                 rng=rng,
                 speculating_for=excluded,
             )
-            if committed_here:
-                # `_prescreen_step`'s commit path always signals keep_going=True — an
-                # auto-ruling is never itself a reason to stop the speculative walk.
+            if outcome == "committed":
                 expected_version = compare_state.version
                 continue
-            # A step that didn't commit asks to keep going only when the version moved
-            # under it, so the walk ends here either way.
             if compare_state.version != expected_version:
                 _prescreen_log.debug("speculative discarded: operator wrote while it was running")
             return
