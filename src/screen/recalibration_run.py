@@ -20,6 +20,7 @@ from screen.recalibration import (
     EvaluationResult,
     LabeledCase,
     RoundResult,
+    UnversionedDigests,
     UsablePair,
 )
 from screen.recalibration import (
@@ -42,6 +43,9 @@ class RunState:
     recomputed: new operator rulings would otherwise reshuffle the split for the
     same seed, and re-measuring the baseline both costs Jev calls and moves the
     reference point a resumed run is being compared against.
+
+    `unversioned_digests` is the policy the splits were loaded under. A record saved
+    without it was loaded with `LATEST`, the only behavior that existed then.
     """
 
     run_dir: Path
@@ -56,6 +60,7 @@ class RunState:
     current_train: EvaluationResult
     propose_pairs: list[UsablePair]
     held_pairs: list[UsablePair]
+    unversioned_digests: UnversionedDigests
     rounds: list[RoundResult] = field(default_factory=list)
 
     @property
@@ -99,6 +104,7 @@ def new_run_state(
     baseline_noise: EvaluationResult,
     propose_pairs: list[UsablePair],
     held_pairs: list[UsablePair],
+    unversioned_digests: UnversionedDigests,
     rounds: list[RoundResult] | None = None,
 ) -> RunState:
     """A run at round zero: the current best is the baseline."""
@@ -115,6 +121,7 @@ def new_run_state(
         current_train=baseline_train,
         propose_pairs=propose_pairs,
         held_pairs=held_pairs,
+        unversioned_digests=unversioned_digests,
         rounds=rounds if rounds is not None else [],
     )
 
@@ -174,6 +181,9 @@ def load_state(state_path: Path) -> RunState:
         current_train=_evaluation_from_dict(data["current_train"]),
         propose_pairs=[UsablePair(**item) for item in data["propose_pairs"]],
         held_pairs=[UsablePair(**item) for item in data["held_pairs"]],
+        unversioned_digests=UnversionedDigests(
+            data.get("unversioned_digests", UnversionedDigests.LATEST)
+        ),
         rounds=[_round_from_dict(item) for item in data.get("rounds", [])],
     )
 
@@ -203,6 +213,7 @@ def _state_to_dict(state: RunState) -> dict:
         "current_train": _evaluation_to_dict(state.current_train),
         "propose_pairs": [asdict(pair) for pair in state.propose_pairs],
         "held_pairs": [asdict(pair) for pair in state.held_pairs],
+        "unversioned_digests": state.unversioned_digests.value,
         "rounds": [_round_to_dict(item) for item in state.rounds],
     }
 

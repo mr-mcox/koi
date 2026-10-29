@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from screen.extract.prompt import RubricText
 from screen.score.loader import load_scoring_config
-from screen.store.repo import comparisons_for_target, get_dimension_digest
+from screen.recalibration import UnversionedDigests, judged_digests
+from screen.store.repo import comparisons_for_target
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import JevRuling
 from screen.verdict.routing import route_verdict
@@ -74,7 +75,8 @@ class TargetLoadStats:
     target: str
     considered: int
     loaded: int
-    skipped_missing_digests: int
+    skipped: int
+    unversioned: int
 
 
 def _parse_args() -> argparse.Namespace:
@@ -89,6 +91,12 @@ def _parse_args() -> argparse.Namespace:
         "--target", action="append", dest="targets", help="dimension slug to evaluate"
     )
     parser.add_argument("--max-workers", type=int, default=10)
+    parser.add_argument(
+        "--unversioned",
+        choices=[policy.value for policy in UnversionedDigests],
+        default=UnversionedDigests.LATEST.value,
+        help="Comparisons recorded without a digest version: replay the latest digest, or exclude them.",
+    )
     parser.add_argument("--limit-per-target", type=int, default=None)
     parser.add_argument(
         "--show-mismatches",
@@ -104,6 +112,7 @@ def _load_cases(
     provider: JevVerdictProvider,
     limit_per_target: int | None,
     rubric: RubricText,
+    unversioned: UnversionedDigests,
 ) -> tuple[list[Case], list[TargetLoadStats]]:
     cases: list[Case] = []
     stats: list[TargetLoadStats] = []
@@ -116,14 +125,18 @@ def _load_cases(
         if limit_per_target is not None:
             comparisons = comparisons[:limit_per_target]
         loaded = 0
-        skipped_missing = 0
+        skipped = 0
+        unversioned_count = 0
         for comparison in comparisons:
-            digest_a = get_dimension_digest(conn, comparison.opening_a_id, target)
-            digest_b = get_dimension_digest(conn, comparison.opening_b_id, target)
-            if digest_a is None or digest_b is None:
-                skipped_missing += 1
+            judged = judged_digests(conn, comparison, unversioned)
+            if judged is None:
+                skipped += 1
                 continue
-            ruling = provider.get_ruling(rubric_text, digest_a.digest, digest_b.digest, [])
+            if not judged.versioned:
+                unversioned_count += 1
+            ruling = provider.get_ruling(
+                rubric_text, judged.digest_a.digest, judged.digest_b.digest, []
+            )
             cases.append(
                 Case(
                     target=target,
@@ -139,7 +152,8 @@ def _load_cases(
                 target=target,
                 considered=considered,
                 loaded=loaded,
-                skipped_missing_digests=skipped_missing,
+                skipped=skipped,
+                unversioned=unversioned_count,
             )
         )
     return cases, stats
@@ -213,12 +227,14 @@ def _print_target_load_stats(stats: list[TargetLoadStats]) -> None:
     print("Loaded comparisons by target")
     for stat in stats:
         skipped_label = (
-            f", skipped_missing={stat.skipped_missing_digests}"
-            if stat.skipped_missing_digests
+            f", skipped={stat.skipped} (no digest, or excluded as unversioned)"
+            if stat.skipped
             else ""
         )
+        unversioned_label = f", unversioned={stat.unversioned}" if stat.unversioned else ""
         print(
-            f"  {stat.target:18} considered={stat.considered:4d} loaded={stat.loaded:4d}{skipped_label}"
+            f"  {stat.target:18} considered={stat.considered:4d} loaded={stat.loaded:4d}"
+            f"{skipped_label}{unversioned_label}"
         )
     print()
 
@@ -261,7 +277,12 @@ def main() -> int:
     _ = provider
 
     cases, load_stats = _load_cases(
-        conn, targets, provider, args.limit_per_target, RubricText.load(os.environ)
+        conn,
+        targets,
+        provider,
+        args.limit_per_target,
+        RubricText.load(os.environ),
+        UnversionedDigests(args.unversioned),
     )
     if not cases:
         print("No operator comparisons found.")

@@ -12,11 +12,16 @@ import statistics
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Protocol
 
 from screen.extract.prompt import PRIVATE_PLACEHOLDERS
-from screen.store.repo import comparisons_for_target, get_dimension_digest
-from screen.types import ComparisonOutcome
+from screen.store.repo import (
+    comparisons_for_target,
+    get_dimension_digest,
+    get_dimension_digest_by_id,
+)
+from screen.types import Comparison, ComparisonOutcome, DimensionDigest
 
 
 class PrivacyViolationError(ValueError):
@@ -373,34 +378,97 @@ class Evaluator(Protocol):
     def evaluate(self, pairs: list[UsablePair], rubric_text: str) -> EvaluationResult: ...
 
 
+class UnversionedDigests(StrEnum):
+    """What to do with a comparison that recorded no digest version, as every ruling did
+    before versions were captured.
+
+    `LATEST` replays the current digest, which may have drifted since the ruling. `EXCLUDE`
+    drops the pair, so every case is replayed against what the operator saw. `LATEST` is
+    the default while versioned rulings alone leave most dimensions below the floor.
+    """
+
+    LATEST = "latest"
+    EXCLUDE = "exclude"
+
+
+@dataclass(frozen=True)
+class JudgedDigests:
+    """The digests a comparison is replayed against. `versioned` is false when either
+    side fell back to the latest digest."""
+
+    digest_a: DimensionDigest
+    digest_b: DimensionDigest
+    versioned: bool
+
+
+def judged_digests(
+    conn: sqlite3.Connection, comparison: Comparison, unversioned: UnversionedDigests
+) -> JudgedDigests | None:
+    """Resolve each side to the digest shown when the comparison was recorded.
+
+    A recorded version resolves by id, even once superseded. A `None` version is handled
+    per `unversioned`. Returns None if the pair is excluded or either side has no digest.
+    """
+    versioned = (
+        comparison.opening_a_digest_version is not None
+        and comparison.opening_b_digest_version is not None
+    )
+    if not versioned and unversioned is UnversionedDigests.EXCLUDE:
+        return None
+
+    def side(opening_id: str, version: str | None) -> DimensionDigest | None:
+        if version is None:
+            return get_dimension_digest(conn, opening_id, comparison.target)
+        return get_dimension_digest_by_id(conn, version)
+
+    digest_a = side(comparison.opening_a_id, comparison.opening_a_digest_version)
+    digest_b = side(comparison.opening_b_id, comparison.opening_b_digest_version)
+    if digest_a is None or digest_b is None:
+        return None
+    return JudgedDigests(digest_a=digest_a, digest_b=digest_b, versioned=versioned)
+
+
+@dataclass(frozen=True)
+class LoadedPairs:
+    """Usable pairs for a target. A nonzero `shortfall` means ineligible, and `pairs` is
+    then empty. `unversioned` counts the pairs replayed against a latest digest."""
+
+    pairs: list[UsablePair]
+    shortfall: int
+    unversioned: int
+
+
 def load_pairs(
     conn: sqlite3.Connection,
     target: str,
     floor: int = 70,
-) -> tuple[list[UsablePair], int]:
-    """Load usable operator-only pairs for a target.
-
-    Returns (pairs, shortfall). A nonzero shortfall means ineligible.
-    """
+    unversioned: UnversionedDigests = UnversionedDigests.LATEST,
+) -> LoadedPairs:
+    """Load usable operator-only pairs for a target, each side resolved to the digest
+    the operator judged."""
     comparisons = [c for c in comparisons_for_target(conn, target) if c.provenance == "operator"]
     pairs: list[UsablePair] = []
+    unversioned_count = 0
     for c in comparisons:
-        da = get_dimension_digest(conn, c.opening_a_id, target)
-        db = get_dimension_digest(conn, c.opening_b_id, target)
-        if da is None or db is None:
+        judged = judged_digests(conn, c, unversioned)
+        if judged is None:
             continue
+        if not judged.versioned:
+            unversioned_count += 1
         pairs.append(
             UsablePair(
                 pair_id=c.id,
                 opening_a_id=c.opening_a_id,
                 opening_b_id=c.opening_b_id,
-                digest_a=da.digest,
-                digest_b=db.digest,
+                digest_a=judged.digest_a.digest,
+                digest_b=judged.digest_b.digest,
                 expected=c.outcome,
             )
         )
     shortfall = max(0, floor - len(pairs))
-    return ([] if shortfall else pairs, shortfall)
+    return LoadedPairs(
+        pairs=[] if shortfall else pairs, shortfall=shortfall, unversioned=unversioned_count
+    )
 
 
 def split_pairs(

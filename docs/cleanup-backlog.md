@@ -18,7 +18,6 @@ wave before starting the next, because later waves move files the earlier ones e
 | 2 | E, then F and G | F and G both touch `web/routes.py` imports of `api/pool.py`, so serialize them or agree on module names first |
 | 3 | H | Moves every test file; run it alone |
 | 4 | I, J | Touch nearly every file; run each alone |
-| any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
 | after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
 | after M | O | Touches files across `src/`; run it alone |
@@ -252,36 +251,25 @@ request/response payloads (`research_trace/events.py`, `research/dispatcher._pla
 and Tavily and YAML responses (`browser.py`, the fakes, `extract/prompt.py`). N and O
 type the Tavily and YAML ones where they enter.
 
-## L. Recalibration should read the digest the operator actually saw — *open*
+## L. Recalibration should read the digest the operator actually saw — *done* in [#8](https://github.com/mr-mcox/koi/pull/8)
 
-Capture is complete and the history is intact; only the read path is unwired, so no
-information is being lost — it just isn't used.
+`recalibration.judged_digests` resolves each side of a comparison to the digest the
+operator saw, by its recorded `opening_*_digest_version` through
+`get_dimension_digest_by_id`. `load_pairs` and `scripts/backtest_jev_routing.py`'s
+`_load_cases` both use it.
 
-`Comparison.opening_a_digest_version`/`opening_b_digest_version` hold the
-`DimensionDigest.id` shown at judgment time. Both recording paths populate them (the
-operator form via the hidden fields in `compare.html`, the Jev provisional path in
-`compare/prescreen.py`), `dimension_digests` is append-only with no update or delete, and
-`repo.get_dimension_digest_by_id` resolves a superseded version correctly.
+Comparisons recorded before versions were captured have `NULL` versions, and digests were
+overwritten in place back then, so what the operator saw is gone. `UnversionedDigests`
+picks what to do with them: `LATEST` (the default) replays the current digest, and
+`EXCLUDE` drops the pair. Both scripts take `--unversioned latest|exclude`. The default is
+`LATEST` because, as of October 2026, versioned rulings alone leave every dimension
+except `location` below the 70-pair floor, and two (`extractive_business`, `stretch`) have
+none. Switch the default to `EXCLUDE` once versioned rulings clear the floor.
 
-Nothing calls it. `recalibration.load_pairs` instead calls
-`get_dimension_digest(conn, opening_id, target)`, which returns the *latest* digest, and
-`scripts/backtest_jev_routing.py` does the same. Dispatch warms digests after every pass,
-so a recalibration round run after new evidence replays Jev against a digest the operator
-never saw while `expected` is their ruling against an older one. Those cases are
-mislabeled, and the mismatch grows with evidence accumulated since the judgment.
-
-- `load_pairs`: resolve each side by the recorded version via `get_dimension_digest_by_id`.
-- Fall back to the latest digest only when the version is `NULL` — comparisons recorded
-  before the field was threaded through. For those the pairing is unrecoverable.
-- Return the fallback count alongside `shortfall` and surface it in the run record
-  (`recalibration_run.py`), so a round built mostly on substituted digests says so rather
-  than passing as clean evidence.
-- Same resolution in `scripts/backtest_jev_routing.py`'s `_load_cases`.
-- `migrations/0010_create_comparisons.sql` still calls the two columns "nullable
-  placeholders … until then both stay NULL". They are populated; fix the comment.
-
-Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
-`store/migrations/0010_create_comparisons.sql`, the recalibration tests.
+`LoadedPairs.unversioned` counts the pairs replayed against a latest digest, and the
+scripts print it. `RunState.unversioned_digests` records the policy a run's splits were
+loaded under. A record saved without it loads as `LATEST`, the only behavior before L.
+The comment in `0010_create_comparisons.sql` now describes the columns as populated.
 
 ## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *done* in [#5](https://github.com/mr-mcox/koi/pull/5)
 

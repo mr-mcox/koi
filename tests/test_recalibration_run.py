@@ -65,6 +65,7 @@ def _state(tmp_path: Path, rounds: list[rr.RoundResult] | None = None) -> run.Ru
         baseline_noise=baseline,
         propose_pairs=[rr.UsablePair("p1", "oa", "ob", "A", "B", "a")],
         held_pairs=[rr.UsablePair("p2", "oc", "od", "C", "D", "b")],
+        unversioned_digests=rr.UnversionedDigests.EXCLUDE,
         rounds=rounds or [],
     )
 
@@ -107,6 +108,7 @@ def test_save_and_load_round_trips_every_field(tmp_path: Path) -> None:
     assert loaded.baseline_noise.cases == state.baseline_noise.cases
     assert [p.pair_id for p in loaded.propose_pairs] == ["p1"]
     assert [p.pair_id for p in loaded.held_pairs] == ["p2"]
+    assert loaded.unversioned_digests is rr.UnversionedDigests.EXCLUDE
     assert loaded.rounds[0].theory == "theory"
     assert loaded.rounds[0].expected_effect == "fewer wrong+sure on tie pairs"
     assert loaded.rounds[0].fixed_cases[0].pair_id == "p1"
@@ -190,6 +192,20 @@ def test_load_state_refuses_a_run_saved_without_jev_probabilities(tmp_path: Path
 
     with pytest.raises(run.ResumeRefusedError, match="Start a new run"):
         run.load_state(state.state_path)
+
+
+def test_load_state_reads_an_older_record_as_loaded_with_the_latest_digest(
+    tmp_path: Path,
+) -> None:
+    """A record saved before the policy was recorded was built from latest digests; it
+    must load as that, not fail or claim it excluded unversioned pairs."""
+    state = _state(tmp_path)
+    run.save_state(state)
+    data = json.loads(state.state_path.read_text(encoding="utf-8"))
+    del data["unversioned_digests"]
+    state.state_path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert run.load_state(state.state_path).unversioned_digests is rr.UnversionedDigests.LATEST
 
 
 def test_default_run_dir_is_namespaced_by_target_and_timestamp() -> None:

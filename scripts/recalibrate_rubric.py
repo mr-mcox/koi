@@ -422,6 +422,13 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
     help="How much propose-split context to show the proposer.",
 )
 @click.option(
+    "--unversioned",
+    type=click.Choice([policy.value for policy in core.UnversionedDigests]),
+    default=core.UnversionedDigests.LATEST.value,
+    show_default=True,
+    help="Comparisons recorded without a digest version: replay the latest digest, or exclude them.",
+)
+@click.option(
     "--state-path",
     type=click.Path(path_type=Path, dir_okay=False),
     default=None,
@@ -454,6 +461,7 @@ def recalibrate(
     seed: int,
     db_path: Path | None,
     context_mode: ContextMode,
+    unversioned: str,
     state_path: Path | None,
     sonnet_effort: SonnetEffort,
     probe_baml: bool,
@@ -464,6 +472,7 @@ def recalibrate(
     Leaves the winning candidate applied to rubric.yaml but never commits it.
     """
     config = load_scoring_config()
+    unversioned_digests = core.UnversionedDigests(unversioned)
 
     if context_mode == "compare":
         _run_compare_mode(
@@ -472,6 +481,7 @@ def recalibrate(
             floor=floor,
             seed=seed,
             db_path=db_path,
+            unversioned_digests=unversioned_digests,
             config=config,
             sonnet_effort=sonnet_effort,
         )
@@ -493,12 +503,14 @@ def recalibrate(
             f"[recalibrate] resuming {target} from {state.state_path} "
             f"({state.rounds_completed} round(s) done)"
         )
+        click.echo(f"  splits were loaded with --unversioned={state.unversioned_digests}")
     else:
         state = _start_run(
             target=target,
             floor=floor,
             seed=seed,
             db_path=db_path,
+            unversioned_digests=unversioned_digests,
             context_mode=context_mode,
             run_dir=run_dir,
             evaluator=evaluator,
@@ -613,25 +625,45 @@ def _probe_baml_prompt(
         window = max(1, window // 2)
 
 
+def _eligible_pairs(
+    conn: sqlite3.Connection,
+    *,
+    target: str,
+    floor: int,
+    unversioned_digests: core.UnversionedDigests,
+) -> core.LoadedPairs:
+    loaded = core.load_pairs(conn, target=target, floor=floor, unversioned=unversioned_digests)
+    if loaded.shortfall > 0:
+        raise click.ClickException(
+            f"{target}: only {floor - loaded.shortfall} usable pairs "
+            f"(floor={floor}, shortfall={loaded.shortfall}). No candidate proposed."
+        )
+    click.echo(f"[recalibrate] {target}: {len(loaded.pairs)} usable pairs — eligible.")
+    if loaded.unversioned:
+        click.echo(
+            f"  {loaded.unversioned} of them recorded no digest version and replay the "
+            "latest digest (--unversioned=exclude drops them)."
+        )
+    return loaded
+
+
 def _start_run(
     *,
     target: str,
     floor: int,
     seed: int,
     db_path: Path | None,
+    unversioned_digests: core.UnversionedDigests,
     context_mode: ContextMode,
     run_dir: Path,
     evaluator: JevEvaluator,
 ) -> runstate.RunState:
     """Measure the baseline twice and pin the run's splits, baseline and noise floor."""
     conn = _open_db(db_path)
-    pairs, shortfall = core.load_pairs(conn, target=target, floor=floor)
-    if shortfall > 0:
-        raise click.ClickException(
-            f"{target}: only {floor - shortfall} usable pairs "
-            f"(floor={floor}, shortfall={shortfall}). No candidate proposed."
-        )
-    click.echo(f"[recalibrate] {target}: {len(pairs)} usable pairs — eligible.")
+    loaded = _eligible_pairs(
+        conn, target=target, floor=floor, unversioned_digests=unversioned_digests
+    )
+    pairs = loaded.pairs
     propose_pairs, held_pairs = core.split_pairs(pairs, seed=seed)
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
 
@@ -655,6 +687,7 @@ def _start_run(
         baseline_noise=baseline_noise,
         propose_pairs=propose_pairs,
         held_pairs=held_pairs,
+        unversioned_digests=unversioned_digests,
     )
     click.echo(f"  Brier noise floor: {state.brier_noise_floor:.4f}")
     runstate.save_state(state)
@@ -669,17 +702,15 @@ def _run_compare_mode(
     floor: int,
     seed: int,
     db_path: Path | None,
+    unversioned_digests: core.UnversionedDigests,
     config,
     sonnet_effort: SonnetEffort,
 ) -> None:
     conn = _open_db(db_path)
-    pairs, shortfall = core.load_pairs(conn, target=target, floor=floor)
-    if shortfall > 0:
-        raise click.ClickException(
-            f"{target}: only {floor - shortfall} usable pairs "
-            f"(floor={floor}, shortfall={shortfall}). No candidate proposed."
-        )
-    click.echo(f"[recalibrate] {target}: {len(pairs)} usable pairs — eligible.")
+    loaded = _eligible_pairs(
+        conn, target=target, floor=floor, unversioned_digests=unversioned_digests
+    )
+    pairs = loaded.pairs
     propose_pairs, held_pairs = core.split_pairs(pairs, seed=seed)
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
     provider = JevVerdictProvider(config, TypeSafeClient())
