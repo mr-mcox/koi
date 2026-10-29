@@ -372,7 +372,7 @@ step directly, and leave each loop's tests to cover its policy.
 
 Touches: `compare/prescreen.py`, `tests/compare/test_prescreen.py`.
 
-## Q. Type the research-trace payloads — *done*
+## Q. Type the research-trace payloads — *done* in [#12](https://github.com/mr-mcox/koi/pull/12)
 
 `research_trace/events.py` gives each tool a request and a response model
 (`DecidePlanRequest`/`Response`, `SearchRequest`/`Response`, `ExtractRequest`/`Response`).
