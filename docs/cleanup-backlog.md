@@ -199,18 +199,31 @@ What stays local on purpose: the dict builders in `test_types.py` (raw input for
 validation tests), and `research/test_batch.py`'s `_seed_opening_with_trace` and
 `_seed_assertions`, which combine the shared builders with a trace or bulk evidence.
 
-## I. Comment pass — *open, last*
+## I. Comment pass — *done* at b932a5c and d3bf812
 
-Apply the AGENTS.md rule that comments describe product state, not history.
-- A docstring never restates a value or formula that lives in code or config; it names
-  it instead. For example, the `Assertion` docstring in `types.py` repeats the `0.3`
-  confidence floor.
-- Remove narration of how the code got here: "now", "previously", "before the
-  feature", which slice added it.
-- Remove comments that repeat their own docstring.
-- Fix the garbled opening of the `Assertion` docstring.
+Docstrings and comments in `src/` now describe product state:
+- Retired-CLI references are gone (`env.py`, `paths.py`, `intake/pipeline.py`,
+  `research/batch.py`, `score/bandit.py`, `store/repo.py`, `web/intake_queue.py`), as is
+  narration ("now", "before the feature", "loop fix", "the retired echo", "the prototype's
+  gate", the `MutableMapping` progress dict that G replaced).
+- Stale claims fixed: the picker's docstrings no longer give pair priority a closeness
+  factor; `IntakeQueueItem` no longer says failed rows can't be retried; `research/actions.py`
+  no longer says search and fetch are unimplemented; `run_batch` no longer caps a block by
+  a per-opening budget; `repo.active_provisional_comparisons` names `_settled_pairs`; the Jev
+  adapters point at the one omit list in `pyproject.toml`.
+- The `Assertion` docstring is rewritten: its opening is repaired and it names
+  `stats_for_target` instead of repeating the `0.3` confidence floor. `eligible_weights`
+  names `bandit.boundary_weight` instead of restating a formula (the wrong one).
+- Inline comments that narrated the next line were removed. Where code needed a comment,
+  it now explains itself instead: `stats_for_target`'s confidence widening is
+  `_confidence_widening` with a named `_CONFIDENCE_FLOOR`; `rank_pool`'s duplicated
+  guarded/unguarded ranking blocks are `_sample_ranks` and `_rank_readouts`; `accepts`
+  names `_BRIER_GAIN_PER_CHAR_SAVED` instead of commenting `/ 10000.0`;
+  `UsablePair.expected` is typed `ComparisonOutcome` instead of commented. The section
+  banners in `recalibration.py` and `types.py` are gone.
 
-Touches: most of `src/`.
+Left for M: the `eligible_weights` fallback sentence, which M's decision on that branch
+rewrites or deletes.
 
 ## J. Coding-standard consistency — *open, last*
 

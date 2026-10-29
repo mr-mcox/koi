@@ -1,9 +1,8 @@
 """Loads the repo-root `.env` into the process environment.
 
-Called once at app startup and at CLI entry. Secrets (`TYPESAFE_API_KEY`,
-`TAVILY_API_KEY`) live in the gitignored `.env`; nothing in the codebase read it before,
-so a key present in the file was invisible to the process. An already-set variable always
-wins — exporting a key in the shell is a deliberate per-run override.
+Called once at app startup. Secrets (`TYPESAFE_API_KEY`, `TAVILY_API_KEY`) live in the
+gitignored `.env`. An already-set variable always wins — exporting a key in the shell is
+a deliberate per-run override.
 """
 
 from __future__ import annotations

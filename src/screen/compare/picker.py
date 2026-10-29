@@ -1,15 +1,13 @@
 """Backend-only pair/dimension picker for operator pairwise comparisons.
-`select_comparison` scores every candidate `(opening, opening, dimension)` triple as
-`boundary_weight × sqrt(weight_d) × var_diff_d × jitter`, after a hard skip of pairs
-whose overall outcome is already settled. `boundary_weight` identifies a pair whose
-overall rank is near the top-K boundary; it uses the full rubric weight (squared, since
-dimensions are independent), because that's the real weighted rollup. `sqrt(weight_d)`
-and `var_diff_d` then choose which dimension to ask about *within* that pair: dimension
-choice deliberately uses a gentler weight exponent than pair choice, because "is this
-pair's rank in doubt"
-legitimately scales with the full rubric weight but "what do I know least about here"
-should not — any exponent ≥ 1 there let the highest-weight dimension dominate
-regardless of how little of it was left to learn, confirmed against live data. A small
+
+`select_comparison` skips pairs whose overall outcome is already settled (judged on the
+full weighted rollup, `_overall_diff`), prioritizes the rest by how much either side's
+top-K membership could still move (`boundary_weight`), and within a pair asks about the
+dimension contributing the most variance, scaled by `sqrt(weight)`. Dimension choice
+deliberately uses a gentler weight exponent than the rollup: "is this pair's rank in
+doubt" legitimately scales with the full rubric weight, but "what do I know least about
+here" should not — any exponent ≥ 1 there let the highest-weight dimension dominate
+regardless of how little of it was left to learn, confirmed against live data. A
 log-normal jitter keeps one comparison result from permanently sinking a pair's
 priority. It never asks about a dimension where either side has no assertions —
 `domain` included.
@@ -87,7 +85,7 @@ def _settled_pairs(
     assertions_by_opening: dict[str, list[Assertion]],
 ) -> set[frozenset[str]]:
     """Pairs whose *latest* comparison on this dimension is either provisional (hard-excluded),
-    or an operator ruling where the underlying digest versions haven't changed (loop fix)."""
+    or an operator ruling where the underlying digest versions haven't changed."""
     latest_comparison: dict[frozenset[str], Comparison] = {}
     for c in comparisons:
         latest_comparison[frozenset({c.winner, c.loser})] = c
@@ -208,8 +206,7 @@ def _best_dimension_for_pair(
     config: ScoringConfig,
 ) -> tuple[float, str] | None:
     """The dimension contributing most variance to one pair's contest, scaled by
-    `sqrt(weight)` (a gentler exponent than the pair-priority calculation uses — see
-    module docstring) and the pair's priority (overall closeness × boundary proximity).
+    `sqrt(weight)` (see module docstring) and the pair's priority.
     A (pair, dimension) whose latest comparison is provisional is hard-excluded, not just
     down-weighted — unlike an operator ruling (which stays askable, variance-decayed),
     the operator has never seen this triple, so there's nothing to re-judge until they
@@ -302,22 +299,13 @@ def select_comparison(
     """Return the most useful comparison opportunity, or `None` if none qualifies.
     Every dimension is fit over the whole pool (unexamined openings enter at their
     unexamined prior, exactly as `rank_pool` treats them) so the overall weighted-rollup
-    score difference between any two openings can be computed. A pair's priority is how
-    close that overall contest is (`closeness`) times how much either side's top-K
-    membership could still move (`boundary_weight`, from `p_top_k_by_opening` — typically
-    `PoolScoreResult.opening_ranks[*].p_top_k`) — a pair neither side of which can
-    plausibly reach or leave top-K scores near zero regardless of closeness, *unless* the
-    whole pool is at or under `top_k`, where every opening's `p_top_k` is trivially 1.0
-    and the boundary factor is skipped rather than zeroing out every candidate. Within a
-    qualifying pair, the dimension asked is the one contributing the most variance to
-    that contest, scaled by `sqrt(weight)` (module docstring explains why not `weight`
-    itself), restricted to dimensions where both openings have at least one assertion
-    (`domain` included — no structural exemption) and excluding same-company pairs on
-    company-level dimensions (auto-tied instead). A small log-normal jitter is applied to
-    each candidate's final score so a single judgment can't permanently sink a pair's
-    priority; `rng` defaults to a fresh unseeded generator (the picker doesn't need
-    run-to-run reproducibility the way `rank_pool` does), but callers wanting determinism
-    (tests, calibration replay) can pass their own. `excluded_triples` removes specific
+    score difference between any two openings can be computed. `p_top_k_by_opening`
+    feeds `boundary_weight`, except when the whole pool is at or under `top_k`: every
+    `p_top_k` is then trivially 1.0, and the boundary factor is skipped. Same-company
+    pairs on company-level dimensions are never asked (they are auto-tied). `rng`
+    defaults to a fresh unseeded generator (the picker doesn't need run-to-run
+    reproducibility the way `rank_pool` does), but callers wanting determinism (tests,
+    calibration replay) can pass their own. `excluded_triples` removes specific
     (unordered pair, dimension) triples from the menu for this call only, without
     recording anything — the speculative pre-screen uses it to answer "what would come
     next" while the operator is still deciding the triple in front of them.

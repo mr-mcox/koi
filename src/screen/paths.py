@@ -1,5 +1,5 @@
-"""Shared data-root seam. `SCREEN_DATA_DIR` selects where the CLI and API
-read/write the DB and the research trace files; both must agree on it."""
+"""Shared data-root seam. `SCREEN_DATA_DIR` selects where the app reads and writes
+the DB and the research trace files."""
 
 from collections.abc import Mapping
 from pathlib import Path

@@ -46,7 +46,8 @@ class IntakeQueueItem(BaseModel):
     """One URL submitted through the web intake queue.
 
     `status` starts `pending`, moves to `running` when the worker claims it, and
-    ends at `done` or `failed` — terminal, no retry path (skip-and-continue).
+    ends at `done` or `failed`. A failure never blocks the rows behind it
+    (skip-and-continue); the operator can requeue a `failed` row as `pending`.
     `error` is populated only for `failed` rows, naming the stage that failed.
     """
 
@@ -67,10 +68,6 @@ class IdentificationResult(BaseModel):
     opening_notes: Annotated[str, Field(min_length=0)]
 
 
-# ---------------------------------------------------------------------------
-# Assertion and supporting types
-# ---------------------------------------------------------------------------
-
 # Scoring dimension slugs (domain-model.md §Scored dimensions). Every slug here is
 # an ordinary weighted dimension — there is no separate constraint or multiplicative
 # scoring path.
@@ -86,8 +83,6 @@ _SCORING_TARGETS = [
     "internal_culture",
 ]
 
-# Closed vocabulary; any value outside this set is rejected at
-# validation time, not by scorer logic.
 Target = Literal[
     "craft_direction",
     "schematic",
@@ -104,7 +99,6 @@ Target = Literal[
 # Stored as strings, not integers — unblended with confidence (D2).
 Fit = Literal["Poor", "Mixed", "Strong"]
 
-# Provenance tracks how an assertion came to exist.
 # `model_proposed` is the initial state for all BAML-extracted assertions.
 Provenance = Literal[
     "unexamined",
@@ -139,16 +133,16 @@ class Citation(BaseModel):
 
 class Assertion(BaseModel):
     """One typed, source-cited claim about a company or opening.
-    target the claim pertains to. `fit` is the claim's polarity in
-    rubric vocabulary. `chunk` is the verbatim page span the extractor
-    drew the claim from. `citations` is always non-empty — every
-    assertion must be grounded.
-    `confidence` is Jev's calibrated probability (0-1) for the classification;
-    null for assertions from before the feature (backward compatible). The scorer
-    uses confidence to scale variance: higher confidence narrows the distribution,
-    lower widens it (floor at 0.3 via max(confidence, 0.3)).
-    No scoring fields (Wall 1/2). `target` is a closed Literal.
-    Assertions are append-only; this model is frozen (Wall 6 on the type).
+
+    `target` is the rubric dimension the claim pertains to, a closed Literal. `fit` is
+    the claim's polarity in rubric vocabulary. `chunk` is the verbatim page span the
+    extractor drew the claim from. `citations` is always non-empty — every assertion
+    must be grounded.
+    `confidence` is Jev's calibrated probability (0-1) for the classification; `None`
+    on older rows that were never classified. The scorer widens or narrows the
+    assertion's variance by it (`score.scorer.stats_for_target`).
+    No scoring fields (Wall 1/2). Assertions are append-only; this model is frozen
+    (Wall 6 on the type).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -217,8 +211,8 @@ class Comparison(BaseModel):
     `provenance` distinguishes operator-ratified rows from provisional similarity ties.
     `opening_a_digest_version`/`opening_b_digest_version` are the `DimensionDigest.id`
     values shown at judgment time — `dimension_digests` is append-only, so these point at
-    a specific historical digest row, not just the latest. `None` for comparisons recorded
-    before this field was threaded through, or for a side with no digest yet."""
+    a specific historical digest row, not just the latest. `None` on older rows recorded
+    without a version, or for a side with no digest yet."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -52,7 +52,7 @@ def retry_intake_url(request: Request, conn: Conn, item_id: str) -> HTMLResponse
 @router.get("/intake-queue", response_class=HTMLResponse)
 def intake_queue(request: Request, conn: Conn) -> HTMLResponse:
     """The intake queue page: submit a URL, see every queued/running/done/failed
-    row and its failure reason — the only intake surface (CLI retired)."""
+    row and its failure reason — the only intake surface."""
     items = list_intake_queue(conn)
     return templates.TemplateResponse(
         request, "intake_queue.html", {"items": items, "submit_error": None}

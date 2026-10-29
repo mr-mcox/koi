@@ -2,7 +2,7 @@
 Noul questions about a candidate pair against the rubric text, returning raw answers
 that are then routed by pure logic to a verdict.
 
-Exempt from unit-test coverage (see `pyproject.toml` / `scripts/check.py` OMIT lists):
+Exempt from unit-test coverage (`[tool.coverage.run] omit` in `pyproject.toml`):
 calls the paid TypeSafe API. Unit tests inject a fake provider via the Protocol
 instead, mirroring `baml_digester` / `baml_extractor`.
 """

@@ -87,10 +87,9 @@ def _consult_jev_for_suggestion(
     rng: np.random.Generator,
 ) -> tuple[StoredComparison | None, RubricVerdict | None]:
     """Jev's live short-circuit for one suggested pair: the operator-suggested pair goes
-    straight to Jev's confidence gate, every time — Jev is cheap enough that there's no
-    pair to pre-filter it away from, and a cosine pre-filter on digest *text* was
-    rejecting exactly the rubric-similar-but-differently-worded pairs Jev exists to catch
-    (measured against the live pool: scouting F-SC3). Returns `(None, None)` when there's
+    straight to Jev's confidence gate, every time, with no pre-filter. Similarity of
+    digest *text* is not similarity under the rubric: rubric-similar but differently
+    worded pairs are exactly the ones Jev exists to catch (scouting F-SC3). Returns `(None, None)` when there's
     no cached digest — Jev was never consulted, nothing to show. Returns
     `(None, verdict)` when Jev was consulted but wasn't confident — `verdict` is Jev's
     raw read, carried so the operator can see what Jev said on a pair it couldn't settle
@@ -182,11 +181,9 @@ class CompareCache:
 class CompareProgress:
     """Live status for the comparison pre-screen pass — the polling web route's view
     into what Jev has ruled so far. `ruled` grows in place as each confident verdict
-    lands, so a concurrent poll sees partial progress; mirrors `BatchEngine`'s
-    `MutableMapping` progress dict, but typed since this progress has one shape, not a
-    research batch's. `version` is the compare-write version this run is based on. The
-    `final_suggestion*` fields remain as the current run's cached unresolved suggestion for
-    callers that still read them directly."""
+    lands, so a concurrent poll sees partial progress. `version` is the compare-write
+    version this run is based on. `final_suggestion*` is the suggestion the run left
+    unresolved, the same one it published to the cache."""
 
     running: bool = False
     completed: bool = False
@@ -282,8 +279,6 @@ def _prescreen_step(
     )
     if suggestion is None:
         if speculating_for is not None:
-            # Nothing beyond the excluded on-screen triple — leave the on-screen
-            # suggestion alone; there is simply no lookahead to offer this round.
             _prescreen_log.debug("speculative found nothing beyond the on-screen pair")
         else:
             _cache_operator_suggestion(

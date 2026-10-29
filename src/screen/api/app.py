@@ -32,8 +32,8 @@ from screen.web.routes import router as web_router
 
 
 class Database:
-    """Connection factory. Today it opens a SQLite file per call; the only
-    persistence-seam the API needs to swap for a hosted or pooled backend later."""
+    """Connection factory: opens the SQLite file once per call. The one persistence seam
+    a hosted or pooled backend would replace."""
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path

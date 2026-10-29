@@ -1,8 +1,6 @@
 """Action types for the dispatch loop.
 `Action` is a closed tagged union — no `Any` escape. Each tag must have
 a matching dispatch branch; unrecognized tags raise `RuntimeError`.
-`SearchAction` and `FetchAction` are recognized but their handlers raise
-`RuntimeError` until the loop-search and loop-fetch features land.
 """
 
 from typing import Annotated, Literal
@@ -37,5 +35,4 @@ class FetchAction(BaseModel):
     url: Annotated[str, Field(min_length=1)]
 
 
-# Closed union. The dispatcher implements one handler per tag.
 Action = StopAction | SearchAction | FetchAction

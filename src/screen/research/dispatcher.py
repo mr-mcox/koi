@@ -27,9 +27,8 @@ from screen.types import Assertion
 
 @dataclass(frozen=True)
 class DispatchDeps:
-    """The dispatch loop's effect ports, bundled so adding a new hook (as
-    `on_assertions` did) touches this one type instead of every handler's
-    signature and every call site that relays it."""
+    """The dispatch loop's effect ports, bundled so a new hook touches this one type
+    instead of every handler's signature and every call site that relays it."""
 
     browser: BrowserProtocol
     extractor: ExtractorProtocol
@@ -139,7 +138,6 @@ def dispatch(
             return result
         current = _advance_active_target(result)
 
-        # Budget guard fires after state is updated, before the next plan() call.
         if current.turns_used >= current.turn_budget:
             return PassSummary(
                 opening_id=current.opening_id,

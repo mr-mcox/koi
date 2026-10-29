@@ -1,6 +1,4 @@
-"""Research batch engine: schedules research turns via `fastapi.BackgroundTasks`,
-independent of any CLI.
-"""
+"""Research batch engine: schedules research turns via `fastapi.BackgroundTasks`."""
 
 from __future__ import annotations
 
@@ -57,7 +55,8 @@ class ResumeResult:
 
 
 def _noop_on_event(_event: object) -> None:
-    """Placeholder on_event used until a real subscriber is injected."""
+    """Default `on_event`. The trace path is known only per opening, so each pass
+    replaces this with a recorder bound to its own trace."""
 
 
 @dataclass
@@ -210,15 +209,15 @@ def opening_weight(conn: sqlite3.Connection, opening: Opening, config: ScoringCo
 
 def eligible_weights(conn: sqlite3.Connection, config: ScoringConfig) -> dict[str, float]:
     """Every opening still in the `screening` stage, mapped to a draw weight biased
-    toward the current top-K boundary: `uncertainty * boundary_weight`, where
-    `boundary_weight` comes from each opening's `p_top_k` in a fresh pool-wide rank
-    (scouting research-targeting F16, F21 — breadth-first, biased toward fresh/contested
-    openings over settling already-examined ones). There is no separate per-opening
-    turn budget to filter on — the weight itself throttles: a fully examined opening's
-    uncertainty decays toward 0, and an opening that looks settled out of top K decays
-    toward `boundary_weight_floor`, which keeps it drawable. Recomputed fresh on every call — the caller
-    redraws from this after each turn so a just-spent turn's new assertions immediately
-    affect the next draw."""
+    toward the current top-K boundary: uncertainty times `bandit.boundary_weight` of
+    the opening's `p_top_k` from a fresh pool-wide rank (scouting research-targeting
+    F16, F21 — breadth-first, biased toward fresh/contested openings over settling
+    already-examined ones). There is no separate per-opening turn budget to filter on —
+    the weight itself throttles: a fully examined opening's uncertainty decays toward 0,
+    and an opening that looks settled out of top K decays toward `boundary_weight_floor`,
+    which keeps it drawable. Recomputed fresh on every call — the caller redraws from
+    this after each turn so a just-spent turn's new assertions immediately affect the
+    next draw."""
     eligible = list_openings(conn, stage="screening")
     if not eligible:
         return {}
@@ -248,8 +247,8 @@ class DrawEvent:
 
 
 def print_draw_event(event: DrawEvent) -> None:
-    """Console trace for one bandit opportunity, mirroring the retired
-    `research-batch` echo but summarized per opportunity rather than per action."""
+    """Console trace for one bandit opportunity, summarized per opportunity rather
+    than per action."""
     print(
         f"drew {event.opening_id} (p={event.draw_probability:.3f}, "
         f"rank {event.rank_before}->{event.rank_after}, "
@@ -420,8 +419,7 @@ def run_batch(
 ) -> tuple[int, list[str]]:
     """Spend up to `batch_size` actions on opportunities drawn by aggregate remaining
     uncertainty. Each opportunity is a block of up to `research_block_turns`
-    actions on one opening, capped by the opening's remaining budget and the remaining
-    batch budget, so the planner can work down a line of inquiry before the next draw.
+    actions on one opening, capped by the remaining batch budget, so the planner can work down a line of inquiry before the next draw.
     The draw is seeded from `config.seed`, so a batch run against an unchanged DB snapshot
     reproduces the same sequence of draws.
 
