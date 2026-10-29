@@ -1,5 +1,5 @@
 """Aggregate remaining-uncertainty per opening: the draw-weight signal for
-`research-batch`'s per-turn opening choice.
+the research batch's per-turn opening choice.
 
 Pure `(assertions, rulings, config) -> float` — no I/O, mirroring `scorer.py`.
 """

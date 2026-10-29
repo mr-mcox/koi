@@ -196,9 +196,7 @@ def dimension_posteriors(
             if c.winner in valid_ids and c.loser in valid_ids
         ]
         if target in COMPANY_LEVEL_TARGETS:
-            # Auto-ties are the implicit default (no explicit judgment yet) — prepend them
-            # as oldest so _latest_per_pair keeps an explicit comparison over the auto-tie
-            # for that pair — the auto-tie is a default, not a coexisting term.
+            # Oldest first, so an explicit comparison displaces the auto-tie on its pair.
             comparisons = _auto_tie_comparisons(opening_ids, companies_by_opening) + comparisons
         comparisons = _latest_per_pair(comparisons)
         if not comparisons:

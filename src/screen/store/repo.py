@@ -85,8 +85,7 @@ def assertions_for_opening(conn: sqlite3.Connection, opening_id: str) -> list[As
 
 
 def upsert_assertion_ruling(conn: sqlite3.Connection, ruling: AssertionRuling) -> None:
-    """Upsert by `assertion_id` (Approach: repeated ratings replace the previous one,
-    not append) — the corpus is a calibration record, one ruling per assertion, not an
+    """Upsert by `assertion_id`: a repeated rating replaces the previous one — the corpus is a calibration record, one ruling per assertion, not an
     event log. Relies on the unique index on `assertion_rulings.assertion_id`."""
     conn.execute(
         """INSERT INTO assertion_rulings (id, assertion_id, fit, created_at)
@@ -129,8 +128,8 @@ def get_opening(conn: sqlite3.Connection, opening_id: str) -> Opening | None:
 def list_openings(conn: sqlite3.Connection, *, stage: str | None = None) -> list[Opening]:
     """Every opening in the DB, oldest first — the queue's candidate set before scoring.
 
-    `stage=None` (default) returns every opening regardless of stage — used by the
-    filter-by-stage view and backfill commands, which need to see everything. Callers
+    `stage=None` (default) returns every opening regardless of stage — the unfiltered
+    archive view. Callers
     that build the ranked queue, the bandit's eligible-weights set, and the research
     batch's candidate set pass `stage="screening"` so a de-queued opening can never
     anchor the top_k boundary or consume research budget.
@@ -223,7 +222,7 @@ def active_provisional_comparisons(conn: sqlite3.Connection) -> list[Comparison]
     provisional — the review surface's input. An operator ruling made after a
     provisional row on the same (pair, target) is that provisional row's override: it
     does not appear here once overridden, mirroring the picker's own exclusion rule
-    (`compare.picker._provisionally_settled_pairs`) and the fit's dedup-to-latest
+    (`compare.picker._settled_pairs`) and the fit's dedup-to-latest
     (`score.pairwise._latest_per_pair`)."""
     rows = conn.execute("SELECT * FROM comparisons ORDER BY created_at").fetchall()
     comparisons = [c for c in (comparison_from_row(dict(row)) for row in rows) if c is not None]

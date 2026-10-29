@@ -45,8 +45,7 @@ class BoundaryGlyph:
     are sampled rank quantiles (lower rank is better), and `boundary` is the `top_k`
     cutoff. Percentages are computed against a shared axis so rows are comparable: left
     is best, right is worse. `settledness_alpha`/`settledness_label` say whether the band
-    is fully inside the boundary, straddling it, or fully outside — the per-opportunity
-    replacement for a global settledness readout."""
+    is fully inside the boundary, straddling it, or fully outside."""
 
     low: float
     median: float

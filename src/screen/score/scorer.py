@@ -4,8 +4,7 @@ from config loading; `screen.score.loader` does the I/O).
 
 Implements S1/S2/S3/S8 (docs/architecture/decisions.md): an unexamined target is a wide
 Uniform(-1, +1); a target with counted evidence shrinks toward its sample mean; provenance
-sets the effective weight of each piece of evidence, in place of the prototype's binary
-Medium/High confidence gate. Every scored target, including `location` and
+sets the effective weight of each piece of evidence. Every scored target, including `location` and
 `internal_culture`, is a dimension in the same weighted rollup — there is no
 separate constraint or multiplicative scoring path.
 """
@@ -28,6 +27,9 @@ from screen.score.types import (
 )
 from screen.types import Assertion, Fit
 
+_CONFIDENCE_FLOOR = 0.3
+"""Caps how far one low-confidence assertion can widen its target's half-width."""
+
 
 @dataclass(frozen=True)
 class TargetStats:
@@ -40,6 +42,13 @@ class TargetStats:
     n: float
     mean: float
     half_width: float
+
+
+def _confidence_widening(confidence: float | None) -> float:
+    """Half-width multiplier for one assertion: higher confidence narrows, lower widens."""
+    if confidence is None:
+        return 1.0
+    return 1.0 / math.sqrt(max(confidence, _CONFIDENCE_FLOOR))
 
 
 def stats_for_target(
@@ -62,26 +71,9 @@ def stats_for_target(
         new_n += weight
     mean = weighted_sum / total_n
     base_half_width = 1.0 / math.sqrt(total_n)
-    # Compute per-assertion variance multipliers, then average them.
-    confidence_sum = 0.0
-    assertion_count = 0
-    for a in assertions:
-        if a.target != target:
-            continue
-        # Use confidence if available; otherwise default to 1.0 (no widening)
-        # Floor at 0.3 to smooth toward a minimum and avoid pathological narrowing
-        conf = a.confidence if a.confidence is not None else 1.0
-        conf_floored = max(conf, 0.3)
-        # Higher confidence → smaller divisor → smaller scaling factor
-        confidence_sum += 1.0 / math.sqrt(conf_floored)
-        assertion_count += 1
-    # Average the scaling factors across all assertions for the target
-    if assertion_count > 0:
-        confidence_variance_scale = confidence_sum / assertion_count
-    else:
-        confidence_variance_scale = 1.0  # No assertions; no scaling
-    half_width = base_half_width * confidence_variance_scale
-    return TargetStats(n=new_n, mean=mean, half_width=half_width)
+    widenings = [_confidence_widening(a.confidence) for a in assertions if a.target == target]
+    mean_widening = sum(widenings) / len(widenings) if widenings else 1.0
+    return TargetStats(n=new_n, mean=mean, half_width=base_half_width * mean_widening)
 
 
 def _sample_dimension_gaussian(
@@ -168,6 +160,39 @@ def _apply_guard(values: np.ndarray | float, downside: float, upside: float) -> 
     return np.where(values < 0, values * downside, values * upside)
 
 
+def _to_unit_interval(weighted: np.ndarray, config: ScoringConfig) -> np.ndarray:
+    """Map a weighted rollup on [-total_weight, +total_weight] onto [0, 1]."""
+    return np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
+
+
+def _sample_ranks(
+    overall: np.ndarray, deterministic_quality: np.ndarray, tiebreak_keys: np.ndarray
+) -> np.ndarray:
+    """Rank each sample (column) independently, `1` best: `overall` decides it whenever
+    samples differ; `deterministic_quality` then `opening_id`'s hash break exact ties (e.g.
+    two unexamined openings, or two killed by the same dimension) the same way regardless
+    of the order openings were passed in — neither ever comes from the trace itself."""
+    key = overall + deterministic_quality[:, None] * 1e-9 + tiebreak_keys[:, None] * 1e-18
+    order = np.argsort(-key, axis=0)
+    ranks = np.empty_like(order)
+    np.put_along_axis(ranks, order, np.arange(1, len(overall) + 1)[:, None], axis=0)
+    return ranks
+
+
+def _rank_readouts(ranks: np.ndarray, opening_ids: list[str], top_k: int) -> list[OpeningRank]:
+    return [
+        OpeningRank(
+            opening_id=oid,
+            expected_rank=float(np.mean(ranks[i])),
+            p_top_k=float(np.mean(ranks[i] <= top_k)),
+            rank_q10=float(np.quantile(ranks[i], 0.10)),
+            rank_q50=float(np.quantile(ranks[i], 0.50)),
+            rank_q90=float(np.quantile(ranks[i], 0.90)),
+        )
+        for i, oid in enumerate(opening_ids)
+    ]
+
+
 def rank_pool(
     pool: list[PoolInput],
     config: ScoringConfig,
@@ -201,61 +226,27 @@ def rank_pool(
             else draw
         )
         weighted += weight * guarded_draw
-    overall = np.clip((weighted / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
-
-    # Unguarded trace: compute weighted rollup without any guards applied, from the same
-    # dimension_trace draws. Attention (research/compare-picker) reads this while the queue
+    overall = _to_unit_interval(weighted, config)
+    # Attention (research, compare picker) ranks on the unguarded rollup while the queue
     # sorts on the guarded `overall` (scouting F8, F26, decisions S16).
-    weighted_unguarded = np.zeros((n, samples))
-    for slug, weight in config.dimension_weights.items():
-        draw = dimension_trace[slug]
-        weighted_unguarded += weight * draw
-    overall_unguarded = np.clip((weighted_unguarded / config.total_weight + 1.0) / 2.0, 0.0, 1.0)
+    overall_unguarded = _to_unit_interval(
+        sum(
+            (weight * dimension_trace[slug] for slug, weight in config.dimension_weights.items()),
+            np.zeros((n, samples)),
+        ),
+        config,
+    )
 
     deterministic_quality = np.array(
         [_deterministic_quality(dim_stats, config, oid) for oid in opening_ids]
     )
     tiebreak_keys = np.array([_opening_id_rank_key(oid) for oid in opening_ids], dtype=np.float64)
     tiebreak_keys /= 2.0**64  # normalize into [0, 1)
-
-    # Rank each sample (column) independently, vectorized: `overall` decides it whenever
-    # samples differ; `deterministic_quality` then `opening_id`'s hash break exact ties (e.g.
-    # two unexamined openings, or two killed by the same dimension) the same way regardless
-    # of the order openings were passed in — neither ever comes from the trace itself.
-    key = overall + deterministic_quality[:, None] * 1e-9 + tiebreak_keys[:, None] * 1e-18
-    order = np.argsort(-key, axis=0)
-    ranks = np.empty_like(order)
-    np.put_along_axis(ranks, order, np.arange(1, n + 1)[:, None], axis=0)
-    opening_ranks = [
-        OpeningRank(
-            opening_id=oid,
-            expected_rank=float(np.mean(ranks[i])),
-            p_top_k=float(np.mean(ranks[i] <= top_k)),
-            rank_q10=float(np.quantile(ranks[i], 0.10)),
-            rank_q50=float(np.quantile(ranks[i], 0.50)),
-            rank_q90=float(np.quantile(ranks[i], 0.90)),
-        )
-        for i, oid in enumerate(opening_ids)
-    ]
-
-    # Unguarded ranks: same computation from overall_unguarded
-    key_unguarded = (
-        overall_unguarded + deterministic_quality[:, None] * 1e-9 + tiebreak_keys[:, None] * 1e-18
+    ranks = _sample_ranks(overall, deterministic_quality, tiebreak_keys)
+    opening_ranks = _rank_readouts(ranks, opening_ids, top_k)
+    opening_ranks_unguarded = _rank_readouts(
+        _sample_ranks(overall_unguarded, deterministic_quality, tiebreak_keys), opening_ids, top_k
     )
-    order_unguarded = np.argsort(-key_unguarded, axis=0)
-    ranks_unguarded = np.empty_like(order_unguarded)
-    np.put_along_axis(ranks_unguarded, order_unguarded, np.arange(1, n + 1)[:, None], axis=0)
-    opening_ranks_unguarded = [
-        OpeningRank(
-            opening_id=oid,
-            expected_rank=float(np.mean(ranks_unguarded[i])),
-            p_top_k=float(np.mean(ranks_unguarded[i] <= top_k)),
-            rank_q10=float(np.quantile(ranks_unguarded[i], 0.10)),
-            rank_q50=float(np.quantile(ranks_unguarded[i], 0.50)),
-            rank_q90=float(np.quantile(ranks_unguarded[i], 0.90)),
-        )
-        for i, oid in enumerate(opening_ids)
-    ]
 
     current_top_k_indices = [
         opening_ids.index(r.opening_id)

@@ -1,11 +1,9 @@
-"""Click-independent intake pipeline: URL -> research trace -> Company + Opening +
-Assertions + one research-dispatch pass.
+"""Intake pipeline: URL -> research trace -> Company + Opening + Assertions + one
+research-dispatch pass.
 
-The web intake-queue worker calls this directly (no `click.ClickException`
-in the call chain), the same way `research/batch.py` is a Click-independent
-module the web batch route calls. Every stage raises `IntakePipelineError`
-(with a `.stage` name): a queue worker needs to catch a failure, record
-*which stage* failed, and move on to the next queued URL.
+The intake-queue worker calls this for each queued URL. Every stage raises
+`IntakePipelineError` (with a `.stage` name): the worker needs to catch a failure,
+record *which stage* failed, and move on to the next queued URL.
 """
 
 from __future__ import annotations
@@ -147,7 +145,7 @@ def identify_research_trace(
     deps_factory: Callable[[], RunDispatchDeps],
 ) -> str:
     """Run the research trace -> Company + Opening + Assertions step. Returns
-    the dispatch stop reason (the CLI echoes it; the queue worker ignores it).
+    the dispatch stop reason.
 
     `extractor_factory` is called twice: once for the intake extraction pass,
     again for `run_dispatch`'s own fetch actions. A `FakeExtractor` advances

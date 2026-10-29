@@ -65,8 +65,7 @@ def _run_target(event: ResearchTraceEvent) -> str | None:
 
 def _counts(event: ResearchTraceEvent) -> dict[str, int] | None:
     """Per-target assertion count as of this decide_plan snapshot, or `None` if
-    the trace predates `target_assertion_counts` (added alongside `targets_covered`
-    in the dispatcher). Callers fall back to membership-only comparison for those
+    the trace predates `target_assertion_counts`. Callers fall back to membership-only comparison for those
     older traces rather than guessing counts, which would manufacture false stalls
     for a target that grew past its first assertion between two runs.
     """
