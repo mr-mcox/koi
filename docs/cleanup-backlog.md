@@ -352,7 +352,7 @@ The errors were fixed by typing data where it enters:
   module-level function registered with `add_api_route`.
 - One `cast` remains in `replay._counts`. Q removes it when it types the trace payloads.
 
-## P. Split `_prescreen_step` along its contract — *done*
+## P. Split `_prescreen_step` along its contract — *done* in [#11](https://github.com/mr-mcox/koi/pull/11)
 
 `_prescreen_step` is gone. `compare/prescreen.pick_and_consult` is the public,
 side-effect-free step: it picks the next suggestion (honouring an `excluded` triple),
