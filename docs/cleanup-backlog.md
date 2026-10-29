@@ -319,7 +319,7 @@ How each listed gap was closed:
   context type joins the union. `FakeTavily.search`'s pragma now gives a reason; N
   removes the method.
 
-## N. Narrow the browser protocol and merge its two fakes — *done*
+## N. Narrow the browser protocol and merge its two fakes — *done* in [#7](https://github.com/mr-mcox/koi/pull/7)
 
 `browser.py` has two protocols: `Fetcher` (`fetch`), which intake's `fetch_url` and
 `intake_url`'s `client_factory` take, and `Browser` (`Fetcher` plus `search`), which
