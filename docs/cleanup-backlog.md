@@ -199,7 +199,7 @@ What stays local on purpose: the dict builders in `test_types.py` (raw input for
 validation tests), and `research/test_batch.py`'s `_seed_opening_with_trace` and
 `_seed_assertions`, which combine the shared builders with a trace or bulk evidence.
 
-## I. Comment pass — *done* at COMMIT
+## I. Comment pass — *done* at b932a5c
 
 Docstrings and comments in `src/` now describe product state:
 - Retired-CLI references are gone (`env.py`, `paths.py`, `intake/pipeline.py`,
