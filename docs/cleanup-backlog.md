@@ -328,7 +328,7 @@ itself: the `FakeTavily` tests, both `has_no_extract_one` tests, the protocol
 and `FakeBrowser`'s fixture and `extract` tests in `tests/research/test_protocol.py`.
 The advanced-depth test now goes through `fetch`.
 
-## O. Turn on pyright strict mode — *done*
+## O. Turn on pyright strict mode — *done* in [#9](https://github.com/mr-mcox/koi/pull/9)
 
 `typeCheckingMode = "strict"` is set with no strict rule disabled, so a misspelled
 `Literal` in a comparison now fails `reportUnnecessaryComparison`. The gate is labelled
