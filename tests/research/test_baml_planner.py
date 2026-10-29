@@ -27,7 +27,8 @@ from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation
+from screen.types import Assertion
+from tests.helpers import canned_assertion
 
 
 class _FakeStop:
@@ -48,28 +49,6 @@ class _FakeSearch:
 class _FakeUnknown:
     tag = "future_tag"
     reason = "Would need a new branch."
-
-
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=False,
-        source_date=None,
-    )
-
-
-def _assertion(target: str = "craft_direction") -> Assertion:
-    return Assertion(
-        target=target,
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Build and own the platform every engineer deploys on.",
-        citations=[_citation()],
-        created_at="2026-08-28T00:00:00Z",
-    )
 
 
 def _state(
@@ -218,7 +197,7 @@ def test_rank_targets_prefers_unexamined_target() -> None:
     """An unexamined target outranks a target with one assertion."""
     config = _config()
     state = _state(
-        assertions=[_assertion("craft_direction")],
+        assertions=[canned_assertion("craft_direction")],
         targets=["craft_direction", "compensation"],
     )
     ranked = rank_targets(state, config)
@@ -230,7 +209,7 @@ def test_rank_targets_falls_back_to_assertions() -> None:
     assertions exist."""
     config = _config()
     state = _state(
-        assertions=[_assertion("craft_direction")],
+        assertions=[canned_assertion("craft_direction")],
         targets=[],
     )
     ranked = dict(rank_targets(state, config))
@@ -240,7 +219,7 @@ def test_rank_targets_falls_back_to_assertions() -> None:
 def test_select_primary_target_stays_active_until_cap() -> None:
     config = _config()
     state = _state(
-        assertions=[_assertion("craft_direction")],
+        assertions=[canned_assertion("craft_direction")],
         targets=["craft_direction", "compensation"],
         active_target="compensation",
         active_target_actions=1,
@@ -252,7 +231,7 @@ def test_select_primary_target_stays_active_until_cap() -> None:
 def test_select_primary_target_releases_at_cap() -> None:
     config = _config()
     state = _state(
-        assertions=[_assertion("craft_direction")],
+        assertions=[canned_assertion("craft_direction")],
         targets=["craft_direction", "compensation"],
         active_target="craft_direction",
         active_target_actions=3,
@@ -268,7 +247,7 @@ def test_rank_targets_suppresses_stalled_target() -> None:
     win, but the S-curve multiplier pushes it below the examined alternative."""
     config = _config()
     state = _state(
-        assertions=[_assertion("compensation")],
+        assertions=[canned_assertion("compensation")],
         targets=["craft_direction", "compensation"],
         target_stall_counts={"craft_direction": 2},
     )
@@ -326,7 +305,7 @@ def test_baml_planner_plan_computes_primary_target_from_config() -> None:
 
     planner = BAMLPlanner(config=_config(), client=SimpleNamespace(DecidePlan=fake_decide_plan))
     state = _state(
-        assertions=[_assertion("craft_direction")],
+        assertions=[canned_assertion("craft_direction")],
         targets=["craft_direction", "compensation"],
     )
     actions = planner.plan(state)

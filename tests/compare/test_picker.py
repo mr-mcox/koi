@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime
+from functools import partial
 
 import numpy as np
 import pytest
@@ -21,16 +22,10 @@ from screen.compare.picker import (
 from screen.score.loader import load_scoring_config
 from screen.score.pairwise import Comparison
 from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation, Fit
+from tests.helpers import canned_assertion
 
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
+_assertion = partial(canned_assertion, provenance="ratified")
+
 _NOW = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 
 
@@ -52,17 +47,6 @@ def _neutral_p_top_k(opening_ids: list[str]) -> dict[str, float]:
 
 def _rng() -> np.random.Generator:
     return np.random.default_rng(0)
-
-
-def _assertion(target: str, fit: Fit = "Strong") -> Assertion:
-    return Assertion(
-        target=target,  # type: ignore[arg-type]
-        fit=fit,
-        provenance="ratified",
-        chunk="verbatim source text",
-        citations=[_CITATION],
-        created_at=_NOW,
-    )
 
 
 def test_single_opening_returns_none(config: ScoringConfig) -> None:
@@ -332,7 +316,7 @@ def test_a_provisional_only_pair_is_never_resuggested_on_that_dimension(
     """Once the latest comparison on a (pair, dimension) is provisional, that triple is
     permanently off the picker's menu — unlike an operator ruling, which stays askable
     (variance-decayed) for future re-judgment. The variance nudge alone can't suppress a
-    high-weight dimension (measured in tests/test_api_pool.py and this file's
+    high-weight dimension (measured in tests/test_pool_store.py and this file's
     `test_confident_provisional_tie_narrows_the_pair_it_names`); hard exclusion is what
     actually stops the operator from seeing it again, matching the operator's stated
     requirement over the `comparison-similarity-kernel` bearing's criterion 4."""

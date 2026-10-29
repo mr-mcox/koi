@@ -2,7 +2,7 @@
 outcome mapping — `tests/web/test_queue.py::test_index_queue_reorders_after_comparison`
 covers the end-to-end HTTP path; this covers the branches that path alone doesn't
 reach (tie/b outcomes, the explicit `openings` override). The comparison pre-screen
-orchestration itself (`run_prescreen`) lives in `tests/test_prescreen_engine.py`."""
+orchestration itself (`run_prescreen`) lives in `tests/compare/test_prescreen.py`."""
 
 from __future__ import annotations
 

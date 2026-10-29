@@ -1,6 +1,6 @@
 """Tests for `JevVerdictProvider` I/O: calling Jev and parsing Noul answers into `JevRuling`.
 
-Routing logic is tested separately in `tests/test_routing.py`.
+Routing logic is tested separately in `tests/verdict/test_routing.py`.
 """
 
 from __future__ import annotations

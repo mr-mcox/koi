@@ -92,7 +92,7 @@ are not reproducible from the repo; the operator reviewed the outputs in-session
   A new yaml key is not rendered unless `_render_one_dimension` adds it.
 - **F19** — `src/screen/recalibration.py:441-468` — `parse_rubric_fields` parses rendered
   text, not yaml; an unrendered `guard` key does not affect it.
-- **F20** — `tests/test_scorer.py:57-58,106-121` — scorer tests load the real
+- **F20** — `tests/score/test_scorer.py:57-58,106-121` — scorer tests load the real
   `rubric.yaml`/`scoring.yaml`; the kill test asserts a ratified Poor location sinks
   `p_top_k < 0.1` at `top_k=1` against a clean twin. It will exercise the new weights.
 - **F21** — decisions S2, S12 — pass/fail gates rejected (three rewrites); heavy additive

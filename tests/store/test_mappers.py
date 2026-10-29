@@ -25,25 +25,14 @@ from screen.store.mappers import (
 from screen.types import (
     Assertion,
     AssertionRuling,
-    Citation,
     Company,
     Comparison,
     DimensionDigest,
     Opening,
 )
+from tests.helpers import canned_citation
 
 _CREATED_AT = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
-
-
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=True,
-        source_date=None,
-    )
 
 
 def test_company_round_trips_through_row() -> None:
@@ -86,7 +75,7 @@ def test_assertion_round_trips_through_row() -> None:
         fit="Strong",
         provenance="model_proposed",
         chunk="10+ years in platform engineering.",
-        citations=[_citation()],
+        citations=[canned_citation()],
         created_at=_CREATED_AT,
     )
     row = assertion_to_row(assertion, opening_id="acme--staff-engineer-abc123")
@@ -101,7 +90,7 @@ def test_assertion_row_carries_opening_id_for_the_foreign_key() -> None:
         fit="Mixed",
         provenance="model_proposed",
         chunk="Some domain claim.",
-        citations=[_citation()],
+        citations=[canned_citation()],
         created_at=_CREATED_AT,
     )
     row = assertion_to_row(assertion, opening_id="acme--staff-engineer-abc123")
@@ -125,7 +114,7 @@ def test_assertion_from_row_warns_and_returns_none_for_retired_target() -> None:
         fit="Strong",
         provenance="model_proposed",
         chunk="10+ years in platform engineering.",
-        citations=[_citation()],
+        citations=[canned_citation()],
         created_at=_CREATED_AT,
     )
     row = assertion_to_row(assertion, opening_id="acme--staff-engineer-abc123")
@@ -142,7 +131,7 @@ def test_assertion_from_row_warns_and_returns_none_for_renamed_target() -> None:
         fit="Strong",
         provenance="model_proposed",
         chunk="AI/ML work.",
-        citations=[_citation()],
+        citations=[canned_citation()],
         created_at=_CREATED_AT,
     )
     row = assertion_to_row(assertion, opening_id="acme--staff-engineer-abc123")

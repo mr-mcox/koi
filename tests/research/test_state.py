@@ -13,33 +13,11 @@ from pydantic import ValidationError
 from screen.research.actions import StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState, PassSummary
-from screen.types import Assertion, Citation
+from tests.helpers import canned_assertion
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-def _citation() -> Citation:
-    return Citation(
-        url="https://example.com/jobs/1",
-        quote="Build and own the platform.",
-        host="example.com",
-        source_provenance="official",
-        independent=False,
-        source_date=None,
-    )
-
-
-def _assertion() -> Assertion:
-    return Assertion(
-        target="craft_direction",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="Build and own the platform every engineer deploys on.",
-        citations=[_citation()],
-        created_at="2026-08-28T00:00:00Z",
-    )
 
 
 def _loop_state(**kwargs: object) -> LoopState:
@@ -51,7 +29,7 @@ def _loop_state(**kwargs: object) -> LoopState:
         "page_content": "Some posting text.",
         "url": "https://example.com/jobs/1",
         "rubric_text": "craft_direction: ...",
-        "assertions": [_assertion()],
+        "assertions": [canned_assertion()],
         "turn_budget": 5,
         "active_target_action_cap": 5,
         "turns_used": 0,

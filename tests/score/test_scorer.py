@@ -7,7 +7,6 @@ uncommitted, gitignored `data/` directory sticking around in its current shape.
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, datetime
 
 import numpy as np
 import pytest
@@ -15,42 +14,21 @@ import pytest
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import rank_pool
 from screen.score.types import DimensionPosterior, PoolInput, ScoringConfig
-from screen.types import Assertion, Citation, Fit, Provenance, Target
-
-_CITATION = Citation(
-    url="https://example.com/note",
-    quote="verbatim source text",
-    host="example.com",
-    source_provenance="official",
-    independent=True,
-    source_date=None,
-)
-
-
-def _assertion(target: Target, fit: Fit, provenance: Provenance = "model_proposed") -> Assertion:
-    return Assertion(
-        target=target,
-        fit=fit,
-        provenance=provenance,
-        chunk="verbatim source text",
-        citations=[_CITATION],
-        created_at=datetime(2026, 8, 27, tzinfo=UTC),
-    )
-
+from tests.helpers import canned_assertion
 
 # One assertion per scoring dimension, mixing `ratified` and `model_proposed` provenance
 # so every target has counted (non-unexamined) evidence with realistic variance —
 # a uniform-provenance fixture would understate the shrinkage the Scorer actually applies.
 PARTIALLY_RESEARCHED = [
-    _assertion("craft_direction", "Strong", "ratified"),
-    _assertion("schematic", "Strong", "ratified"),
-    _assertion("trajectory", "Strong", "ratified"),
-    _assertion("mission", "Strong", "ratified"),
-    _assertion("agentic", "Strong", "ratified"),
-    _assertion("compensation", "Strong", "ratified"),
-    _assertion("domain", "Strong", "ratified"),
-    _assertion("location", "Strong"),
-    _assertion("internal_culture", "Strong"),
+    canned_assertion("craft_direction", "Strong", "ratified"),
+    canned_assertion("schematic", "Strong", "ratified"),
+    canned_assertion("trajectory", "Strong", "ratified"),
+    canned_assertion("mission", "Strong", "ratified"),
+    canned_assertion("agentic", "Strong", "ratified"),
+    canned_assertion("compensation", "Strong", "ratified"),
+    canned_assertion("domain", "Strong", "ratified"),
+    canned_assertion("location", "Strong"),
+    canned_assertion("internal_culture", "Strong"),
 ]
 
 
@@ -59,7 +37,7 @@ def config() -> ScoringConfig:
     return load_scoring_config()
 
 
-POORLY_RESEARCHED = [_assertion(a.target, "Poor", a.provenance) for a in PARTIALLY_RESEARCHED]
+POORLY_RESEARCHED = [canned_assertion(a.target, "Poor", a.provenance) for a in PARTIALLY_RESEARCHED]
 
 
 def test_rank_pool_orders_strong_opening_above_poor(config: ScoringConfig) -> None:
@@ -112,7 +90,7 @@ def test_rank_pool_kill_dimension_sinks_an_otherwise_best_opening(
     Strong — the additive-weight replacement for the retired multiplicative constraint
     kill (constraints-and-rubric.md)."""
     killed_assertions = [a for a in PARTIALLY_RESEARCHED if a.target != "location"] + [
-        _assertion("location", "Poor", "ratified")
+        canned_assertion("location", "Poor", "ratified")
     ]
     killed = PoolInput(opening_id="killed", assertions=killed_assertions)
     clean = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
@@ -129,7 +107,7 @@ def test_rank_pool_kill_on_any_guarded_dimension_sinks_an_otherwise_best_opening
     """Every guarded dimension (scouting F5), not just `location`, sinks an
     otherwise-Strong opening on a confident Poor."""
     killed_assertions = [a for a in PARTIALLY_RESEARCHED if a.target != guarded_target] + [
-        _assertion(guarded_target, "Poor", "ratified")
+        canned_assertion(guarded_target, "Poor", "ratified")
     ]
     killed = PoolInput(opening_id="killed", assertions=killed_assertions)
     clean = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
@@ -147,14 +125,14 @@ def test_guarded_dimension_dampens_upside_relative_to_unguarded_same_weight(
     (scouting F2, F4). `trajectory` (unguarded, weight 2) is the comparator for
     `mission` (guarded, weight 2)."""
     mixed = [a for a in PARTIALLY_RESEARCHED if a.target not in {"mission", "trajectory"}] + [
-        _assertion("mission", "Mixed", "ratified"),
-        _assertion("trajectory", "Mixed", "ratified"),
+        canned_assertion("mission", "Mixed", "ratified"),
+        canned_assertion("trajectory", "Mixed", "ratified"),
     ]
     strong_mission = [a for a in mixed if a.target != "mission"] + [
-        _assertion("mission", "Strong", "ratified")
+        canned_assertion("mission", "Strong", "ratified")
     ]
     strong_trajectory = [a for a in mixed if a.target != "trajectory"] + [
-        _assertion("trajectory", "Strong", "ratified")
+        canned_assertion("trajectory", "Strong", "ratified")
     ]
 
     result = rank_pool(
@@ -203,15 +181,15 @@ def test_rank_pool_returns_unguarded_ranks_from_same_draw(config: ScoringConfig)
     guarded_opening = PoolInput(
         opening_id="guarded",
         assertions=[
-            _assertion("craft_direction", "Strong"),
-            _assertion("schematic", "Strong"),
-            _assertion("trajectory", "Strong"),
-            _assertion("mission", "Poor"),
-            _assertion("agentic", "Strong"),
-            _assertion("compensation", "Strong"),
-            _assertion("domain", "Strong"),
-            _assertion("location", "Strong"),
-            _assertion("internal_culture", "Strong"),
+            canned_assertion("craft_direction", "Strong"),
+            canned_assertion("schematic", "Strong"),
+            canned_assertion("trajectory", "Strong"),
+            canned_assertion("mission", "Poor"),
+            canned_assertion("agentic", "Strong"),
+            canned_assertion("compensation", "Strong"),
+            canned_assertion("domain", "Strong"),
+            canned_assertion("location", "Strong"),
+            canned_assertion("internal_culture", "Strong"),
         ],
     )
     clean_opening = PoolInput(opening_id="clean", assertions=PARTIALLY_RESEARCHED)
@@ -283,7 +261,7 @@ def test_rank_pool_posterior_mean_shift_moves_rank_order(config: ScoringConfig) 
     assertions (equal priors, so assertion evidence alone can't separate them) must swap
     rank order once a `DimensionPosterior` gives one a higher fitted mean on a
     heavily-weighted dimension."""
-    tied = [_assertion("craft_direction", "Strong", "ratified")]
+    tied = [canned_assertion("craft_direction", "Strong", "ratified")]
     a = PoolInput(opening_id="a", assertions=tied)
     b = PoolInput(opening_id="b", assertions=tied)
 

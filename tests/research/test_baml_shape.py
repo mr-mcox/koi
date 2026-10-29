@@ -3,7 +3,7 @@
 If field names diverge, baml_planner.py's coercion will silently get wrong
 values. This test makes that a CI failure instead of a production surprise.
 
-Mirrors the pattern in test_extract_baml_shape.py.
+Mirrors the pattern in tests/extract/test_baml_shape.py.
 """
 
 from screen.baml_client.types import StopAction as BAMLStopAction

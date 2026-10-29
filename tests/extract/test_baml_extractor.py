@@ -10,28 +10,15 @@ from datetime import UTC, datetime
 
 from screen.extract.baml_extractor import classify_and_filter
 from screen.extract.types import ExtractedAssertion
-from screen.types import Citation
 from screen.verdict.classification_protocol import AssertionClassification
-
-
-def _citation(**overrides: object) -> Citation:
-    base = {
-        "url": "https://example.com/jobs/42",
-        "quote": "We use ECS/EKS and Terraform.",
-        "host": "example.com",
-        "source_provenance": "official",
-        "independent": True,
-        "source_date": None,
-    }
-    base.update(overrides)
-    return Citation.model_validate(base)
+from tests.helpers import canned_citation
 
 
 def _extracted(**overrides: object) -> ExtractedAssertion:
     base: dict[object, object] = {
         "target": "craft_direction",
         "chunk": "Staff Platform Engineer, 10+ years required.",
-        "citations": [_citation()],
+        "citations": [canned_citation()],
         "created_at": datetime.now(UTC),
     }
     base.update(overrides)

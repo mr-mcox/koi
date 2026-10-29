@@ -23,8 +23,8 @@ starving the bottom of the pool. Terrain: [scouting.md](./scouting.md)
       Affirm are not → **needs you**: review the before/after table I produce. **Pause here.**
 - [ ] Research draws and compare-picker pairs read a guards-off P(top-K): an opening with
       an unexamined guarded dimension gets more attention than its queue rank alone would
-      give → `tests/test_bandit.py`, `tests/test_compare_picker.py`
-- [ ] No screening opening has zero attention weight → `tests/test_bandit.py`
+      give → `tests/score/test_bandit.py`, `tests/compare/test_picker.py`
+- [ ] No screening opening has zero attention weight → `tests/score/test_bandit.py`
 - [ ] `uv run python scripts/check.py` passes
 
 ## Approach

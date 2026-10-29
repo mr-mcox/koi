@@ -1,5 +1,5 @@
 """Exercises the real migrations in `store/migrations/` against a fresh
-in-memory database — not the synthetic fixtures in `test_store_migrate.py`,
+in-memory database — not the synthetic fixtures in `test_migrate.py`,
 which test the runner mechanics. A migration only ever runs once in
 production, which is exactly why it must run in every test session: nothing
 else will ever re-verify it applies cleanly.

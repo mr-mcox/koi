@@ -4,8 +4,6 @@ complete."""
 
 from __future__ import annotations
 
-import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 
 from screen.digest.fakes import FakeDigester
@@ -16,32 +14,14 @@ from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
     get_dimension_digest,
-    upsert_company,
-    upsert_opening,
 )
-from screen.types import Company, Opening
-from tests.helpers import canned_assertion, fake_dispatch_deps
-
-
-def _seed_opening(conn: sqlite3.Connection) -> None:
-    upsert_company(conn, Company(id="co", name="Example Co", created_at=datetime.now(UTC)))
-    upsert_opening(
-        conn,
-        Opening(
-            id="opening",
-            company_id="co",
-            title="Eng",
-            url="https://example.com/jobs/42",
-            research_trace_id="t1",
-            created_at=datetime.now(UTC),
-        ),
-    )
+from tests.helpers import canned_assertion, fake_dispatch_deps, seed_opening
 
 
 def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> None:
     """After `dispatch` returns, every target with assertions has a cached digest."""
     conn = connect(tmp_path / "screen.db")
-    _seed_opening(conn)
+    seed_opening(conn, "opening", company_id="co")
     assertions = [canned_assertion("craft_direction"), canned_assertion("mission")]
     append_assertions(conn, assertions, opening_id="opening")
     digester = FakeDigester(["stretch digest", "mission digest"])

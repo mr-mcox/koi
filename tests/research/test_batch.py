@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,7 +22,7 @@ from screen.research.batch import (
     run_dispatch,
 )
 from screen.research.fakes import FakeBrowser, FakePlanner
-from screen.research_trace.trace_io import ResearchTraceMissingError
+from screen.research_trace.trace_io import ResearchTraceMissingError, research_trace_path_for
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
 from screen.store.repo import (
@@ -33,48 +32,21 @@ from screen.store.repo import (
     upsert_company,
     upsert_opening,
 )
-from screen.types import Assertion, Citation, Company, Opening
-from tests.helpers import canned_assertion, fake_dispatch_deps
+from screen.types import Company, Fit, Opening, Stage, Target
+from tests.helpers import canned_assertion, fake_dispatch_deps, seed_opening, seed_research_trace
 
 _QUERY = "extra search"
 
 
 def _seed_opening_with_trace(
-    tmp_path: Path, opening_id: str, company_id: str, *, stage: str = "screening"
+    tmp_path: Path, opening_id: str, *, stage: Stage = "screening"
 ) -> Path:
+    trace_path = research_trace_path_for(tmp_path, f"{opening_id}-trace")
+    seed_research_trace(
+        trace_path, f"Posting for {opening_id}.", f"https://example.com/{opening_id}"
+    )
     conn = connect(tmp_path / "screen.db")
-    upsert_company(
-        conn, Company(id=company_id, name=f"{company_id} Inc", created_at=datetime.now(UTC))
-    )
-    trace_path = tmp_path / "research_traces" / f"{opening_id}-trace.jsonl"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    url = f"https://example.com/{opening_id}"
-    trace_path.write_text(
-        json.dumps(
-            {
-                "ts": "2026-08-22T12:00:00Z",
-                "tool": "tavily_extract",
-                "request": {"urls": [url]},
-                "response": {
-                    "results": [{"url": url, "raw_content": f"Posting for {opening_id}."}]
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    upsert_opening(
-        conn,
-        Opening(
-            id=opening_id,
-            company_id=company_id,
-            title="Eng",
-            url=url,
-            research_trace_id=f"{opening_id}-trace",
-            created_at=datetime.now(UTC),
-            stage=stage,  # type: ignore[arg-type]
-        ),
-    )
+    seed_opening(conn, opening_id, research_trace_id=f"{opening_id}-trace", stage=stage)
     conn.close()
     return trace_path
 
@@ -95,8 +67,8 @@ def _build_engine(tmp_path: Path) -> BatchEngine:
 
 
 def test_batch_runs_across_openings_in_screening_stage(tmp_path: Path) -> None:
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
-    _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
+    _seed_opening_with_trace(tmp_path, "widgets--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     progress = BatchProgress()
@@ -119,7 +91,7 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
     """`run_batch` records a seconds-per-turn EMA from an injected clock and derives
     `eta_seconds` from it — no timing assumed, only measured (queue-page-cleanup
     bearing, Approach)."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     progress = BatchProgress()
@@ -145,7 +117,7 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
 def test_batch_progress_records_no_rate_when_no_time_elapsed(tmp_path: Path) -> None:
     """A clock that doesn't advance yields no sample; dividing it in would report a
     zero rate and promise the batch is about to finish."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     progress = BatchProgress()
@@ -172,8 +144,8 @@ def test_eta_text_formats_seconds_and_minutes() -> None:
 def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
     """A `pursuing`/`applied`/`closed` opening never gets drawn by the bandit —
     leaving the live queue also leaves the research batch's candidate set."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", stage="applied")
-    _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets")
+    _seed_opening_with_trace(tmp_path, "acme--eng", stage="applied")
+    _seed_opening_with_trace(tmp_path, "widgets--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     total, touched = run_batch(
@@ -191,7 +163,7 @@ def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
 
 
 def test_batch_with_no_screening_openings_is_a_no_op(tmp_path: Path) -> None:
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme", stage="applied")
+    _seed_opening_with_trace(tmp_path, "acme--eng", stage="applied")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     total, touched = run_batch(
@@ -208,7 +180,7 @@ def test_batch_with_no_screening_openings_is_a_no_op(tmp_path: Path) -> None:
 
 
 def test_batch_size_zero_is_a_no_op(tmp_path: Path) -> None:
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     total, touched = run_batch(
@@ -225,7 +197,7 @@ def test_batch_size_zero_is_a_no_op(tmp_path: Path) -> None:
 
 
 def test_batch_revisits_same_opening_across_rounds_within_one_batch(tmp_path: Path) -> None:
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     total, touched = run_batch(
@@ -242,29 +214,11 @@ def test_batch_revisits_same_opening_across_rounds_within_one_batch(tmp_path: Pa
 
 
 def _seed_assertions(
-    tmp_path: Path, opening_id: str, targets: list[str], count: int, fit: str = "Strong"
+    tmp_path: Path, opening_id: str, targets: list[Target], count: int, fit: Fit = "Strong"
 ) -> None:
     conn = connect(tmp_path / "screen.db")
     assertions = [
-        Assertion(
-            target=target,  # type: ignore[arg-type]
-            fit=fit,  # type: ignore[arg-type]
-            provenance="ratified",
-            chunk="chunk",
-            citations=[
-                Citation(
-                    url="https://example.com",
-                    quote="q",
-                    host="example.com",
-                    source_provenance="official",
-                    independent=True,
-                    source_date=None,
-                )
-            ],
-            created_at=datetime.now(UTC),
-        )
-        for target in targets
-        for _ in range(count)
+        canned_assertion(target, fit, "ratified") for target in targets for _ in range(count)
     ]
     append_assertions(conn, assertions, opening_id=opening_id)
     conn.close()
@@ -275,8 +229,8 @@ def test_batch_draws_the_higher_uncertainty_opening_more_often(tmp_path: Path) -
     targets are already heavily, consistently examined, over a batch of many draws."""
     config = load_scoring_config()
     all_targets = list(config.dimension_weights)
-    _seed_opening_with_trace(tmp_path, "wide--eng", "wide")
-    _seed_opening_with_trace(tmp_path, "narrow--eng", "narrow")
+    _seed_opening_with_trace(tmp_path, "wide--eng")
+    _seed_opening_with_trace(tmp_path, "narrow--eng")
     _seed_assertions(tmp_path, "narrow--eng", all_targets, 10)
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
@@ -306,22 +260,22 @@ def test_eligible_weights_favors_fresh_and_boundary_openings_over_settled_ones(
     boundary."""
     config = load_scoring_config()
     targets = list(config.dimension_weights)
-    for opening_id, company_id in [
-        ("top--eng", "top"),
-        ("bottom--eng", "bottom"),
-        ("mediocre0--eng", "mediocre0"),
-        ("mediocre1--eng", "mediocre1"),
-        ("mediocre2--eng", "mediocre2"),
-        ("mediocre3--eng", "mediocre3"),
-        ("mediocre4--eng", "mediocre4"),
-        ("mediocre5--eng", "mediocre5"),
-        ("mediocre6--eng", "mediocre6"),
-        ("mediocre7--eng", "mediocre7"),
-        ("mediocre8--eng", "mediocre8"),
-        ("mediocre9--eng", "mediocre9"),
-        ("fresh--eng", "fresh"),
+    for opening_id in [
+        "top--eng",
+        "bottom--eng",
+        "mediocre0--eng",
+        "mediocre1--eng",
+        "mediocre2--eng",
+        "mediocre3--eng",
+        "mediocre4--eng",
+        "mediocre5--eng",
+        "mediocre6--eng",
+        "mediocre7--eng",
+        "mediocre8--eng",
+        "mediocre9--eng",
+        "fresh--eng",
     ]:
-        _seed_opening_with_trace(tmp_path, opening_id, company_id)
+        _seed_opening_with_trace(tmp_path, opening_id)
     _seed_assertions(tmp_path, "top--eng", targets, 10, fit="Strong")
     _seed_assertions(tmp_path, "bottom--eng", targets, 10, fit="Poor")
     # 10 mediocre openings + top + fresh = 12 non-bottom candidates, above `top_k` (10):
@@ -345,8 +299,8 @@ def test_eligible_weights_keep_a_floor_when_pool_is_wholly_settled(
     draw remains possible even when the boundary signal is maximally settled."""
     config = load_scoring_config()
     all_targets = list(config.dimension_weights)
-    _seed_opening_with_trace(tmp_path, "wide--eng", "wide")
-    _seed_opening_with_trace(tmp_path, "narrow--eng", "narrow")
+    _seed_opening_with_trace(tmp_path, "wide--eng")
+    _seed_opening_with_trace(tmp_path, "narrow--eng")
     _seed_assertions(tmp_path, "narrow--eng", all_targets, 10)
     conn = connect(tmp_path / "screen.db")
 
@@ -360,8 +314,8 @@ def test_eligible_weights_keep_a_floor_when_pool_is_wholly_settled(
 def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path: Path) -> None:
     """Two invocations against identical seed data produce identical draw sequences
     (config.seed determinism)."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
-    _seed_opening_with_trace(tmp_path, "widgets--eng", "widgets")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
+    _seed_opening_with_trace(tmp_path, "widgets--eng")
     draws1: list[str] = []
     draws2: list[str] = []
     conn = connect(tmp_path / "screen.db")
@@ -377,8 +331,8 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
     )
     conn.close()
     tmp_path_2 = tmp_path.parent / f"{tmp_path.name}-replay"
-    _seed_opening_with_trace(tmp_path_2, "acme--eng", "acme")
-    _seed_opening_with_trace(tmp_path_2, "widgets--eng", "widgets")
+    _seed_opening_with_trace(tmp_path_2, "acme--eng")
+    _seed_opening_with_trace(tmp_path_2, "widgets--eng")
     conn2 = connect(tmp_path_2 / "screen.db")
     engine2 = _build_engine(tmp_path_2)
     run_batch(
@@ -397,7 +351,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
 def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
     """The web-route engine opens a fresh connection from the db_path, so the
     background task outlives any request-scoped connection."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
         planner_factory=_search_then_stop_planner,
         deps_factory=lambda: fake_dispatch_deps(
@@ -419,7 +373,7 @@ def test_batch_engine_prints_a_draw_trace_line_per_spent_turn(
     naming the opening drawn, its draw probability,
     and its uncertainty rank before/after. `BatchEngine.run` is the web route's only
     call site, so this is the only place left that can print it."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = _build_engine(tmp_path)
     progress = BatchProgress()
     engine.run(tmp_path / "screen.db", 2, progress)
@@ -437,7 +391,7 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
     search-then-stop planner, so a fetch action's on_assertions -> append_assertions
     path was never exercised at the batch level."""
     url = "https://example.com/acme--eng/second-page"
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
         planner_factory=lambda: FakePlanner(
             sequence=[[FetchAction(url=url)], [StopAction(reason="done")]]
@@ -462,7 +416,7 @@ def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
     same opening, instead of resetting after one action — the sticky-target continuity
     (sticky target + per-target cap)."""
     url = "https://example.com/acme--eng/second-page"
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
         planner_factory=lambda: FakePlanner(
             sequence=[
@@ -499,7 +453,7 @@ def test_batch_engine_prints_opportunity_summary(
     budget of 3 with a search+fetch+stop sequence spends 2 turns and ends with
     the planner's stop reason."""
     url = "https://example.com/acme--eng/second-page"
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
         planner_factory=lambda: FakePlanner(
             sequence=[
@@ -530,7 +484,7 @@ def test_batch_engine_prints_opportunity_summary(
 def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -> None:
     """A misconfigured `research_block_turns=0` caps every block at zero
     actions rather than crashing — the opening is marked stalled and the batch moves on."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     engine = _build_engine(tmp_path)
     zero_cap_config = dataclasses.replace(load_scoring_config(), research_block_turns=0)
@@ -551,7 +505,7 @@ def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -
 def test_resume_opening_spends_nothing_when_no_budget_remains(tmp_path: Path) -> None:
     """A batch whose remaining budget has run out still calls `resume_opening` for the
     drawn opening; it must return a no-op rather than spend an unbudgeted turn."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     opening = get_opening(conn, "acme--eng")
     assert opening is not None
@@ -592,7 +546,7 @@ def test_resume_opening_raises_on_missing_trace(tmp_path: Path) -> None:
 
 def test_run_dispatch_uses_default_digester_when_none_provided(tmp_path: Path) -> None:
     """The production digester fallback is exercised without making a live BAML call."""
-    _seed_opening_with_trace(tmp_path, "acme--eng", "acme")
+    _seed_opening_with_trace(tmp_path, "acme--eng")
     conn = connect(tmp_path / "screen.db")
     opening = get_opening(conn, "acme--eng")
     assert opening is not None

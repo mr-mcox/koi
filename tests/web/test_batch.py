@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import socket
 import threading
 import time
@@ -26,16 +25,13 @@ from screen.research_trace.trace_io import research_trace_path_for
 from screen.store.db import connect
 from screen.store.repo import (
     get_opening,
-    upsert_company,
-    upsert_opening,
 )
-from screen.types import (
-    Company,
-    Opening,
-)
-from tests.helpers import fake_dispatch_deps, make_app
-from tests.web.helpers import (
-    make_assertion,
+from tests.helpers import (
+    canned_assertion,
+    fake_dispatch_deps,
+    make_app,
+    seed_opening,
+    seed_research_trace,
 )
 
 _LIVE_NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
@@ -43,40 +39,16 @@ _LIVE_NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
 
 def _seed_research_trace(data_root: Path, opening_id: str) -> None:
     """Write a minimal research trace so the batch engine can resume the opening."""
-    trace_path = data_root / "research_traces" / f"tx-{opening_id}.jsonl"
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    url = f"https://example.com/{opening_id}"
-    trace_path.write_text(
-        json.dumps(
-            {
-                "ts": _LIVE_NOW.isoformat(),
-                "tool": "tavily_extract",
-                "request": {"urls": [url]},
-                "response": {
-                    "results": [{"url": url, "raw_content": f"Posting for {opening_id}."}]
-                },
-            }
-        )
-        + "\n",
-        encoding="utf-8",
+    seed_research_trace(
+        research_trace_path_for(data_root, f"tx-{opening_id}"),
+        f"Posting for {opening_id}.",
+        f"https://example.com/{opening_id}",
     )
 
 
 def _seed_live_opening(db_path: Path, opening_id: str) -> None:
     conn = connect(db_path)
-    company_id = opening_id.split("--", maxsplit=1)[0]
-    upsert_company(conn, Company(id=company_id, name=f"{company_id} Inc", created_at=_LIVE_NOW))
-    upsert_opening(
-        conn,
-        Opening(
-            id=opening_id,
-            company_id=company_id,
-            title=f"{opening_id} title",
-            url=f"https://example.com/{opening_id}",
-            research_trace_id=f"tx-{opening_id}",
-            created_at=_LIVE_NOW,
-        ),
-    )
+    seed_opening(conn, opening_id, created_at=_LIVE_NOW)
     conn.close()
     _seed_research_trace(db_path.parent, opening_id)
 
@@ -135,7 +107,7 @@ def _pausable_engine(gate: threading.Event) -> BatchEngine:
         planner_factory=lambda: shared_planner,
         deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={"paused query": []}),
-            extractor=FakeExtractor([[make_assertion("craft_direction", "Strong")]]),
+            extractor=FakeExtractor([[canned_assertion("craft_direction", "Strong", "ratified")]]),
             digester=FakeDigester(["Synthetic digest."]),
         ),
     )
