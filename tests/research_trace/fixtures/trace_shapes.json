@@ -1,0 +1,54 @@
+[
+  {
+    "shape": "decide_plan, current",
+    "line": {"ts": "2026-10-29T12:00:00Z", "tool": "decide_plan", "request": {"opening_id": "op-1", "company_id": "co-1", "company_name": "Example Co", "opening_title": "Staff Engineer", "turns_used": 1, "turn_budget": 8, "primary_target": "compensation", "active_target": "compensation", "active_target_actions": 1, "prior_queries": ["Example Co compensation"], "visited_urls": ["https://example.com/jobs/1"], "targets_covered": ["compensation"], "target_assertion_counts": {"compensation": 2}, "last_context": {"url": "https://example.com/jobs/1", "targets_added": ["compensation"], "snippet": "Synthetic posting."}}, "response": {"actions": [{"tag": "stop", "reason": "Done."}]}}
+  },
+  {
+    "shape": "decide_plan, targeted passes before per-target counts",
+    "line": {"ts": "2026-09-10T12:00:00Z", "tool": "decide_plan", "request": {"opening_id": "op-1", "company_id": "co-1", "company_name": "Example Co", "opening_title": "Staff Engineer", "turns_used": 1, "turn_budget": 8, "primary_target": "compensation", "active_target": "compensation", "active_target_actions": 1, "prior_queries": [], "visited_urls": [], "targets_covered": [], "last_context": null}, "response": {"actions": [{"tag": "search", "query": "Example Co compensation"}]}}
+  },
+  {
+    "shape": "decide_plan, search and token budgets before turn budgets",
+    "line": {"ts": "2026-08-28T12:00:00Z", "tool": "decide_plan", "request": {"opening_id": "op-1", "company_id": "co-1", "company_name": "Example Co", "opening_title": "Staff Engineer", "searches_used": 0, "search_budget": 5, "tokens_used": 0, "token_budget": 100000, "prior_queries": [], "visited_urls": [], "targets_covered": [], "last_context": null}, "response": {"actions": [{"tag": "stop", "reason": "Done."}]}}
+  },
+  {
+    "shape": "tavily_search, success",
+    "line": {"ts": "2026-10-29T12:00:01Z", "tool": "tavily_search", "request": {"query": "Example Co compensation"}, "response": {"results": [{"url": "https://example.org/example-co", "title": "Example Co pay", "raw_content": "Synthetic search hit.", "snippet": "Synthetic search hit."}]}}
+  },
+  {
+    "shape": "tavily_search, failure",
+    "line": {"ts": "2026-10-29T12:00:02Z", "tool": "tavily_search", "request": {"query": "Example Co culture"}, "response": {"error": "search failed", "details": {"exception": "synthetic"}}}
+  },
+  {
+    "shape": "tavily_extract, research-pass success",
+    "line": {"ts": "2026-10-29T12:00:03Z", "tool": "tavily_extract", "request": {"urls": ["https://example.org/example-co"]}, "response": {"results": [{"url": "https://example.org/example-co", "raw_content": "Synthetic page."}]}}
+  },
+  {
+    "shape": "tavily_extract, research-pass failure",
+    "line": {"ts": "2026-10-29T12:00:04Z", "tool": "tavily_extract", "request": {"urls": ["https://example.net/blocked"]}, "response": {"error": "fetch failed", "details": {"failed_results": [{"url": "https://example.net/blocked", "error": "synthetic"}]}, "results": []}}
+  },
+  {
+    "shape": "tavily_extract, intake success, written from the payload models",
+    "line": {"ts": "2026-10-29T12:00:05Z", "tool": "tavily_extract", "request": {"urls": ["https://example.com/jobs/2"]}, "response": {"results": [{"url": "https://example.com/jobs/2", "raw_content": "Synthetic posting."}], "failed_results": [], "error": null, "details": {}}}
+  },
+  {
+    "shape": "tavily_extract, intake success, a Tavily result copied verbatim",
+    "line": {"ts": "2026-10-28T12:00:00Z", "tool": "tavily_extract", "request": {"urls": ["https://example.com/jobs/3"]}, "response": {"results": [{"url": "https://example.com/jobs/3", "raw_content": "Synthetic posting.", "images": [], "favicon": "https://example.com/favicon.ico"}], "failed_results": []}}
+  },
+  {
+    "shape": "tavily_extract, intake failure with an empty results list",
+    "line": {"ts": "2026-10-28T12:00:01Z", "tool": "tavily_extract", "request": {"urls": ["https://example.net/gone"]}, "response": {"error": "fetch failed", "details": {"failed_results": []}, "results": []}}
+  },
+  {
+    "shape": "tavily_extract, intake success, the raw Tavily response",
+    "line": {"ts": "2026-09-15T12:00:00Z", "tool": "tavily_extract", "request": {"urls": ["https://example.com/jobs/4"]}, "response": {"results": [{"url": "https://example.com/jobs/4", "raw_content": "Synthetic posting.", "images": []}], "failed_results": [], "response_time": 0.5}}
+  },
+  {
+    "shape": "tavily_extract, intake failure with details and no results",
+    "line": {"ts": "2026-09-15T12:00:01Z", "tool": "tavily_extract", "request": {"urls": ["https://example.net/old-gone"]}, "response": {"error": "transport failed", "details": {"exception": "synthetic"}}}
+  },
+  {
+    "shape": "tavily_extract, intake failure with only an error",
+    "line": {"ts": "2026-08-28T12:00:01Z", "tool": "tavily_extract", "request": {"urls": ["https://example.net/oldest-gone"]}, "response": {"error": "transport failed"}}
+  }
+]

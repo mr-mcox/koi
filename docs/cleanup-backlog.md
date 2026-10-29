@@ -377,45 +377,30 @@ committed exactly as before.
 the excluded triple is never suggested, no digest means no consult, few-shot sourcing
 skips rulings with a missing digest). The loop tests cover only the loops' policies.
 
-## Q. Type the research-trace payloads — *open, after N*
+## Q. Type the research-trace payloads — *done* in [#12](https://github.com/mr-mcox/koi/pull/12)
 
-`ResearchTraceEvent.request` and `.response` (`research_trace/events.py`) are
-`dict[str, Any]`. Their writers and readers agree only through string keys, across files
-and across time, because traces are persisted JSONL that the code reads back on resume:
-- `research/dispatcher._plan_request` writes the `decide_plan` snapshot.
-  `research_trace/replay.py` reads `target_assertion_counts`, `targets_covered`,
-  `active_target` and `primary_target` back from it to rebuild stall state.
-- The search and extract events write `query`, `urls` and `results`. `replay.py` and
-  `trace_io.read_page_content` read them back. `intake/pipeline.py` writes the
-  intake-time extract event, including the no-`results` fatal shape that `replay` counts
-  as "not a pass turn".
+`research_trace/events.py` gives each tool a request and a response model
+(`DecidePlanRequest`/`Response`, `SearchRequest`/`Response`, `ExtractRequest`/`Response`).
+`ResearchTraceEvent` is now a union of `DecidePlanEvent`, `SearchEvent` and
+`ExtractEvent`, discriminated on `tool`, and `parse_event` validates a line, payload
+included. The dispatcher and intake build payloads by keyword. `replay` and
+`read_page_content` read attributes, and `TavilyExtractResponse` and the `cast`s are gone.
 
-If someone renames a key on the write side, the read side gets `None` or an empty set
-and raises nothing: stall detection on resume quietly gets worse, and the suite still
-passes unless a test pins that exact key.
+What a missing field means is stated once, in the model. `target_assertion_counts: None`
+means the trace predates counts. Payloads ignore unknown keys, so retired keys still
+load. The compatibility rule is decisions.md E8.
+`tests/research_trace/fixtures/trace_shapes.json` holds one synthetic line for every shape
+in git history, and a test replays the whole file.
 
-- Give each tool a Pydantic request model and a response model (decide-plan, search,
-  extract), and have the writers and readers import the same ones. Make
-  `ResearchTraceEvent` a union discriminated on `tool`, so loading an event validates
-  its payload.
-- Fields that older traces lack are optional with a default. Say what their absence
-  means once, in the model, not in each reader (`_counts` already treats a missing
-  `target_assertion_counts` as "fall back to membership").
-- Compatibility rule, recorded in decisions.md: new payload fields are optional with a
-  default; never rename or retype an existing field. Enforce it with a committed fixture
-  of trace lines in the current shape, plus one per older shape `replay` still handles,
-  which must keep loading. Use synthetic companies and URLs only, never lines from a
-  real trace.
-- `TavilyExtractResponse` and the `cast`s in `replay.py` and `trace_io.py` go away once
-  the extract response is a model.
+Replay no longer counts turns. The running total was left over from the retired
+per-opening lifetime budget, and resume used it only as an offset that cancelled out.
+Every pass now counts its own turns from zero. `run_dispatch` returns the `PassSummary`,
+and `resume_opening` reads turns spent from it. So the old rule that an extract without
+`results` is "not a pass turn" has no reader and is gone.
 
-Avro or another schema registry is out of scope: one codebase writes and reads these, and
-Pydantic already provides the schema and the validation.
-
-Touches: `research_trace/events.py`, `research_trace/replay.py`,
-`research_trace/trace_io.py`, `research/dispatcher.py`, `intake/pipeline.py`,
-`docs/architecture/decisions.md`, `tests/research_trace/`, `tests/research/test_dispatcher.py`,
-`tests/intake/test_pipeline.py`.
+Intake now records only `url` and `raw_content` per result, not the whole Tavily dict.
+Removed because no writer ever produced the shape they test: an extract result without a
+`url`, a search without a `query`, and `read_page_content`'s fallback to the request URL.
 
 ## R. Check the row mappers against the migrated schema — *done* in [#10](https://github.com/mr-mcox/koi/pull/10)
 

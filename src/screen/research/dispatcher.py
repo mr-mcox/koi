@@ -20,7 +20,19 @@ from screen.research.baml_planner import select_primary_target
 from screen.research.context import FetchContext, SearchContext
 from screen.research.protocol import Planner
 from screen.research.state import LoopState, PassSummary
-from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.events import (
+    DecidePlanEvent,
+    DecidePlanRequest,
+    DecidePlanResponse,
+    ExtractEvent,
+    ExtractRequest,
+    ExtractResponse,
+    ExtractResult,
+    ResearchTraceEvent,
+    SearchEvent,
+    SearchRequest,
+    SearchResponse,
+)
 from screen.score.types import ScoringConfig
 from screen.types import Assertion
 
@@ -51,30 +63,30 @@ def _target_assertion_counts(state: LoopState) -> dict[str, int]:
     return counts
 
 
-def _plan_request(state: LoopState) -> dict[str, object]:
+def _plan_request(state: LoopState) -> DecidePlanRequest:
     """Snapshot of what the planner had to decide from, for the audit trail.
 
     Omits `page_content` and `rubric_text` — static per pass, and large;
     everything here is what actually varies turn to turn.
     """
-    return {
-        "opening_id": state.opening_id,
-        "company_id": state.company_id,
-        "company_name": state.company_name,
-        "opening_title": state.opening_title,
-        "turns_used": state.turns_used,
-        "turn_budget": state.turn_budget,
-        "primary_target": state.primary_target,
-        "active_target": state.active_target,
-        "active_target_actions": state.active_target_actions,
-        "prior_queries": list(state.prior_queries),
-        "visited_urls": list(state.visited_urls),
-        "targets_covered": _targets_covered(state),
-        "target_assertion_counts": _target_assertion_counts(state),
-        "last_context": (
+    return DecidePlanRequest(
+        opening_id=state.opening_id,
+        company_id=state.company_id,
+        company_name=state.company_name,
+        opening_title=state.opening_title,
+        turns_used=state.turns_used,
+        turn_budget=state.turn_budget,
+        primary_target=state.primary_target,
+        active_target=state.active_target,
+        active_target_actions=state.active_target_actions,
+        prior_queries=list(state.prior_queries),
+        visited_urls=list(state.visited_urls),
+        targets_covered=_targets_covered(state),
+        target_assertion_counts=_target_assertion_counts(state),
+        last_context=(
             state.last_context.model_dump(mode="json") if state.last_context is not None else None
         ),
-    }
+    )
 
 
 def _advance_active_target(state: LoopState) -> LoopState:
@@ -121,11 +133,10 @@ def dispatch(
         request = _plan_request(current)
         actions = planner.plan(current)
         deps.on_event(
-            ResearchTraceEvent(
+            DecidePlanEvent(
                 ts=datetime.now(UTC),
-                tool="decide_plan",
                 request=request,
-                response={"actions": [a.model_dump(mode="json") for a in actions]},
+                response=DecidePlanResponse(actions=[a.model_dump(mode="json") for a in actions]),
             )
         )
         if not actions:
@@ -193,11 +204,10 @@ def _handle_search(
         hits = deps.browser.search(action.query)
     except BrowserError as exc:
         deps.on_event(
-            ResearchTraceEvent(
+            SearchEvent(
                 ts=datetime.now(UTC),
-                tool="tavily_search",
-                request={"query": action.query},
-                response={"error": str(exc), "details": exc.details},
+                request=SearchRequest(query=action.query),
+                response=SearchResponse(error=str(exc), details=exc.details),
             )
         )
         return state.model_copy(
@@ -208,11 +218,10 @@ def _handle_search(
             }
         )
     deps.on_event(
-        ResearchTraceEvent(
+        SearchEvent(
             ts=datetime.now(UTC),
-            tool="tavily_search",
-            request={"query": action.query},
-            response={"results": list(hits)},
+            request=SearchRequest(query=action.query),
+            response=SearchResponse(results=list(hits)),
         )
     )
     return state.model_copy(
@@ -253,11 +262,10 @@ def _handle_fetch(
         hit = deps.browser.fetch(action.url)
     except BrowserError as exc:
         deps.on_event(
-            ResearchTraceEvent(
+            ExtractEvent(
                 ts=datetime.now(UTC),
-                tool="tavily_extract",
-                request={"urls": [action.url]},
-                response={"error": str(exc), "details": exc.details, "results": []},
+                request=ExtractRequest(urls=[action.url]),
+                response=ExtractResponse(results=[], error=str(exc), details=exc.details),
             )
         )
         return state.model_copy(
@@ -273,11 +281,12 @@ def _handle_fetch(
         )
     raw_content: str = hit.get("raw_content") or ""
     deps.on_event(
-        ResearchTraceEvent(
+        ExtractEvent(
             ts=datetime.now(UTC),
-            tool="tavily_extract",
-            request={"urls": [action.url]},
-            response={"results": [{"url": action.url, "raw_content": raw_content}]},
+            request=ExtractRequest(urls=[action.url]),
+            response=ExtractResponse(
+                results=[ExtractResult(url=action.url, raw_content=raw_content)]
+            ),
         )
     )
 

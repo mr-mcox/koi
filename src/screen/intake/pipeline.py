@@ -20,7 +20,12 @@ from screen.intake.company_id import derive_company_id
 from screen.intake.identify import Identifier, identify_opening
 from screen.intake.opening_id import derive_opening_id
 from screen.research.batch import RunDispatchDeps, run_dispatch
-from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.events import (
+    ExtractEvent,
+    ExtractRequest,
+    ExtractResponse,
+    ExtractResult,
+)
 from screen.research_trace.ids import derive_research_trace_id
 from screen.research_trace.trace_io import (
     ResearchTraceMissingError,
@@ -91,15 +96,14 @@ def fetch_url(url: str, client: Fetcher, data_dir: Path) -> Path:
     research_trace_id = derive_research_trace_id(url)
     research_trace_path = research_trace_path_for(data_dir, research_trace_id)
     started = datetime.now(UTC)
-    request_payload = {"urls": [url]}
+    request = ExtractRequest(urls=[url])
     try:
         hit = client.fetch(url)
     except BrowserError as exc:
-        event = ResearchTraceEvent(
+        event = ExtractEvent(
             ts=started,
-            tool="tavily_extract",
-            request=request_payload,
-            response={"error": str(exc), "details": exc.details, "results": []},
+            request=request,
+            response=ExtractResponse(results=[], error=str(exc), details=exc.details),
         )
         record_event(research_trace_path, event)
         raise IntakePipelineError(
@@ -107,11 +111,14 @@ def fetch_url(url: str, client: Fetcher, data_dir: Path) -> Path:
             f"intake failed for {url}: {exc}",
             permanent=exc.permanent,
         ) from exc
-    event = ResearchTraceEvent(
+    event = ExtractEvent(
         ts=started,
-        tool="tavily_extract",
-        request=request_payload,
-        response={"results": [dict(hit)], "failed_results": []},
+        request=request,
+        response=ExtractResponse(
+            results=[
+                ExtractResult(url=hit.get("url") or url, raw_content=hit.get("raw_content") or "")
+            ]
+        ),
     )
     record_event(research_trace_path, event)
     return research_trace_path
@@ -179,7 +186,7 @@ def identify_research_trace(
         extractor=extractor_factory(),
         on_event=functools.partial(record_event, research_trace_path),
     )
-    return run_dispatch(
+    summary = run_dispatch(
         conn,
         opening.id,
         url,
@@ -191,6 +198,7 @@ def identify_research_trace(
         turn_budget=load_scoring_config().research_block_turns,
         deps=deps,
     )
+    return summary.stopped_reason
 
 
 def intake_url(

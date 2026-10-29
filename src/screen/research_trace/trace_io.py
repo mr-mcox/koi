@@ -7,9 +7,8 @@ this module.
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import cast
 
-from screen.research_trace.events import ResearchTraceEvent, TavilyExtractResponse
+from screen.research_trace.events import ExtractEvent, ResearchTraceEvent, parse_event
 
 
 class ResearchTraceMissingError(RuntimeError):
@@ -34,17 +33,11 @@ def read_page_content(research_trace_path: Path) -> tuple[str, str]:
     for raw_line in research_trace_path.read_text(encoding="utf-8").split("\n"):
         if not raw_line:
             continue
-        event = ResearchTraceEvent.model_validate_json(raw_line)
-        if event.tool != "tavily_extract":
+        event = parse_event(raw_line)
+        if not isinstance(event, ExtractEvent) or not event.response.results:
             continue
-        response = cast(TavilyExtractResponse, event.response)
-        results = response.get("results") or []
-        if not results:
-            continue
-        first = results[0]
-        url = first.get("url") or (event.request.get("urls") or [""])[0]
-        raw_content = first.get("raw_content", "")
-        return str(raw_content), str(url)
+        first = event.response.results[0]
+        return first.raw_content, first.url
     raise ResearchTraceMissingError(
         f"no tavily_extract event with raw_content in {research_trace_path}"
     )

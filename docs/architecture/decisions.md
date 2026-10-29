@@ -403,6 +403,29 @@ The one-time backfill E6 carved out has run and the CLI that ran it (`intake/cli
 are now append-only with no exceptions — E6 no longer describes live code, only the
 historical maintenance pass it covered.
 
+### E8 · Research-trace payloads only grow: new fields optional, existing ones never renamed or retyped · `adopted` (2026-10, cleanup item Q)
+
+Traces are persisted JSONL that resume reads back, and an old trace is never rewritten,
+so every payload shape ever written stays live. Each tool's request and response is a
+Pydantic model in `research_trace/events.py`, and an event is a union discriminated on
+`tool`. A new field is optional, and its default says what its absence means, once, in
+the model (`target_assertion_counts: None` means "predates counts, fall back to
+membership"). Renaming or retyping a field would silently change what resume reads from
+old traces, which is the failure the models exist to stop.
+`tests/research_trace/fixtures/trace_shapes.json` holds one synthetic line for every
+shape any commit has written, and they must all load and replay as documented. A shape
+leaves the fixture only when no trace carrying it can be resumed.
+
+Payload models ignore unknown keys rather than rejecting them. Older lines carry keys no
+longer modeled, like the pre-turn-budget `searches_used` and Tavily's raw
+`response_time`. Writers build payloads by keyword, so pyright still rejects a misspelled
+field when the trace is written.
+
+**Rejected:** Avro or another schema registry. One codebase writes and reads these
+traces, and Pydantic already gives the schema and the validation. **Rejected:**
+`extra="forbid"` on payloads. It would make every retired key a load failure on resume,
+and the write side is already checked statically.
+
 ---
 
 ## Rubric

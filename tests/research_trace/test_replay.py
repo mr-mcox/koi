@@ -1,70 +1,80 @@
 """Tests for replaying a research trace into resumable state.
 
 Reconstructs what a fresh LoopState needs to continue a pass rather than
-restart it: turns_used, visited_urls, prior_queries. The trace's
-`ToolName` vocabulary is closed (tavily_extract, tavily_search, decide_plan),
+restart it: visited_urls, prior_queries, target_stalls. The trace's
+tool vocabulary is closed (tavily_extract, tavily_search, decide_plan),
 so replay is a fold over a fixed set of event shapes, not an open parse.
 """
 
 from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.events import (
+    DecidePlanEvent,
+    DecidePlanRequest,
+    DecidePlanResponse,
+    ExtractEvent,
+    ExtractRequest,
+    ExtractResponse,
+    ExtractResult,
+    SearchEvent,
+    SearchRequest,
+    SearchResponse,
+)
 from screen.research_trace.replay import replay_research_trace
 from screen.research_trace.trace_io import append_line
 
 
-def _extract_event(url: str, raw_content: str = "content") -> ResearchTraceEvent:
-    return ResearchTraceEvent(
+def _extract_event(
+    url: str, response: ExtractResponse | None = None, raw_content: str = "content"
+) -> ExtractEvent:
+    return ExtractEvent(
         ts=datetime.now(UTC),
-        tool="tavily_extract",
-        request={"urls": [url]},
-        response={"results": [{"url": url, "raw_content": raw_content}]},
+        request=ExtractRequest(urls=[url]),
+        response=(
+            response
+            if response is not None
+            else ExtractResponse(results=[ExtractResult(url=url, raw_content=raw_content)])
+        ),
     )
 
 
-def _search_event(query: str) -> ResearchTraceEvent:
-    return ResearchTraceEvent(
+def _search_event(query: str, response: SearchResponse | None = None) -> SearchEvent:
+    return SearchEvent(
         ts=datetime.now(UTC),
-        tool="tavily_search",
-        request={"query": query},
-        response={"results": []},
+        request=SearchRequest(query=query),
+        response=response if response is not None else SearchResponse(),
     )
 
 
-def _decide_plan_event() -> ResearchTraceEvent:
-    return ResearchTraceEvent(
+def _plan_event(
+    active_target: str | None = None,
+    targets_covered: list[str] | None = None,
+    target_assertion_counts: dict[str, int] | None = None,
+) -> DecidePlanEvent:
+    return DecidePlanEvent(
         ts=datetime.now(UTC),
-        tool="decide_plan",
-        request={"turns_used": 0},
-        response={"actions": [{"tag": "stop", "reason": "done"}]},
+        request=DecidePlanRequest(
+            opening_id="op-1",
+            company_id="co-1",
+            company_name="Example Co",
+            opening_title="Staff Engineer",
+            active_target=active_target,
+            primary_target=active_target,
+            prior_queries=[],
+            visited_urls=[],
+            targets_covered=targets_covered or [],
+            target_assertion_counts=target_assertion_counts,
+            last_context=None,
+        ),
+        response=DecidePlanResponse(actions=[{"tag": "stop", "reason": "done"}]),
     )
 
 
-def test_missing_trace_replays_to_zero_turns(tmp_path: Path) -> None:
+def test_missing_trace_replays_to_empty_state(tmp_path: Path) -> None:
     replay = replay_research_trace(tmp_path / "missing.jsonl")
-    assert replay.turns_used == 0
     assert replay.visited_urls == []
     assert replay.prior_queries == []
-
-
-def test_replay_counts_extract_and_search_as_turns(tmp_path: Path) -> None:
-    path = tmp_path / "trace.jsonl"
-    append_line(path, _extract_event("https://example.com/jobs/1").model_dump_json())
-    append_line(path, _search_event("Acme comp").model_dump_json())
-    append_line(path, _extract_event("https://levels.fyi/acme").model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 3
-
-
-def test_replay_does_not_count_decide_plan_as_a_turn(tmp_path: Path) -> None:
-    path = tmp_path / "trace.jsonl"
-    append_line(path, _extract_event("https://example.com/jobs/1").model_dump_json())
-    append_line(path, _decide_plan_event().model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 1
 
 
 def test_replay_collects_visited_urls_in_order(tmp_path: Path) -> None:
@@ -86,19 +96,12 @@ def test_replay_collects_prior_queries_in_order(tmp_path: Path) -> None:
 
 
 def test_replay_ignores_extract_with_no_results(tmp_path: Path) -> None:
-    """The intake extract failure path writes an `error` response with no
-    `results` key; replay must not raise on it and must not count a visited URL."""
+    """Older failure records omit `results`; they visited no URL."""
     path = tmp_path / "trace.jsonl"
-    event = ResearchTraceEvent(
-        ts=datetime.now(UTC),
-        tool="tavily_extract",
-        request={"urls": ["https://nowhere.example/"]},
-        response={"error": "fake says: gone"},
-    )
+    event = _extract_event("https://nowhere.example/", ExtractResponse(error="fake says: gone"))
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 0
     assert replay.visited_urls == []
 
 
@@ -107,93 +110,34 @@ def test_replay_skips_blank_lines(tmp_path: Path) -> None:
     path.write_text("\n\n" + _search_event("Acme comp").model_dump_json() + "\n", encoding="utf-8")
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
+    assert replay.prior_queries == ["Acme comp"]
 
 
-def test_replay_ignores_extract_results_with_no_url(tmp_path: Path) -> None:
+def test_replay_failed_fetch_adds_no_visited_url(tmp_path: Path) -> None:
+    """A failed fetch has no result to fold. The dispatcher adds its URL to
+    `visited_urls` in-pass, but a resume may try it again."""
     path = tmp_path / "trace.jsonl"
-    event = ResearchTraceEvent(
-        ts=datetime.now(UTC),
-        tool="tavily_extract",
-        request={"urls": ["https://nowhere.example/"]},
-        response={"results": [{"raw_content": "orphan"}]},
+    event = _extract_event(
+        "https://blocked.example/job/1",
+        ExtractResponse(results=[], error="fetch failed", details={"failed_results": []}),
     )
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
     assert replay.visited_urls == []
 
 
-def test_replay_counts_search_with_no_query_field(tmp_path: Path) -> None:
-    """A malformed/empty query still spends a turn, just doesn't add to prior_queries."""
+def test_replay_records_query_of_failed_search(tmp_path: Path) -> None:
+    """The attempted query is a prior query whether or not the search succeeded."""
     path = tmp_path / "trace.jsonl"
-    event = ResearchTraceEvent(
-        ts=datetime.now(UTC), tool="tavily_search", request={}, response={"results": []}
+    event = _search_event(
+        "Acme Corp culture",
+        SearchResponse(error="search failed", details={"exception": "boom"}),
     )
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
-    assert replay.prior_queries == []
-
-
-def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded fetch failure carries an explicit empty `results` list
-    alongside `error`/`details`,
-    distinguishing it from the intake-time fatal failure (no `results` key
-    at all). It still counts as a turn — the API call was made — but adds
-    no visited URL since there is no result to fold."""
-    path = tmp_path / "trace.jsonl"
-    event = ResearchTraceEvent(
-        ts=datetime.now(UTC),
-        tool="tavily_extract",
-        request={"urls": ["https://blocked.example/job/1"]},
-        response={"error": "fetch failed", "details": {"failed_results": []}, "results": []},
-    )
-    append_line(path, event.model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 1
-    assert replay.visited_urls == []
-
-
-def test_replay_counts_failed_research_pass_search_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded search failure still spends a turn and does not
-    add to prior_queries beyond the attempted query (existing fold already
-    reads request['query'] regardless of response shape)."""
-    path = tmp_path / "trace.jsonl"
-    event = ResearchTraceEvent(
-        ts=datetime.now(UTC),
-        tool="tavily_search",
-        request={"query": "Acme Corp culture"},
-        response={"error": "search failed", "details": {"exception": "boom"}},
-    )
-    append_line(path, event.model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 1
     assert replay.prior_queries == ["Acme Corp culture"]
-
-
-def _plan_event(
-    active_target: str,
-    targets_covered: list[str],
-    target_assertion_counts: dict[str, int] | None = None,
-) -> ResearchTraceEvent:
-    request: dict[str, object] = {
-        "active_target": active_target,
-        "primary_target": active_target,
-        "targets_covered": targets_covered,
-    }
-    if target_assertion_counts is not None:
-        request["target_assertion_counts"] = target_assertion_counts
-    return ResearchTraceEvent(
-        ts=datetime.now(UTC),
-        tool="decide_plan",
-        request=request,
-        response={"actions": [{"tag": "stop", "reason": "done"}]},
-    )
 
 
 def test_replay_counts_single_target_stall(tmp_path: Path) -> None:
