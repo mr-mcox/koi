@@ -319,34 +319,26 @@ How each listed gap was closed:
   context type joins the union. `FakeTavily.search`'s pragma now gives a reason; N
   removes the method.
 
-## N. Narrow the browser protocol and merge its two fakes — *open, after M*
+## N. Narrow the browser protocol and merge its two fakes — *done*
 
-The `Browser` protocol (`browser.py`) is wider than any of its callers:
-- `extract` is on the protocol, but no caller uses it through the protocol. Only
-  `TavilyBrowser.fetch` calls it, internally. Drop it from the protocol, and make it
-  private on `TavilyBrowser` unless a caller turns up.
-- Intake only fetches (`intake/pipeline.fetch_url`, `intake_url`'s `client_factory`) but
-  is typed against the whole protocol. That is why `FakeTavily.search` exists only to
-  raise `NotImplementedError`, with an unused argument and a pragma. Give intake a
-  fetch-only protocol, and let research's dispatcher keep `fetch` + `search`.
+`browser.py` has two protocols: `Fetcher` (`fetch`), which intake's `fetch_url` and
+`intake_url`'s `client_factory` take, and `Browser` (`Fetcher` plus `search`), which
+research's dispatcher and batch keep. Neither has `extract`. It is
+`TavilyBrowser._extract` now, since only `fetch` calls it. Nothing checked either
+protocol with `isinstance`, so `@runtime_checkable` was dropped.
 
-There are two fakes for the one seam. `intake/fakes.FakeTavily` takes Tavily-shaped
-`extract` fixtures. `research/fakes.FakeBrowser` takes raw-content fixtures and records
-calls. `tests/intake/test_pipeline.py` uses both. Keep one fake (`FakeBrowser` already
-covers search and call recording), and move `FakeTavily`'s fixture semantics into it only
-where a test needs them.
+`FakeTavily` is gone, and `research/fakes.FakeBrowser` is the one fake, minus its
+`extract` and `extract_calls`. The pipeline tests that need Tavily's response shape (a
+failed extraction as an HTTP 200 with `failed_results`) drive a real `TavilyBrowser`
+through its `client` seam, as the retry test already did. A local `_FailingFetcher`
+raises a given `BrowserError` for the trace-details test. The transport-error test it
+duplicated was folded into that one.
 
-Tests that cover only the fakes, or a method that no longer exists, fail the AGENTS.md
-test: none of them catches a regression in production code. Delete them, or name the
-regression each one catches:
-- `tests/test_browser.py`: the `FakeTavily` tests (satisfies the protocol, fetch returns
-  a hit or raises, error details) and both `has_no_extract_one` tests.
-- `tests/research/test_protocol.py`: `test_fake_browser_extract_records_calls`, and the
-  `FakeBrowser` fixture tests.
-
-Touches: `browser.py`, `intake/fakes.py`, `intake/pipeline.py`, `research/fakes.py`,
-`research/dispatcher.py`, `research/batch.py`, `wiring.py`, `tests/test_browser.py`,
-`tests/research/test_protocol.py`, `tests/intake/test_pipeline.py`, `tests/helpers.py`.
+Deleted because they test only the fakes, a method that no longer exists, or Python
+itself: the `FakeTavily` tests, both `has_no_extract_one` tests, the protocol
+`isinstance` tests, `test_browser_error_is_exception`, `test_search_hit_is_typed_dict`,
+and `FakeBrowser`'s fixture and `extract` tests in `tests/research/test_protocol.py`.
+The advanced-depth test now goes through `fetch`.
 
 ## O. Turn on pyright strict mode — *open, after M*
 

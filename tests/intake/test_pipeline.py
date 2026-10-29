@@ -11,11 +11,10 @@ from typing import Any, cast
 
 import pytest
 
-from screen.browser import BrowserError, TavilyBrowser
+from screen.browser import BrowserError, SearchHit, TavilyBrowser
 from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake import pipeline as pipeline_module
-from screen.intake.fakes import FakeTavily
 from screen.research.actions import FetchAction, StopAction
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research_trace.ids import derive_research_trace_id
@@ -23,15 +22,18 @@ from screen.research_trace.trace_io import read_page_content, research_trace_pat
 from tests.helpers import canned_assertion, fake_dispatch_deps, fake_extractor, fake_identifier
 
 
-def _fake_tavily_for(url: str) -> FakeTavily:
-    return FakeTavily(
-        fixtures={
-            url: {
-                "results": [{"url": url, "raw_content": "Synthetic job posting fixture."}],
-                "failed_results": [],
-            }
-        }
-    )
+def _fetcher_for(url: str) -> FakeBrowser:
+    return FakeBrowser(fetch_fixtures={url: {"raw_content": "Synthetic job posting fixture."}})
+
+
+class _FailingFetcher:
+    """Raises the given BrowserError on every fetch."""
+
+    def __init__(self, error: BrowserError) -> None:
+        self._error = error
+
+    def fetch(self, url: str) -> SearchHit:
+        raise self._error
 
 
 def _default_planner() -> FakePlanner:
@@ -45,7 +47,7 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
     pipeline_module.intake_url(
         url,
         data_dir=tmp_path,
-        client_factory=lambda: _fake_tavily_for(url),
+        client_factory=lambda: _fetcher_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
@@ -69,20 +71,20 @@ def test_pipeline_records_partial_research_trace_on_failed_extract(tmp_path: Pat
     instead of a cause.
     """
     url = "https://nowhere.example/"
-    fake = FakeTavily(
-        fixtures={
-            url: {
-                "results": [],
-                "failed_results": [{"url": url, "error": "fake says: gone"}],
-            }
-        }
-    )
+
+    class _GoneClient:
+        """Tavily SDK stand-in: every extraction fails with an HTTP 200."""
+
+        def extract(self, **_kwargs: object) -> dict[str, object]:
+            return {"results": [], "failed_results": [{"url": url, "error": "fake says: gone"}]}
+
+    browser = TavilyBrowser(api_key="test", client=cast(Any, _GoneClient()), sleep=lambda _s: None)
 
     with pytest.raises(pipeline_module.IntakePipelineError) as excinfo:
         pipeline_module.intake_url(
             url,
             data_dir=tmp_path,
-            client_factory=lambda: fake,
+            client_factory=lambda: browser,
             identifier_factory=fake_identifier,
             extractor_factory=fake_extractor,
             deps_factory=fake_dispatch_deps,
@@ -137,41 +139,13 @@ def test_pipeline_retries_a_transient_fetch_failure(tmp_path: Path) -> None:
     assert recorded_url == url
 
 
-def test_pipeline_records_partial_research_trace_on_search_client_error(tmp_path: Path) -> None:
-    """When `client.extract(...)` raises BrowserError, the pipeline writes a
-    partial event and raises IntakePipelineError."""
-
-    def _raise() -> TavilyBrowser:
-        class _Broken(TavilyBrowser):
-            def extract(self, urls):  # type: ignore[no-untyped-def]
-                raise BrowserError("simulated transport failure")
-
-        return _Broken(api_key="test")
-
-    with pytest.raises(pipeline_module.IntakePipelineError):
-        pipeline_module.intake_url(
-            "https://example.com/jobs/42",
-            data_dir=tmp_path,
-            client_factory=_raise,
-            identifier_factory=fake_identifier,
-            extractor_factory=fake_extractor,
-            deps_factory=fake_dispatch_deps,
-        )
-
-    research_traces = list(tmp_path.rglob("*.jsonl"))
-    assert len(research_traces) == 1
-    lines = research_traces[0].read_text(encoding="utf-8").splitlines()
-    parsed = json.loads(lines[0])
-    assert "error" in parsed["response"]
-
-
 def test_pipeline_returns_stop_reason(tmp_path: Path) -> None:
     """Pipeline output contains the stop reason emitted by the dispatcher."""
     url = "https://example.com/jobs/42"
     reason = pipeline_module.intake_url(
         url,
         data_dir=tmp_path,
-        client_factory=lambda: _fake_tavily_for(url),
+        client_factory=lambda: _fetcher_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
@@ -206,7 +180,7 @@ def test_pipeline_dispatch_persists_fetch_assertions(tmp_path: Path) -> None:
     pipeline_module.intake_url(
         url,
         data_dir=tmp_path,
-        client_factory=lambda: _fake_tavily_for(url),
+        client_factory=lambda: _fetcher_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
@@ -224,18 +198,13 @@ def test_pipeline_intake_records_failure_details_in_trace(tmp_path: Path) -> Non
     """The initial intake URL failure remains fatal, but the recorded event
     carries BrowserError.details verbatim for the operator to inspect."""
 
-    def _raise() -> TavilyBrowser:
-        class _Broken(TavilyBrowser):
-            def extract(self, urls):  # type: ignore[no-untyped-def]
-                raise BrowserError("simulated transport failure", details={"exception": "boom"})
-
-        return _Broken(api_key="test")
-
     with pytest.raises(pipeline_module.IntakePipelineError):
         pipeline_module.intake_url(
             "https://example.com/jobs/42",
             data_dir=tmp_path,
-            client_factory=_raise,
+            client_factory=lambda: _FailingFetcher(
+                BrowserError("simulated transport failure", details={"exception": "boom"})
+            ),
             identifier_factory=fake_identifier,
             extractor_factory=fake_extractor,
             deps_factory=fake_dispatch_deps,
@@ -243,6 +212,7 @@ def test_pipeline_intake_records_failure_details_in_trace(tmp_path: Path) -> Non
 
     research_traces = list(tmp_path.rglob("*.jsonl"))
     parsed = json.loads(research_traces[0].read_text(encoding="utf-8").splitlines()[0])
+    assert parsed["response"]["error"] == "simulated transport failure"
     assert parsed["response"]["details"] == {"exception": "boom"}
 
 
@@ -264,7 +234,7 @@ def test_pipeline_dispatch_continues_past_failed_fetch(tmp_path: Path) -> None:
     reason = pipeline_module.intake_url(
         url,
         data_dir=tmp_path,
-        client_factory=lambda: _fake_tavily_for(url),
+        client_factory=lambda: _fetcher_for(url),
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(

@@ -1,6 +1,5 @@
 """Test doubles for the loop bounded context."""
 
-from collections.abc import Iterable
 from typing import Any
 
 from screen.browser import BrowserError, SearchHit
@@ -29,7 +28,7 @@ class FakePlanner:
 
 
 class FakeBrowser:
-    """Test double for Browser.
+    """Test double for `Browser`, and so for intake's `Fetcher`.
     Raises BrowserError for unknown URLs/queries. search_fixtures maps
     query strings to the hit list they return. fetch_fixtures maps URLs to
     raw content dicts. Records calls for test assertions.
@@ -44,20 +43,6 @@ class FakeBrowser:
         self._search_fixtures: dict[str, list[SearchHit]] = dict(search_fixtures or {})
         self.fetch_calls: list[str] = []
         self.search_calls: list[str] = []
-        self.extract_calls: list[list[str]] = []
-
-    def extract(self, urls: Iterable[str]) -> dict[str, Any]:
-        url_list = list(urls)
-        self.extract_calls.append(url_list)
-        results = []
-        failed = []
-        for url in url_list:
-            fixture = self._fetch_fixtures.get(url)
-            if fixture is None:
-                failed.append({"url": url, "error": "no fixture"})
-            else:
-                results.append(fixture)
-        return {"results": results, "failed_results": failed}
 
     def fetch(self, url: str) -> SearchHit:
         self.fetch_calls.append(url)
