@@ -1,6 +1,6 @@
 """Protocol surface for dimension digesters.
 
-Any object satisfying `DigesterProtocol` can be injected wherever a
+Any object satisfying `Digester` can be injected wherever a
 digest is generated. The live adapter (`BAMLDigester`) and the fake
 (`FakeDigester`) both satisfy it. Mirrors `screen.extract.protocol`.
 """
@@ -11,7 +11,7 @@ from screen.types import Assertion
 
 
 @runtime_checkable
-class DigesterProtocol(Protocol):
+class Digester(Protocol):
     def digest_dimension(
         self,
         assertions: list[Assertion],

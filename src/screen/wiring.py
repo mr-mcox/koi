@@ -10,11 +10,11 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from screen.api.app import AppDeps, Database, create_app
-from screen.browser import BrowserProtocol, TavilyBrowser
+from screen.browser import Browser, TavilyBrowser
 from screen.digest.baml_digester import BAMLDigester
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import RubricText
-from screen.extract.protocol import ExtractorProtocol
+from screen.extract.protocol import Extractor
 from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.pipeline import db_path_for, intake_url
 from screen.paths import data_dir
@@ -25,11 +25,11 @@ from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 
 
-def build_browser(environ: Mapping[str, str]) -> BrowserProtocol:
+def build_browser(environ: Mapping[str, str]) -> Browser:
     return TavilyBrowser(api_key=environ.get("TAVILY_API_KEY", ""))
 
 
-def build_extractor(rubric: RubricText) -> ExtractorProtocol:
+def build_extractor(rubric: RubricText) -> Extractor:
     return BAMLExtractor(JevAssertionClassifier(rubric))
 
 

@@ -6,6 +6,7 @@ renders and schedules."""
 import hashlib
 import logging
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, cast
 from urllib.parse import urlencode
@@ -29,7 +30,7 @@ from screen.compare.session import (
     needs_prescreen,
     record_operator_write,
 )
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from screen.pool import latest_ruling_by_assertion
 from screen.score.loader import load_scoring_config
 from screen.score.scorer import stats_for_target
@@ -49,13 +50,43 @@ from screen.types import (
     Opening,
     Target,
 )
-from screen.web.common import Conn, DimensionGroup, company_for, dimension_groups, templates
+from screen.web.common import (
+    Conn,
+    DimensionGroup,
+    company_for,
+    dimension_groups,
+    template_context,
+    templates,
+)
 
 # Throughput instrumentation for the compare loop: every cache decision and pre-screen
 # transition is logged so a live session can be read back for where the operator waited.
 _compare_log = logging.getLogger("screen.compare")
 
 router = APIRouter()
+
+
+@dataclass(frozen=True)
+class ComparePreview:
+    """One pair on one target, laid out left/right for `compare.html`. `outcome_left`
+    and `outcome_right` are the outcomes the two buttons submit, so the operator's
+    ruling stays in A/B terms whichever side A is shown on."""
+
+    opening_a_id: str
+    opening_b_id: str
+    target: str
+    opening_left: Opening
+    opening_right: Opening
+    group_left: DimensionGroup | None
+    group_right: DimensionGroup | None
+    rulings_left: dict[str, AssertionRuling]
+    rulings_right: dict[str, AssertionRuling]
+    outcome_left: ComparisonOutcome
+    outcome_right: ComparisonOutcome
+    fit_values: list[Fit]
+    redirect_url: str
+    opening_a_digest_version: str | None
+    opening_b_digest_version: str | None
 
 
 def _should_swap_display_order(opening_a_id: str, opening_b_id: str, target: str) -> bool:
@@ -68,19 +99,19 @@ def _should_swap_display_order(opening_a_id: str, opening_b_id: str, target: str
     return digest[0] % 2 == 1
 
 
-def _compare_target_context(
+def _compare_preview(
     conn: sqlite3.Connection,
     opening_a: Opening,
     opening_b: Opening,
     target: str,
     config: ScoringConfig,
     *,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
     redirect_url: str,
-) -> dict[str, object]:
-    """Digest and assertion-derived prior for one target across two openings — the
+) -> ComparePreview:
+    """Digest and assertions for one target across two openings — the
     comparison surface reuses the same `dimension_groups` the rating view uses, but
     only keeps the group for the selected target. Display order (left/right) is a
     deterministic function of the pair and target, not always A-on-the-left, so the
@@ -106,41 +137,25 @@ def _compare_target_context(
     def _rulings(opening_id: str) -> dict[str, AssertionRuling]:
         return latest_ruling_by_assertion(assertion_rulings_for_opening(conn, opening_id))
 
-    def _fits(opening_id: str) -> dict[str, Fit]:
-        return {assertion_id: ruling.fit for assertion_id, ruling in _rulings(opening_id).items()}
-
-    stats_a = stats_for_target(
-        assertions_for_opening(conn, opening_a_id),
-        config,
-        target,
-        _fits(opening_a_id) or None,
-    )
-    stats_b = stats_for_target(
-        assertions_for_opening(conn, opening_b_id),
-        config,
-        target,
-        _fits(opening_b_id) or None,
-    )
     group_a = _group(opening_a_id)
     group_b = _group(opening_b_id)
-    return {
-        "target": target,
-        "opening_left": opening_left,
-        "opening_right": opening_right,
-        "group_left": group_b if swapped else group_a,
-        "group_right": group_a if swapped else group_b,
-        "rulings_left": _rulings(opening_left.id),
-        "rulings_right": _rulings(opening_right.id),
-        "outcome_left": "b" if swapped else "a",
-        "outcome_right": "a" if swapped else "b",
-        "fit_values": list(FIT_VALUES),
-        "redirect_url": redirect_url,
-        "opening_a_digest_version": group_a.digest_version if group_a else None,
-        "opening_b_digest_version": group_b.digest_version if group_b else None,
-        "predicted_a_beats_b": pre_comparison_probability(
-            stats_a.mean, stats_a.half_width, stats_b.mean, stats_b.half_width
-        ),
-    }
+    return ComparePreview(
+        opening_a_id=opening_a_id,
+        opening_b_id=opening_b_id,
+        target=target,
+        opening_left=opening_left,
+        opening_right=opening_right,
+        group_left=group_b if swapped else group_a,
+        group_right=group_a if swapped else group_b,
+        rulings_left=_rulings(opening_left.id),
+        rulings_right=_rulings(opening_right.id),
+        outcome_left="b" if swapped else "a",
+        outcome_right="a" if swapped else "b",
+        fit_values=list(FIT_VALUES),
+        redirect_url=redirect_url,
+        opening_a_digest_version=group_a.digest_version if group_a else None,
+        opening_b_digest_version=group_b.digest_version if group_b else None,
+    )
 
 
 def _start_compare_prescreen(
@@ -265,11 +280,7 @@ def compare(
         )
         if early is not None:
             return early
-    context: dict[str, object] = {
-        "opening_a_id": opening_a_id,
-        "opening_b_id": opening_b_id,
-        "target": target,
-    }
+    context: dict[str, object] = {}
     if opening_a_id and opening_b_id and target and target in config.dimension_weights:
         opening_a = get_opening(conn, opening_a_id)
         opening_b = get_opening(conn, opening_b_id)
@@ -278,8 +289,8 @@ def compare(
         redirect_url = "/compare?" + urlencode(
             {"opening_a_id": opening_a_id, "opening_b_id": opening_b_id, "target": target}
         )
-        context.update(
-            _compare_target_context(
+        context = template_context(
+            _compare_preview(
                 conn,
                 opening_a,
                 opening_b,

@@ -5,8 +5,6 @@ those extracted assertions into the final `screen.types.Assertion` shape, and an
 Jev confidently judges irrelevant to its target is dropped before persistence.
 """
 
-from __future__ import annotations
-
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -15,7 +13,7 @@ from screen.baml_client.sync_client import b
 from screen.baml_client.types import Assertion as BAMLAssertion
 from screen.extract.types import ExtractedAssertion, hydrate_assertion
 from screen.types import Assertion
-from screen.verdict.classification_protocol import AssertionClassifier
+from screen.verdict.protocol import AssertionClassifier
 
 # Threshold on Jev's `relevance_confidence` above which a "not relevant" verdict is trusted
 # enough to drop the assertion rather than keep it at a wide distribution. Unmeasured —
@@ -52,7 +50,7 @@ def classify_and_filter(
 
 
 class BAMLExtractor:
-    """Satisfies `ExtractorProtocol`. Calls `ExtractAssertions` via the BAML sync client,
+    """Satisfies `Extractor`. Calls `ExtractAssertions` via the BAML sync client,
     then runs Jev classification to hydrate the final assertion shape.
     """
 

@@ -4,8 +4,6 @@ provisional ruling, and runs ahead of the operator in the background.
 It reads the pool through `screen.pool` rather than assembling one of its own.
 """
 
-from __future__ import annotations
-
 import logging
 import sqlite3
 import time

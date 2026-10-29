@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 
 from screen.extract.baml_extractor import classify_and_filter
 from screen.extract.types import ExtractedAssertion
-from screen.verdict.classification_protocol import AssertionClassification
+from screen.verdict.protocol import AssertionClassification
 from tests.helpers import canned_citation
 
 

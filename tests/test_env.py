@@ -2,8 +2,6 @@
 keys that aren't already set, and never clobbers a real environment variable (an
 explicitly-exported key beats the file)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from screen.env import load_env

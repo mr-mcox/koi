@@ -6,8 +6,6 @@ around it (`run_intake_worker`) is a thin `asyncio.sleep`-when-idle wrapper
 with nothing of its own worth unit-testing beyond that it calls this.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from pathlib import Path

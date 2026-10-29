@@ -4,8 +4,6 @@ refuses to ask about a dimension where either opening has no assertions (`domain
 included), and never elevates a pair neither side of which could plausibly move into or
 out of top-K."""
 
-from __future__ import annotations
-
 import dataclasses
 from datetime import UTC, datetime
 from functools import partial

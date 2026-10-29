@@ -1,4 +1,4 @@
-"""Cache-aware digest generation: the seam that ties `DigesterProtocol`
+"""Cache-aware digest generation: the seam that ties `Digester`
 to the `dimension_digests` cache table.
 
 Staleness key is the assertion count for `(opening_id, target)` — assertions
@@ -9,7 +9,7 @@ sufficient; no hashing or diffing needed.
 import sqlite3
 from datetime import datetime
 
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from screen.store.repo import assertions_for_opening, get_dimension_digest, insert_dimension_digest
 from screen.types import DimensionDigest
 
@@ -18,7 +18,7 @@ def update_digests_for_opening(
     conn: sqlite3.Connection,
     *,
     opening_id: str,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
 ) -> None:
@@ -45,7 +45,7 @@ def digest_for_target(
     *,
     opening_id: str,
     target: str,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
 ) -> str:
@@ -66,7 +66,7 @@ def digest_record_for_target(
     *,
     opening_id: str,
     target: str,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
 ) -> DimensionDigest:

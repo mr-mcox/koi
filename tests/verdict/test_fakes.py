@@ -1,11 +1,9 @@
 """Tests for `FakeAssertionClassifier` and the `AssertionClassifier` Protocol seam."""
 
-from __future__ import annotations
-
 import pytest
 
-from screen.verdict.classification_protocol import AssertionClassification, AssertionClassifier
 from screen.verdict.fakes import FakeAssertionClassifier
+from screen.verdict.protocol import AssertionClassification, AssertionClassifier
 
 
 def _classification(**overrides: object) -> AssertionClassification:

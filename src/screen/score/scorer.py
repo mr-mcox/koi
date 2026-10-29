@@ -9,8 +9,6 @@ sets the effective weight of each piece of evidence. Every scored target, includ
 separate constraint or multiplicative scoring path.
 """
 
-from __future__ import annotations
-
 import hashlib
 import math
 from dataclasses import dataclass

@@ -3,8 +3,6 @@
 Routing logic is tested separately in `tests/verdict/test_routing.py`.
 """
 
-from __future__ import annotations
-
 from typesafe_sdk import ChoiceAnswer, NoulAnswer, SystemOneResponse, Usage
 
 from screen.score.loader import load_scoring_config

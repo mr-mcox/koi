@@ -4,7 +4,6 @@ and can optionally print the individual mismatches for a chosen threshold pair.
 
 # ruff: noqa: I001, E402
 
-from __future__ import annotations
 import argparse
 from dotenv import load_dotenv
 import os

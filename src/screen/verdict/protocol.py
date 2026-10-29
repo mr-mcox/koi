@@ -1,16 +1,17 @@
-"""Protocol surface for rubric-similarity verdict providers.
+"""Protocol surface for Jev's two judgments: pairwise rubric verdicts and assertion
+classification.
 
 Any object satisfying `VerdictProvider` can be injected wherever a pairwise rubric
-verdict is needed. The live adapter (Jev, TypeSafe's System One model) and test fakes
-both satisfy it. Mirrors `screen.digest.protocol`.
+verdict is needed, and any `AssertionClassifier` wherever an assertion's fit and
+relevance are. The live adapters (Jev, TypeSafe's System One model) and test fakes
+satisfy them. Mirrors `screen.digest.protocol`.
 """
-
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 VerdictOutcome = Literal["a", "b", "tie"]
+AssertionFit = Literal["Poor", "Mixed", "Strong"]
 
 
 @dataclass(frozen=True)
@@ -63,3 +64,22 @@ class VerdictProvider(Protocol):
         digest_b: str,
         few_shot_examples: list[FewShotExample],
     ) -> RubricVerdict: ...
+
+
+@dataclass(frozen=True)
+class AssertionClassification:
+    """A classification provider's ruling on one assertion: fit, is_relevant, and
+    calibrated confidence scores for each judgment."""
+
+    fit: AssertionFit
+    confidence: float
+    is_relevant: bool
+    relevance_confidence: float
+
+
+@runtime_checkable
+class AssertionClassifier(Protocol):
+    """Classifies an unclassified assertion's fit and relevance against its target
+    dimension's rubric text, which the classifier holds."""
+
+    def classify(self, chunk: str, target: str) -> AssertionClassification: ...

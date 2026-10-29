@@ -11,8 +11,6 @@ This sits below `api/` and `web/` on purpose: `research/batch.py` ranks the pool
 to pick its next opening, and must not import the web layer to do it.
 """
 
-from __future__ import annotations
-
 import sqlite3
 
 from screen.score.pairwise import Comparison as ScoreComparison

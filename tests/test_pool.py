@@ -1,8 +1,6 @@
 """Acceptance tests for assembling `DimensionPosterior`s from stored comparisons: a
 comparison outcome must change `pool_for_screening`'s rank order end-to-end."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from functools import partial
 

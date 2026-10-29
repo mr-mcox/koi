@@ -4,8 +4,6 @@ Calls `intake/pipeline.py` functions directly with injected fakes — no Click,
 no CLI process, no filesystem fixtures beyond `tmp_path`.
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 from pathlib import Path

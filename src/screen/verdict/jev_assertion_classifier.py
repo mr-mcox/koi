@@ -6,12 +6,10 @@ calls the paid TypeSafe API. Unit tests inject a fake `AssertionClassifier` via 
 Protocol instead.
 """
 
-from __future__ import annotations
-
 from typesafe_sdk import Choice, ChoiceAnswer, TypeSafeClient
 
 from screen.extract.prompt import RubricText, fit_anchors_for_dimension
-from screen.verdict.classification_protocol import AssertionClassification, AssertionFit
+from screen.verdict.protocol import AssertionClassification, AssertionFit
 
 
 def _narrow_fit(choice: str) -> AssertionFit:

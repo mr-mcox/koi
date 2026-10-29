@@ -5,15 +5,13 @@ and confidence. The point of the split is to keep extraction and judgment separa
 until the latter has run.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from screen.types import Assertion, Citation, Target
-from screen.verdict.classification_protocol import AssertionClassification
+from screen.verdict.protocol import AssertionClassification
 
 
 class ExtractedAssertion(BaseModel):

@@ -4,8 +4,6 @@ missing a digest on either side excludes it (nothing to show Jev); above the cap
 random subset is drawn so the provider doesn't see a fixed, possibly-biased set every
 calibration pass."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 import numpy as np

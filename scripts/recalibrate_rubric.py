@@ -10,8 +10,6 @@ Run it as a file path or a dotted module — `-m` will not accept a `.py` suffix
     uv run python -m scripts.recalibrate_rubric --target location
 """
 
-from __future__ import annotations
-
 import os
 import re
 import sqlite3

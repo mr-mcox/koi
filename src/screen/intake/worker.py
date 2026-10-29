@@ -7,8 +7,6 @@ lifespan starts once, so a row added mid-run is picked up without a restart —
 it just calls `process_next_intake_url` again.
 """
 
-from __future__ import annotations
-
 import asyncio
 import sqlite3
 from collections.abc import Awaitable, Callable

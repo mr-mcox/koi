@@ -1,7 +1,5 @@
 """Tests for `screen.extract.prompt`: rubric.yaml text rendering for BAML/Jev prompts."""
 
-from __future__ import annotations
-
 import pytest
 
 from screen.extract.prompt import (

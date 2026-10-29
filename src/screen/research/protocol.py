@@ -1,4 +1,4 @@
-"""PlannerProtocol — the seam the dispatcher uses to call DecidePlan.
+"""Planner — the seam the dispatcher uses to call DecidePlan.
 
 runtime_checkable so isinstance() works in tests without inheriting.
 """
@@ -10,5 +10,5 @@ from screen.research.state import LoopState
 
 
 @runtime_checkable
-class PlannerProtocol(Protocol):
+class Planner(Protocol):
     def plan(self, state: LoopState) -> list[Action]: ...

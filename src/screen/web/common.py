@@ -4,23 +4,26 @@ rank-axis glyph, accent hues, and digest-grouped assertions."""
 import hashlib
 import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, cast
+from typing import TYPE_CHECKING, Annotated, cast
 
 from fastapi import Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from screen.api.deps import get_db
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from screen.digest.render import render_digest_html
 from screen.digest.service import digest_record_for_target
 from screen.research.batch import eta_text
 from screen.score.types import OpeningRank, ScoringConfig
 from screen.store.repo import get_company
 from screen.types import Assertion, Company, Opening
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 Conn = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -29,6 +32,12 @@ templates.env.filters["render_digest_html"] = render_digest_html
 templates.env.filters["eta_text"] = eta_text
 
 static_files = StaticFiles(directory=str(Path(__file__).parent / "static"))
+
+
+def template_context(context: DataclassInstance) -> dict[str, object]:
+    """A page's typed context as the mapping a template renders. Shallow, unlike
+    `dataclasses.asdict`, so nested dataclasses keep their properties."""
+    return {field.name: getattr(context, field.name) for field in fields(context)}
 
 
 @dataclass(frozen=True)
@@ -151,7 +160,7 @@ def dimension_groups(
     assertions: list[Assertion],
     config: ScoringConfig,
     *,
-    digester: DigesterProtocol,
+    digester: Digester,
     rubric_text: str,
     now: datetime,
 ) -> list[DimensionGroup]:

@@ -21,7 +21,7 @@ from fastapi import FastAPI
 
 from screen.api.routes import router as api_router
 from screen.compare.session import CompareSession
-from screen.digest.protocol import DigesterProtocol
+from screen.digest.protocol import Digester
 from screen.extract.prompt import RubricText
 from screen.intake.worker import run_intake_worker
 from screen.research.batch import BatchEngine, BatchProgress
@@ -48,7 +48,7 @@ class AppDeps:
     queued URL; the lifespan worker calls it for every row."""
 
     rubric: RubricText
-    digester: DigesterProtocol
+    digester: Digester
     verdict_provider: VerdictProvider
     batch_engine: BatchEngine
     intake_fn: Callable[[str], str]

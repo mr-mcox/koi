@@ -2,7 +2,7 @@
 
 `research/` may not import from `intake/`; this module belongs to neither.
 Every call site that fetches a URL by protocol should depend on
-`BrowserProtocol`, not on the Tavily SDK directly.
+`Browser`, not on the Tavily SDK directly.
 """
 
 import time
@@ -23,7 +23,7 @@ _PERMANENT_ERROR_MARKERS: tuple[str, ...] = ("404",)
 
 
 class BrowserError(Exception):
-    """Raised by BrowserProtocol implementations on fetch failure.
+    """Raised by Browser implementations on fetch failure.
 
     `details` carries whatever raw information the underlying transport gave
     us (e.g. Tavily's `failed_results` entry or the exception text). Tavily's
@@ -76,7 +76,7 @@ class _TavilyResponse(TypedDict, total=False):
 
 
 @runtime_checkable
-class BrowserProtocol(Protocol):
+class Browser(Protocol):
     """The shape every browser/fetcher implementation must satisfy."""
 
     def extract(self, urls: Iterable[str]) -> dict[str, Any]: ...
@@ -87,7 +87,7 @@ class BrowserProtocol(Protocol):
 
 
 class TavilyBrowser:
-    """Real Tavily implementation of BrowserProtocol. Constructor stores the
+    """Real Tavily implementation of Browser. Constructor stores the
     API key; no network I/O until extract() or fetch() is called."""
 
     def __init__(

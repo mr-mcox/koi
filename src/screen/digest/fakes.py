@@ -1,4 +1,4 @@
-"""Hand-written fake satisfying `DigesterProtocol`.
+"""Hand-written fake satisfying `Digester`.
 
 Kept in `digest/` (not `intake/fakes.py`) so the module boundary
 between `intake/` and `digest/` stays clean, mirroring `extract/fakes.py`.
@@ -10,7 +10,7 @@ from screen.types import Assertion
 
 
 class FakeDigester:
-    """Satisfies `DigesterProtocol`. Returns canned strings in order; repeats last when exhausted.
+    """Satisfies `Digester`. Returns canned strings in order; repeats last when exhausted.
 
     `calls` counts invocations of `digest_dimension`, so tests can assert a
     cache hit skipped the (simulated) model call entirely.

@@ -1,7 +1,7 @@
 """BAML adapter: calls `DigestDimension` and returns its prose.
 
 Mirrors `screen.extract.baml_extractor.BAMLExtractor`'s shape — a thin
-bridge from the generated client to `DigesterProtocol`. Style constraints
+bridge from the generated client to `Digester`. Style constraints
 (no Fit word, no bare number, no self-referential summary phrasing) are
 carried by the `DigestDimension` prompt, not enforced in code here — no
 reliable automated check exists yet; the operator tunes the prompt against
@@ -15,7 +15,7 @@ from screen.types import Assertion
 
 
 class BAMLDigester:
-    """Satisfies `DigesterProtocol`. Calls `DigestDimension` via the BAML sync client."""
+    """Satisfies `Digester`. Calls `DigestDimension` via the BAML sync client."""
 
     def digest_dimension(
         self,

@@ -5,8 +5,6 @@ accumulates. Toy-example expectations below (prior N(0.6, 0.5²), β=0.5, 0/1/3 
 validated against the operator's own worked-out numbers.
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np

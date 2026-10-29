@@ -4,7 +4,7 @@ import pytest
 
 from screen.extract.extract import extract_assertions
 from screen.extract.fakes import FakeExtractor
-from screen.extract.protocol import ExtractorProtocol
+from screen.extract.protocol import Extractor
 from screen.types import Assertion
 from tests.helpers import canned_assertion
 
@@ -43,7 +43,7 @@ def test_fake_extractor_repeats_last_when_exhausted() -> None:
 def test_fake_extractor_satisfies_protocol() -> None:
     """isinstance check against runtime_checkable Protocol."""
     fake = FakeExtractor([[canned_assertion()]])
-    assert isinstance(fake, ExtractorProtocol)
+    assert isinstance(fake, Extractor)
 
 
 # ---------------------------------------------------------------------------

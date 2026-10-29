@@ -5,8 +5,6 @@ gitignored `.env`. An already-set variable always wins — exporting a key in th
 a deliberate per-run override.
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

@@ -6,19 +6,17 @@ The intake-queue worker calls this for each queued URL. Every stage raises
 record *which stage* failed, and move on to the next queued URL.
 """
 
-from __future__ import annotations
-
 import dataclasses
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from screen.browser import BrowserError, BrowserProtocol
+from screen.browser import Browser, BrowserError
 from screen.extract.extract import extract_assertions
-from screen.extract.protocol import ExtractorProtocol
+from screen.extract.protocol import Extractor
 from screen.intake.company_id import derive_company_id
-from screen.intake.identify import IdentifierProtocol, identify_opening
+from screen.intake.identify import Identifier, identify_opening
 from screen.intake.opening_id import derive_opening_id
 from screen.research.batch import RunDispatchDeps, run_dispatch
 from screen.research_trace.events import ResearchTraceEvent
@@ -82,7 +80,7 @@ def persist_company_and_opening(
     return company, opening
 
 
-def fetch_url(url: str, client: BrowserProtocol, data_dir: Path) -> Path:
+def fetch_url(url: str, client: Browser, data_dir: Path) -> Path:
     """Run the URL -> research trace step. On fetch failure, record the
     partial research trace and re-raise as an `IntakePipelineError`.
 
@@ -124,7 +122,7 @@ def extract_and_persist_assertions(
     opening_id: str,
     chunk: str,
     *,
-    extractor: ExtractorProtocol,
+    extractor: Extractor,
     rubric_text: str,
 ) -> list[Assertion]:
     """Extract assertions from `chunk`, append to the DB, return existing + new
@@ -140,8 +138,8 @@ def identify_research_trace(
     research_trace_path: Path,
     data_dir: Path,
     *,
-    identifier_factory: Callable[[], IdentifierProtocol],
-    extractor_factory: Callable[[], ExtractorProtocol],
+    identifier_factory: Callable[[], Identifier],
+    extractor_factory: Callable[[], Extractor],
     deps_factory: Callable[[], RunDispatchDeps],
 ) -> str:
     """Run the research trace -> Company + Opening + Assertions step. Returns
@@ -199,9 +197,9 @@ def intake_url(
     url: str,
     data_dir: Path,
     *,
-    client_factory: Callable[[], BrowserProtocol],
-    identifier_factory: Callable[[], IdentifierProtocol],
-    extractor_factory: Callable[[], ExtractorProtocol],
+    client_factory: Callable[[], Browser],
+    identifier_factory: Callable[[], Identifier],
+    extractor_factory: Callable[[], Extractor],
     deps_factory: Callable[[], RunDispatchDeps],
 ) -> str:
     """Run the full pipeline for one URL: fetch, identify, persist, dispatch.

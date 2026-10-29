@@ -5,8 +5,6 @@ partial-draft rehydration, zero-shot Jev evaluation, and paired acceptance. The
 resumable run record is covered in `test_recalibration_run.py`.
 """
 
-from __future__ import annotations
-
 import math
 import sqlite3
 import statistics

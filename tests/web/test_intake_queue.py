@@ -1,8 +1,6 @@
 """Integration tests for the web intake-queue surface: enqueue via POST, list
 via GET, both against `TestClient`."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from fastapi.testclient import TestClient

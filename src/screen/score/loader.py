@@ -2,8 +2,6 @@
 `screen.score` that touches the filesystem — `scorer.py` stays pure (no I/O).
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import yaml

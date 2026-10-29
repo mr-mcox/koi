@@ -1,7 +1,5 @@
 """Integration tests for the comparison surface and its pre-screen cache."""
 
-from __future__ import annotations
-
 import sqlite3
 from pathlib import Path
 

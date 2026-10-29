@@ -5,8 +5,6 @@ Both compute at request time from stored assertions plus whatever `rubric.yaml`/
 rubric or `scoring.yaml` change can't leave a stale score behind.
 """
 
-from __future__ import annotations
-
 import sqlite3
 from typing import Annotated, cast
 

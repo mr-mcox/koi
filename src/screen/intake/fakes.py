@@ -8,7 +8,7 @@ from screen.types import IdentificationResult
 
 
 class FakeTavily:
-    """Satisfies `BrowserProtocol`. Construct with a `fixtures` dict keyed by URL. Missing URLs raise."""
+    """Satisfies `Browser`. Construct with a `fixtures` dict keyed by URL. Missing URLs raise."""
 
     def __init__(self, fixtures: dict[str, dict[str, Any]] | None = None) -> None:
         self._fixtures: dict[str, dict[str, Any]] = dict(fixtures or {})
@@ -41,7 +41,7 @@ class FakeTavily:
 
 
 class FakeIdentifier:
-    """Satisfies `IdentifierProtocol`. Pops canned results in order; repeats last when exhausted."""
+    """Satisfies `Identifier`. Pops canned results in order; repeats last when exhausted."""
 
     def __init__(self, results: Iterable[IdentificationResult]) -> None:
         self._results: list[IdentificationResult] = list(results)

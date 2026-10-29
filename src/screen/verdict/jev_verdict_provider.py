@@ -7,8 +7,6 @@ calls the paid TypeSafe API. Unit tests inject a fake provider via the Protocol
 instead, mirroring `baml_digester` / `baml_extractor`.
 """
 
-from __future__ import annotations
-
 from typesafe_sdk import Noul, NoulAnswer, NoulCriteria, TypeSafeClient
 
 from screen.score.types import ScoringConfig

@@ -3,11 +3,9 @@
 Kept alongside the live adapter so tests never construct a `TypeSafeClient`.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 
-from screen.verdict.classification_protocol import AssertionClassification
+from screen.verdict.protocol import AssertionClassification
 
 
 class FakeAssertionClassifier:

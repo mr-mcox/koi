@@ -2,8 +2,6 @@
 domain-model.md Wall 1: confidence scales variance only, never the mean/fit).
 """
 
-from __future__ import annotations
-
 import inspect
 
 import pytest

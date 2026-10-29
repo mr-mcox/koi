@@ -7,8 +7,6 @@ Digest text is operator-facing but LLM-authored, so it is always escaped;
 this module is the only place a digest's structure becomes tags.
 """
 
-from __future__ import annotations
-
 from itertools import groupby
 
 from markupsafe import Markup, escape

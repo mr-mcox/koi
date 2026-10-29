@@ -1,8 +1,6 @@
 """Tests for `pre_comparison_probability`: the logged P(A beats B) must come from
 assertion priors alone, before any comparison data is consulted."""
 
-from __future__ import annotations
-
 import pytest
 
 from screen.compare.probability import pre_comparison_probability

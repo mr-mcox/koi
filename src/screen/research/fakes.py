@@ -29,7 +29,7 @@ class FakePlanner:
 
 
 class FakeBrowser:
-    """Test double for BrowserProtocol.
+    """Test double for Browser.
     Raises BrowserError for unknown URLs/queries. search_fixtures maps
     query strings to the hit list they return. fetch_fixtures maps URLs to
     raw content dicts. Records calls for test assertions.

@@ -1,7 +1,5 @@
 """Integration tests for the ranked queue and the per-opening rating view."""
 
-from __future__ import annotations
-
 import re
 import sqlite3
 from datetime import UTC, datetime, timedelta

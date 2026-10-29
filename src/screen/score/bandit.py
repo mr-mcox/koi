@@ -4,8 +4,6 @@ the research batch's per-turn opening choice.
 Pure `(assertions, rulings, config) -> float` — no I/O, mirroring `scorer.py`.
 """
 
-from __future__ import annotations
-
 import math
 
 import numpy as np

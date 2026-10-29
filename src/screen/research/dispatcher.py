@@ -12,13 +12,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from screen.browser import BrowserError, BrowserProtocol
+from screen.browser import Browser, BrowserError
 from screen.extract.extract import extract_assertions
-from screen.extract.protocol import ExtractorProtocol
+from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.baml_planner import select_primary_target
 from screen.research.context import FetchContext, SearchContext
-from screen.research.protocol import PlannerProtocol
+from screen.research.protocol import Planner
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import ResearchTraceEvent
 from screen.score.types import ScoringConfig
@@ -30,8 +30,8 @@ class DispatchDeps:
     """The dispatch loop's effect ports, bundled so a new hook touches this one type
     instead of every handler's signature and every call site that relays it."""
 
-    browser: BrowserProtocol
-    extractor: ExtractorProtocol
+    browser: Browser
+    extractor: Extractor
     on_event: Callable[..., None]
     on_assertions: Callable[[list[Assertion]], None] | None = None
 
@@ -100,7 +100,7 @@ def _advance_active_target(state: LoopState) -> LoopState:
 def dispatch(
     state: LoopState,
     *,
-    planner: PlannerProtocol,
+    planner: Planner,
     deps: DispatchDeps,
     scoring_config: ScoringConfig | None = None,
 ) -> PassSummary:
