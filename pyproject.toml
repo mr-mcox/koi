@@ -115,7 +115,7 @@ build-backend = "hatchling.build"
 # Strict mode, with no strict rule disabled. We exclude the generated
 # BAML client (BAML emits `Any`-typed adapters). Stub files in `stubs/`
 # cover `tavily`, which ships without PEP 484 annotations, and override
-# `typesafe_sdk`'s JSON aliases, whose string-form recursive `TypeAliasType`
+# `typesafe_sdk`'s JSON and content aliases, whose string-form recursive `TypeAliasType`
 # pyright reads as Unknown.
 include = ["src/screen"]
 exclude = [

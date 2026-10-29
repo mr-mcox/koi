@@ -11,6 +11,7 @@ from screen.store.repo import (
     get_company,
     get_opening,
     list_openings,
+    set_opening_stage,
     upsert_assertion_ruling,
     upsert_company,
     upsert_opening,
@@ -296,3 +297,15 @@ def test_upsert_assertion_ruling_replaces_prior_ruling_for_same_assertion(
 
     result = assertion_rulings_for_opening(conn, "acme--eng-abc123")
     assert result == [second]
+
+
+def test_set_opening_stage_moves_only_the_named_openings(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    seed_opening(conn, "acme--a")
+    seed_opening(conn, "acme--b")
+    seed_opening(conn, "acme--c")
+
+    set_opening_stage(conn, ["acme--a", "acme--c"], "closed")
+
+    assert sorted(o.id for o in list_openings(conn, stage="closed")) == ["acme--a", "acme--c"]
+    assert [o.id for o in list_openings(conn, stage="screening")] == ["acme--b"]

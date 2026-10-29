@@ -21,6 +21,7 @@ from screen.store.repo import (
     assertions_for_opening,
     get_opening,
     list_openings,
+    set_opening_stage,
     upsert_assertion_ruling,
 )
 from screen.types import AssertionRuling, Company, Fit, Opening
@@ -124,10 +125,8 @@ def index(request: Request, conn: Conn) -> HTMLResponse:
 @router.post("/prune-stale", response_class=RedirectResponse)
 def prune_stale(conn: Conn) -> RedirectResponse:
     """Move all stale openings in the screening queue to 'closed' in one batch."""
-    stale_items = [item for item in _queue_items(conn) if item.is_stale]
-    for item in stale_items:
-        conn.execute("UPDATE openings SET stage = ? WHERE id = ?", ("closed", item.opening_id))
-    conn.commit()
+    stale_ids = [item.opening_id for item in _queue_items(conn) if item.is_stale]
+    set_opening_stage(conn, stale_ids, "closed")
     return RedirectResponse(url="/", status_code=303)
 
 
