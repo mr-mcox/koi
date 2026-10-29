@@ -264,8 +264,6 @@ def _best_triple(
                 else 1.0
             )
             pair_priority = boundary
-            if pair_priority <= 0.0:
-                continue
             dimension_choice = _best_dimension_for_pair(
                 a,
                 b,

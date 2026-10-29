@@ -21,6 +21,9 @@ wave before starting the next, because later waves move files the earlier ones e
 | any | K | Operator decision, not code |
 | any, after A | L | A correctness fix, not a cleanup; shares `scripts/backtest_jev_routing.py` with A |
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
+| after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
+| after M | O | Touches files across `src/`; run it alone |
+| after M | P | Touches only `compare/prescreen.py` and its tests |
 
 ---
 
@@ -274,49 +277,109 @@ mislabeled, and the mismatch grows with evidence accumulated since the judgment.
 Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
 `store/migrations/0010_create_comparisons.sql`, the recalibration tests.
 
-## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *open, after G*
+## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *done* in [#5](https://github.com/mr-mcox/koi/pull/5)
 
-The per-file gate in `scripts/check.py` is 95% line and branch. That slack lets a file
-carry untested lines without anyone deciding whether they are dead, defensive, or real
-logic missing a test. At 100%, every uncovered line ends in one of three places: a test
-that catches a nameable regression, deletion, or an explicit exclusion with a reason. The
-`omit` list then becomes the single reviewable statement of what touches the outside world.
+`scripts/check.py` gates every file at 100% line and branch. `EXEMPT_FILES` and its
+budget are gone, so `[tool.coverage.run] omit` in `pyproject.toml` is the only list of
+excluded files; it now includes `src/screen/baml_client/`, so the reported total no longer
+counts generated code. A new `pragma-reason` gate rejects a `# pragma: no cover` that
+lacks a reason after a dash on the same line.
 
-Gate changes:
-- `COVERAGE_TIER_PERCENT = 100` in `scripts/check.py`.
-- Allow `# pragma: no cover` only with a reason on the same line
-  (`# pragma: no cover — <why>`); add a `check.py` gate that rejects a bare pragma, the
-  same way it rejects `type: ignore`. Use it for lines a test can't reach without
-  testing the harness: `assert_never` exhaustiveness guards, true thread-timing windows,
-  and the live-default half of an injectable constructor (`client if client is not None
-  else TavilyClient(...)`).
-- Add `src/screen/baml_client/` to `[tool.coverage.run] omit`. `check.py` already exempts
-  it from the per-file gate, but it still dilutes the reported total (88% vs. near 100%
-  for first-party code).
-- Remove `browser.py` from `EXEMPT_FILES`. The file-wide exemption hides pure logic:
-  `search()`'s Tavily field mapping (`content` → `raw_content`/`snippet`, `title`),
-  `fetch()`'s retry and permanent-failure path, and `_fetch_once`'s
-  results/failed/empty branches. The constructor already takes `client=` and `sleep=`,
-  so a fake client covers all of it; only the default `TavilyClient(...)` construction is
-  live.
+`browser.py` is tested through its `client=` seam: search's `content` →
+`raw_content`/`snippet` mapping, SDK exceptions wrapped as retryable `BrowserError`s, and
+the empty-response path. Its constructor needed no pragma, because one test already builds
+a real `TavilyClient` without network I/O.
 
-Gaps to close (as of 670cd18; line numbers will move under F and G). For each, decide
-test or delete:
-- `extract/prompt.py` `PromptRubric.resolve()`: never called. Delete unless a
-  recalibration path is meant to use it.
-- `types.py` `id` `default_factory`: never fires because every caller supplies an id.
-  Drop the default, or test the path that relies on it.
-- `compare/picker.py` `if pair_priority <= 0.0: continue`: reachable only with
-  `boundary_weight_floor == 0`. Delete if the config forbids 0; otherwise test it.
-- `recalibration_run.py` `brier_noise_floor`: property never read in tests.
-- `web/compare.py`: the "opening already seen" `continue` in the provisional-comparison
-  loop.
-- `compare/prescreen.py`: the speculative walk taking a non-commit step and continuing.
-- `research/baml_planner.py`: the 0-hit search summary.
-- `research/batch.py`: the fallback to raw uncertainty when every boundary weight is zero.
-  With `boundary_weight_floor > 0` every weight is positive, so the fallback fires only
-  when every uncertainty is already zero and returns the same zeros; the docstring's
-  "a pool no larger than `top_k`" example is also wrong under `sqrt(p_top_k)`.
+How each listed gap was closed:
+- `ScoringConfig` now rejects a `boundary_weight_floor` outside (0, 1), so every boundary
+  weight is positive. That made two branches dead, and both were deleted: the picker's
+  `pair_priority <= 0` skip, and `eligible_weights`' fallback to raw uncertainty (which
+  returned the same zeros). Its docstring's wrong `p_top_k * (1 - p_top_k)` formula and
+  `top_k` example went with it.
+- Deleted `PromptRubric.resolve()`, which had no callers. `IntakeQueueItem.id` lost its
+  `default_factory` because the repo always supplies an id; the other models keep theirs,
+  since those defaults do fire.
+- `web/compare.py` resolves the distinct opening ids from a set, so there is no seen-check
+  branch to test. A test could not have told the memo from repeated lookups.
+- In the speculative prescreen, a step that doesn't commit returns `keep_going=True` only
+  when the version moved, so the "keep going without committing" branch was unreachable.
+  `_prescreen_step` now returns one `_StepOutcome` enum (`COMMITTED`, `STALE`,
+  `STOPPED`) instead of a pair of bools, each of which only one caller read. The speculative loop
+  ends after any step that doesn't commit.
+- New tests cover the planner's 0-hit summary and `RunState.brier_noise_floor` (it must
+  compare train against noise, not one run against itself).
+- `baml_planner.last_context_text` renders the search context as its unconditional
+  tail, so it needs neither `assert_never` nor a pragma. Pyright still fails if a new
+  context type joins the union. `FakeTavily.search`'s pragma now gives a reason; N
+  removes the method.
 
-Touches: `scripts/check.py`, `pyproject.toml`, `browser.py`, the files above, their
-tests.
+## N. Narrow the browser protocol and merge its two fakes — *open, after M*
+
+`BrowserProtocol` (`browser.py`) is wider than any of its callers:
+- `extract` is on the protocol, but no caller uses it through the protocol. Only
+  `TavilyBrowser.fetch` calls it, internally. Drop it from the protocol, and make it
+  private on `TavilyBrowser` unless a caller turns up.
+- Intake only fetches (`intake/pipeline.fetch_url`, `intake_url`'s `client_factory`) but
+  is typed against the whole protocol. That is why `FakeTavily.search` exists only to
+  raise `NotImplementedError`, with an unused argument and a pragma. Give intake a
+  fetch-only protocol, and let research's dispatcher keep `fetch` + `search`.
+
+There are two fakes for the one seam. `intake/fakes.FakeTavily` takes Tavily-shaped
+`extract` fixtures. `research/fakes.FakeBrowser` takes raw-content fixtures and records
+calls. `tests/intake/test_pipeline.py` uses both. Keep one fake (`FakeBrowser` already
+covers search and call recording), and move `FakeTavily`'s fixture semantics into it only
+where a test needs them.
+
+Tests that cover only the fakes, or a method that no longer exists, fail the AGENTS.md
+test: none of them catches a regression in production code. Delete them, or name the
+regression each one catches:
+- `tests/test_browser.py`: the `FakeTavily` tests (satisfies the protocol, fetch returns
+  a hit or raises, error details) and both `has_no_extract_one` tests.
+- `tests/research/test_protocol.py`: `test_fake_browser_extract_records_calls`, and the
+  `FakeBrowser` fixture tests.
+
+Touches: `browser.py`, `intake/fakes.py`, `intake/pipeline.py`, `research/fakes.py`,
+`research/dispatcher.py`, `research/batch.py`, `wiring.py`, `tests/test_browser.py`,
+`tests/research/test_protocol.py`, `tests/intake/test_pipeline.py`, `tests/helpers.py`.
+
+## O. Turn on pyright strict mode — *open, after M*
+
+`[tool.pyright]` in `pyproject.toml` says "Strict mode turns on the full set of checks",
+and `check.py` labels the gate "strict type checks", but `typeCheckingMode` is never set,
+so pyright runs in its default mode. One consequence: a misspelled `Literal` in a
+comparison (`outcome == "stoped"`) passes silently. `reportUnnecessaryComparison` catches
+that, and strict turns it on.
+
+Setting `typeCheckingMode = "strict"` reports 146 errors (as of PR #5). 103 are in
+`recalibration_run.py`; `browser.py` has 13 and no other file more than 4. Nearly all are
+`reportUnknown*`: values typed `Any` by `json.loads`, numpy, yaml and the Tavily
+responses. Fix them by typing the data where it enters, e.g. parse
+`recalibration_run.py`'s state into typed structures once on load. Don't scatter `cast`s
+through the code.
+
+- Set `typeCheckingMode = "strict"`, and fix the comment and the gate label so they
+  describe the real config.
+- Disabling a strict rule is a decision, recorded with its reason next to the setting.
+
+Touches: `pyproject.toml`, `scripts/check.py`, `recalibration_run.py`, `browser.py`, and
+the other files the errors name.
+
+## P. Split `_prescreen_step` along its contract — *open, after M*
+
+`compare/prescreen._prescreen_step` is private but has a contract its two callers depend
+on, which breaks the AGENTS.md rule on private functions. Its callers read its outcome
+differently: `run_prescreen` retries on `STALE`, while the speculative walk gives up and
+also checks the version itself. `speculating_for` switches where an uncommitted result is
+cached, and whether a commit updates `progress` and the operator cache. Nothing tests the
+step on its own. The unreachable "keep going without committing" branch that M deleted
+sat where those two contracts met.
+
+Split it into:
+- a side-effect-free step that picks the next suggestion and consults Jev, returning the
+  suggestion, Jev's read, and the comparison to commit (if any), and
+- the writes: append and bump the version, or cache for the operator or for speculation.
+
+Each loop then owns its own policy when the version has moved. Test the pick-and-consult
+step directly, and leave each loop's tests to cover its policy.
+
+Touches: `compare/prescreen.py`, `tests/compare/test_prescreen.py`.

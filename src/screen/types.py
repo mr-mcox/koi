@@ -53,7 +53,7 @@ class IntakeQueueItem(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: Annotated[str, Field(default_factory=lambda: str(uuid4()), min_length=1)]
+    id: Annotated[str, Field(min_length=1)]
     url: Annotated[str, Field(min_length=1)]
     status: QueueStatus = "pending"
     error: str | None = None

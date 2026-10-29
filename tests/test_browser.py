@@ -25,13 +25,37 @@ class _SpyTavilyClient:
     """Stand-in for the Tavily SDK client, injected via TavilyBrowser's
     `client` seam so tests exercise real dispatch logic without network I/O."""
 
-    def __init__(self, responses: list[dict[str, Any]]) -> None:
-        self._responses = list(responses)
+    def __init__(
+        self,
+        responses: list[dict[str, Any]] | None = None,
+        *,
+        search_response: dict[str, Any] | None = None,
+    ) -> None:
+        self._responses = list(responses or [])
+        self._search_response = search_response or {"results": []}
         self.extract_calls: list[dict[str, Any]] = []
 
     def extract(self, **kwargs: Any) -> dict[str, Any]:
         self.extract_calls.append(kwargs)
         return self._responses.pop(0)
+
+    def search(self, **_kwargs: Any) -> dict[str, Any]:
+        return self._search_response
+
+
+class _RaisingTavilyClient:
+    """Tavily SDK stand-in whose every call raises, as the SDK does on a network
+    or auth failure."""
+
+    def __init__(self) -> None:
+        self.extract_calls = 0
+
+    def extract(self, **_kwargs: Any) -> dict[str, Any]:
+        self.extract_calls += 1
+        raise RuntimeError("connection reset")
+
+    def search(self, **_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("connection reset")
 
 
 def test_browser_protocol_is_runtime_checkable() -> None:
@@ -249,3 +273,81 @@ def test_failures_are_permanent_requires_every_failure_to_be_permanent() -> None
 def test_failures_are_permanent_is_false_for_no_failures() -> None:
     """An empty failure list is not evidence of a dead link."""
     assert not failures_are_permanent([])
+
+
+def test_tavily_browser_fetch_reports_an_empty_response_as_no_results() -> None:
+    """A response with neither results nor failures still raises, after the retry."""
+    empty = {"results": [], "failed_results": []}
+    spy = _SpyTavilyClient(responses=[dict(empty), dict(empty)])
+    client = TavilyBrowser(api_key="x", client=spy, sleep=_no_sleep)
+    try:
+        client.fetch("https://example.com/job/1")
+        raise AssertionError("expected BrowserError")
+    except BrowserError as exc:
+        assert "no results" in str(exc)
+        assert not exc.permanent
+    assert len(spy.extract_calls) == 2
+
+
+def test_tavily_browser_wraps_sdk_exceptions_and_retries_them() -> None:
+    """An SDK exception surfaces as a retryable BrowserError carrying the exception
+    text, so the caller records it in the trace instead of crashing the pass."""
+    raising = _RaisingTavilyClient()
+    client = TavilyBrowser(api_key="x", client=raising, sleep=_no_sleep)
+    try:
+        client.fetch("https://example.com/job/1")
+        raise AssertionError("expected BrowserError")
+    except BrowserError as exc:
+        assert exc.details == {"exception": "connection reset"}
+        assert not exc.permanent
+    assert raising.extract_calls == 2
+
+
+def test_tavily_browser_search_wraps_sdk_exceptions() -> None:
+    client = TavilyBrowser(api_key="x", client=_RaisingTavilyClient())
+    try:
+        client.search("acme staff engineer")
+        raise AssertionError("expected BrowserError")
+    except BrowserError as exc:
+        assert exc.details == {"exception": "connection reset"}
+
+
+def test_tavily_browser_search_maps_content_to_raw_content_and_snippet() -> None:
+    """Tavily search returns page text as `content`; the planner reads `raw_content`
+    and `snippet`, so a hit without that mapping reaches it with no text at all."""
+    spy = _SpyTavilyClient(
+        search_response={
+            "results": [
+                {"url": "https://a.example/", "title": "A", "content": "Page text."},
+                {"url": "https://b.example/"},
+            ]
+        }
+    )
+    hits = TavilyBrowser(api_key="x", client=spy).search("acme")
+    assert hits == [
+        {
+            "url": "https://a.example/",
+            "title": "A",
+            "raw_content": "Page text.",
+            "snippet": "Page text.",
+        },
+        {"url": "https://b.example/"},
+    ]
+
+
+def test_tavily_browser_search_prefers_raw_content_and_snippet_over_content() -> None:
+    spy = _SpyTavilyClient(
+        search_response={
+            "results": [
+                {
+                    "url": "https://a.example/",
+                    "raw_content": "Full page.",
+                    "snippet": "Short.",
+                    "content": "Summary.",
+                }
+            ]
+        }
+    )
+    hits = TavilyBrowser(api_key="x", client=spy).search("acme")
+    assert hits[0].get("raw_content") == "Full page."
+    assert hits[0].get("snippet") == "Short."

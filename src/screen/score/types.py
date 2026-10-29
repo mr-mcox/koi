@@ -47,6 +47,14 @@ class ScoringConfig:
     tie_commit_threshold: float
     winner_commit_threshold: float
 
+    def __post_init__(self) -> None:
+        # Every boundary weight is then positive, so no opening or pair drops out of
+        # research or comparison for looking settled.
+        if not 0.0 < self.boundary_weight_floor < 1.0:
+            raise ValueError(
+                f"boundary_weight_floor must be in (0, 1), got {self.boundary_weight_floor}"
+            )
+
     @property
     def total_weight(self) -> int:
         return sum(self.dimension_weights.values())

@@ -390,14 +390,12 @@ def compare_review(request: Request, conn: Conn) -> HTMLResponse:
     )
     companies_by_opening_id: dict[str, str] = {}
     titles_by_opening_id: dict[str, str] = {}
-    for comparison in provisional:
-        for opening_id in (comparison.opening_a_id, comparison.opening_b_id):
-            if opening_id in companies_by_opening_id:
-                continue
-            # `comparisons` references `openings` with foreign keys on.
-            opening = cast(Opening, get_opening(conn, opening_id))
-            titles_by_opening_id[opening_id] = opening.title
-            companies_by_opening_id[opening_id] = company_for(conn, opening).name
+    opening_ids = {c.opening_a_id for c in provisional} | {c.opening_b_id for c in provisional}
+    for opening_id in opening_ids:
+        # `comparisons` references `openings` with foreign keys on.
+        opening = cast(Opening, get_opening(conn, opening_id))
+        titles_by_opening_id[opening_id] = opening.title
+        companies_by_opening_id[opening_id] = company_for(conn, opening).name
     return templates.TemplateResponse(
         request,
         "compare_review.html",

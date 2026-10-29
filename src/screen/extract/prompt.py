@@ -95,11 +95,6 @@ class RubricText:
         other dimensions' anchors. Raises `KeyError` for an unknown slug."""
         return resolve_private(_render_dimension(self._data, target), self._private)
 
-    def resolve(self, text: str) -> str:
-        """Resolve private placeholders in rubric text that originated elsewhere (e.g. a
-        recalibration candidate)."""
-        return resolve_private(text, self._private)
-
 
 def all_dimension_slugs() -> list[str]:
     return [d["slug"] for d in _load().get("dimensions", [])]

@@ -73,6 +73,11 @@ discarded; its learnings and decisions were kept. That inheritance lives in `doc
   a deliberately broken version of its subject is a test of the harness, not of the
   behavior. The check is mechanical: when reviewing a test, name one regression it would
   catch. If you can't, delete it.
+- **A private function has no contract.** Split out a `_helper` only for a step callers
+  never reason about. If callers branch on its result, or a flag picks its behavior, it
+  has a contract: decompose so that contract is public and tested on its own.
+- **Enums for control flow, `Literal`s at boundaries.** A value that only steers code is an
+  `Enum`; a `Literal` is for values stored, serialized, or rendered as strings.
 - **Comments describe product state, not journey.** A comment should explain the non-obvious
   *why* — invariants the next reader can't derive, constraints imposed by external
   dependencies, the shape of required caller behavior. It should not narrate how the code
