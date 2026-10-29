@@ -7,45 +7,27 @@ trace says actually happened.
 """
 
 from pathlib import Path
-from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.research_trace.events import DecidePlanEvent, ExtractEvent, SearchEvent, parse_event
+from screen.research_trace.events import DecidePlanEvent, SearchEvent, parse_event
 from screen.research_trace.trace_io import read_research_trace
 
 
 class TraceReplay(BaseModel):
     """Resumable state folded out of a research trace's events.
 
-    `turns_used` counts `tavily_search`/`tavily_extract` events only — a
-    turn is one budget-consuming research action; `decide_plan`
-    is the planner's own audit record, not a turn.
+    Turns are not replayed: each pass counts its own from zero, so the trace's
+    running total has no reader.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    turns_used: Annotated[int, Field(ge=0)]
     visited_urls: list[str]
     prior_queries: list[str]
     # Contiguous unproductive active-target runs per target, reconstructed from
     # decide_plan events so a resume can suppress dead-end targets without a DB column.
     target_stalls: dict[str, int] = Field(default_factory=dict)
-
-
-def _fold_search_event(event: SearchEvent, turns_used: int, prior_queries: list[str]) -> int:
-    prior_queries.append(event.request.query)
-    return turns_used + 1
-
-
-def _fold_extract_event(event: ExtractEvent, turns_used: int, visited_urls: list[str]) -> int:
-    """Every extract with `results` set, even to `[]`, consumed a turn;
-    `ExtractResponse` says what `None` means."""
-    results = event.response.results
-    if results is None:
-        return turns_used
-    visited_urls.extend(result.url for result in results)
-    return turns_used + 1
 
 
 def _run_target(event: DecidePlanEvent) -> str | None:
@@ -144,7 +126,6 @@ def _fold_target_stalls(plans: list[DecidePlanEvent]) -> dict[str, int]:
 
 
 def replay_research_trace(path: Path) -> TraceReplay:
-    turns_used = 0
     visited_urls: list[str] = []
     prior_queries: list[str] = []
     plans: list[DecidePlanEvent] = []
@@ -157,12 +138,11 @@ def replay_research_trace(path: Path) -> TraceReplay:
         if isinstance(event, DecidePlanEvent):
             plans.append(event)
         elif isinstance(event, SearchEvent):
-            turns_used = _fold_search_event(event, turns_used, prior_queries)
+            prior_queries.append(event.request.query)
         else:
-            turns_used = _fold_extract_event(event, turns_used, visited_urls)
+            visited_urls.extend(result.url for result in event.response.results or [])
 
     return TraceReplay(
-        turns_used=turns_used,
         visited_urls=visited_urls,
         prior_queries=prior_queries,
         target_stalls=_fold_target_stalls(plans),

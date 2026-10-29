@@ -382,11 +382,16 @@ included. The dispatcher and intake build payloads by keyword. `replay` and
 `read_page_content` read attributes, and `TavilyExtractResponse` and the `cast`s are gone.
 
 What a missing field means is stated once, in the model. `target_assertion_counts: None`
-means the trace predates counts. `ExtractResponse.results: None` means the extract was
-never a pass turn. Payloads ignore unknown keys, so retired keys still load. The
-compatibility rule is decisions.md E8. `tests/research_trace/fixtures/trace_shapes.json`
-holds one synthetic line for every shape in git history, and a test replays the whole
-file against the documented turn rules.
+means the trace predates counts. Payloads ignore unknown keys, so retired keys still
+load. The compatibility rule is decisions.md E8.
+`tests/research_trace/fixtures/trace_shapes.json` holds one synthetic line for every shape
+in git history, and a test replays the whole file.
+
+Replay no longer counts turns. The running total was left over from the retired
+per-opening lifetime budget, and resume used it only as an offset that cancelled out.
+Every pass now counts its own turns from zero. `run_dispatch` returns the `PassSummary`,
+and `resume_opening` reads turns spent from it. So the old rule that an extract without
+`results` is "not a pass turn" has no reader and is gone.
 
 Intake now records only `url` and `raw_content` per result, not the whole Tavily dict.
 Removed because no writer ever produced the shape they test: an extract result without a

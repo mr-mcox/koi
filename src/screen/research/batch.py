@@ -23,7 +23,7 @@ from screen.extract.protocol import Extractor
 from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import Planner
-from screen.research.state import LoopState
+from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import ResearchTraceEvent
 from screen.research_trace.replay import TraceReplay, replay_research_trace
 from screen.research_trace.trace_io import read_page_content, record_event, research_trace_path_for
@@ -88,17 +88,16 @@ def run_dispatch(
     turn_budget: int,
     deps: RunDispatchDeps,
     resume: TraceReplay | None = None,
-) -> str:
+) -> PassSummary:
     """Build LoopState from in-memory values and run one dispatch cycle.
-    Returns the stop reason. No disk re-read: assertions list comes from the
+    Returns the pass summary. No disk re-read: assertions list comes from the
     caller. Assertions the dispatch loop's own fetch actions add are persisted
     immediately via `append_assertions`, one fetch at a time, so a pass
     interrupted mid-loop still keeps what it found.
 
-    `resume` carries the turns/urls/queries already spent on a prior pass
-    (from `replay_research_trace`); omitted for a fresh pass, which starts
-    at zero. `turn_budget` is the total turns the trace may reach, prior passes
-    included.
+    `resume` carries the urls, queries and stalls from prior passes (from
+    `replay_research_trace`); omitted for a fresh pass. `turn_budget` is this
+    pass's alone: every pass counts its turns from zero.
     """
     rubric = deps.rubric.full()
     scoring_config = load_scoring_config()
@@ -106,7 +105,7 @@ def run_dispatch(
     replay = (
         resume
         if resume is not None
-        else TraceReplay(turns_used=0, visited_urls=[], prior_queries=[], target_stalls={})
+        else TraceReplay(visited_urls=[], prior_queries=[], target_stalls={})
     )
     state = LoopState(
         opening_id=opening_id,
@@ -118,7 +117,7 @@ def run_dispatch(
         rubric_text=rubric,
         assertions=assertions,
         turn_budget=turn_budget,
-        turns_used=replay.turns_used,
+        turns_used=0,
         visited_urls=replay.visited_urls,
         prior_queries=replay.prior_queries,
         targets=targets,
@@ -147,7 +146,7 @@ def run_dispatch(
         rubric_text=rubric,
         now=datetime.now(UTC),
     )
-    return summary.stopped_reason
+    return summary
 
 
 def resume_opening(
@@ -176,7 +175,7 @@ def resume_opening(
     dispatch_deps = dataclasses.replace(
         deps, on_event=functools.partial(record_event, research_trace_path)
     )
-    stopped_reason = run_dispatch(
+    summary = run_dispatch(
         conn,
         opening.id,
         url,
@@ -185,14 +184,11 @@ def resume_opening(
         page_content=page_content,
         company_name=company.name,
         opening_title=opening.title,
-        turn_budget=replay.turns_used + turns_requested,
+        turn_budget=turns_requested,
         resume=replay,
         deps=dispatch_deps,
     )
-    turns_used_after = replay_research_trace(research_trace_path).turns_used
-    return ResumeResult(
-        turns_spent=turns_used_after - replay.turns_used, stopped_reason=stopped_reason
-    )
+    return ResumeResult(turns_spent=summary.turns_used, stopped_reason=summary.stopped_reason)
 
 
 def opening_weight(conn: sqlite3.Connection, opening: Opening, config: ScoringConfig) -> float:

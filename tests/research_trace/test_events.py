@@ -44,16 +44,14 @@ def test_every_recorded_shape_still_loads(shape: dict[str, Any]) -> None:
     assert event.tool == shape["line"]["tool"]
 
 
-def test_replay_of_every_shape_counts_turns_by_the_documented_rules(tmp_path: Path) -> None:
-    """Pins what each shape means on resume, not only that it parses: searches
-    and extracts with a `results` list are turns, extracts without one are not."""
+def test_replay_of_every_shape_folds_queries_and_visited_urls(tmp_path: Path) -> None:
+    """Pins what each shape means on resume, not only that it parses."""
     path = tmp_path / "trace.jsonl"
     for shape in _SHAPES:
         append_line(path, json.dumps(shape["line"]))
 
     replay = replay_research_trace(path)
 
-    assert replay.turns_used == 8
     assert replay.prior_queries == ["Example Co compensation", "Example Co culture"]
     assert replay.visited_urls == [
         "https://example.org/example-co",

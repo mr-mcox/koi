@@ -150,14 +150,14 @@ def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
             raise AssertionError("batch never finished")
         assert "Researching" not in status.text
 
-        # One turn was actually spent (2 turns total: 1 seeded + 1 from the batch).
+        # The batch's one search landed in the trace.
         conn = connect(db_path)
         opening = get_opening(conn, "acme--eng")
         assert opening is not None
         trace_path = research_trace_path_for(db_path.parent, opening.research_trace_id)
-        used = replay_research_trace(trace_path).turns_used
+        queries = replay_research_trace(trace_path).prior_queries
         conn.close()
-        assert used == 2
+        assert queries == ["paused query"]
 
 
 def test_second_batch_start_is_rejected_while_one_is_running(db_path: Path) -> None:

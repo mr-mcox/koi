@@ -186,7 +186,7 @@ def identify_research_trace(
         extractor=extractor_factory(),
         on_event=functools.partial(record_event, research_trace_path),
     )
-    return run_dispatch(
+    summary = run_dispatch(
         conn,
         opening.id,
         url,
@@ -198,6 +198,7 @@ def identify_research_trace(
         turn_budget=load_scoring_config().research_block_turns,
         deps=deps,
     )
+    return summary.stopped_reason
 
 
 def intake_url(

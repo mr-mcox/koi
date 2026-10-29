@@ -1,7 +1,7 @@
 """Tests for replaying a research trace into resumable state.
 
 Reconstructs what a fresh LoopState needs to continue a pass rather than
-restart it: turns_used, visited_urls, prior_queries. The trace's
+restart it: visited_urls, prior_queries, target_stalls. The trace's
 tool vocabulary is closed (tavily_extract, tavily_search, decide_plan),
 so replay is a fold over a fixed set of event shapes, not an open parse.
 """
@@ -71,30 +71,10 @@ def _plan_event(
     )
 
 
-def test_missing_trace_replays_to_zero_turns(tmp_path: Path) -> None:
+def test_missing_trace_replays_to_empty_state(tmp_path: Path) -> None:
     replay = replay_research_trace(tmp_path / "missing.jsonl")
-    assert replay.turns_used == 0
     assert replay.visited_urls == []
     assert replay.prior_queries == []
-
-
-def test_replay_counts_extract_and_search_as_turns(tmp_path: Path) -> None:
-    path = tmp_path / "trace.jsonl"
-    append_line(path, _extract_event("https://example.com/jobs/1").model_dump_json())
-    append_line(path, _search_event("Acme comp").model_dump_json())
-    append_line(path, _extract_event("https://levels.fyi/acme").model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 3
-
-
-def test_replay_does_not_count_decide_plan_as_a_turn(tmp_path: Path) -> None:
-    path = tmp_path / "trace.jsonl"
-    append_line(path, _extract_event("https://example.com/jobs/1").model_dump_json())
-    append_line(path, _plan_event().model_dump_json())
-
-    replay = replay_research_trace(path)
-    assert replay.turns_used == 1
 
 
 def test_replay_collects_visited_urls_in_order(tmp_path: Path) -> None:
@@ -116,14 +96,12 @@ def test_replay_collects_prior_queries_in_order(tmp_path: Path) -> None:
 
 
 def test_replay_ignores_extract_with_no_results(tmp_path: Path) -> None:
-    """Older intake failures were recorded with no `results`; they are not a
-    pass turn and visited no URL."""
+    """Older failure records omit `results`; they visited no URL."""
     path = tmp_path / "trace.jsonl"
     event = _extract_event("https://nowhere.example/", ExtractResponse(error="fake says: gone"))
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 0
     assert replay.visited_urls == []
 
 
@@ -132,15 +110,12 @@ def test_replay_skips_blank_lines(tmp_path: Path) -> None:
     path.write_text("\n\n" + _search_event("Acme comp").model_dump_json() + "\n", encoding="utf-8")
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
+    assert replay.prior_queries == ["Acme comp"]
 
 
-def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded fetch failure carries an explicit empty `results` list
-    alongside `error`/`details`,
-    distinguishing it from the intake-time fatal failure (no `results` key
-    at all). It still counts as a turn — the API call was made — but adds
-    no visited URL since there is no result to fold."""
+def test_replay_failed_fetch_adds_no_visited_url(tmp_path: Path) -> None:
+    """A failed fetch has no result to fold. The dispatcher adds its URL to
+    `visited_urls` in-pass, but a resume may try it again."""
     path = tmp_path / "trace.jsonl"
     event = _extract_event(
         "https://blocked.example/job/1",
@@ -149,14 +124,11 @@ def test_replay_counts_failed_research_pass_fetch_as_a_turn(tmp_path: Path) -> N
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
     assert replay.visited_urls == []
 
 
-def test_replay_counts_failed_research_pass_search_as_a_turn(tmp_path: Path) -> None:
-    """A dispatcher-recorded search failure still spends a turn and does not
-    add to prior_queries beyond the attempted query (existing fold already
-    reads request['query'] regardless of response shape)."""
+def test_replay_records_query_of_failed_search(tmp_path: Path) -> None:
+    """The attempted query is a prior query whether or not the search succeeded."""
     path = tmp_path / "trace.jsonl"
     event = _search_event(
         "Acme Corp culture",
@@ -165,7 +137,6 @@ def test_replay_counts_failed_research_pass_search_as_a_turn(tmp_path: Path) -> 
     append_line(path, event.model_dump_json())
 
     replay = replay_research_trace(path)
-    assert replay.turns_used == 1
     assert replay.prior_queries == ["Acme Corp culture"]
 
 

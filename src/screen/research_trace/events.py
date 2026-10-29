@@ -40,7 +40,8 @@ class DecidePlanRequest(_Payload):
     company_id: str
     company_name: str
     opening_title: str
-    # Absent before turn budgets replaced search and token budgets.
+    # Absent before turn budgets replaced search and token budgets. Counted from
+    # zero each pass; older resumed passes started from the trace's running total.
     turns_used: int | None = None
     turn_budget: int | None = None
     # Absent before targeted passes; `None` also means no target was selected.
@@ -87,10 +88,8 @@ class ExtractResult(_Payload):
 
 
 class ExtractResponse(_Payload):
-    """`results` is `[]` for an attempted fetch that failed, which still spent a
-    turn. `None` marks an extraction that was never a pass turn: the older
-    intake-failure records, written before any opening or budget existed.
-    """
+    """A failed fetch carries `error` and empty `results`. Older failure
+    records omit `results`, which loads as `None`."""
 
     results: list[ExtractResult] | None = None
     failed_results: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
