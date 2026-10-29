@@ -22,7 +22,14 @@ from screen.research.actions import Action, FetchAction, SearchAction, StopActio
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakePlanner
 from screen.research.state import LoopState, PassSummary
-from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.events import (
+    DecidePlanEvent,
+    ExtractEvent,
+    ExtractRequest,
+    ExtractResult,
+    SearchEvent,
+    SearchRequest,
+)
 from screen.score.loader import load_scoring_config
 from screen.types import Assertion
 from tests.helpers import canned_assertion
@@ -104,21 +111,19 @@ def test_decide_plan_event_records_request_and_response() -> None:
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=events.append),
     )
 
-    plan_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "decide_plan"
-    ]
+    plan_events = [e for e in events if isinstance(e, DecidePlanEvent)]
     assert len(plan_events) == 1
     event = plan_events[0]
 
-    assert event.request["opening_id"] == "op-abc"
-    assert event.request["company_id"] == "co-xyz"
-    assert event.request["company_name"] == "Acme Corp"
-    assert event.request["opening_title"] == "Staff Software Engineer"
-    assert event.request["turns_used"] == 2
-    assert event.request["targets_covered"] == ["craft_direction"]
-    assert event.request["target_assertion_counts"] == {"craft_direction": 1}
-    assert event.request["last_context"] is None
-    assert event.response == {"actions": [{"tag": "stop", "reason": "Nothing left to check."}]}
+    assert event.request.opening_id == "op-abc"
+    assert event.request.company_id == "co-xyz"
+    assert event.request.company_name == "Acme Corp"
+    assert event.request.opening_title == "Staff Software Engineer"
+    assert event.request.turns_used == 2
+    assert event.request.targets_covered == ["craft_direction"]
+    assert event.request.target_assertion_counts == {"craft_direction": 1}
+    assert event.request.last_context is None
+    assert event.response.actions == [{"tag": "stop", "reason": "Nothing left to check."}]
 
 
 def test_dispatch_threads_budget_counters() -> None:
@@ -192,12 +197,10 @@ def test_search_action_happy_path() -> None:
     assert browser.search_calls == [query]
 
     # tavily_search event was recorded (alongside decide_plan audit events)
-    search_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_search"
-    ]
+    search_events = [e for e in events if isinstance(e, SearchEvent)]
     assert len(search_events) == 1
     event = search_events[0]
-    assert event.request == {"query": query}
+    assert event.request == SearchRequest(query=query)
 
     # summary reflects one search used
     assert summary.turns_used == 1
@@ -277,12 +280,11 @@ def test_fetch_action_happy_path() -> None:
     assert browser.fetch_calls == [url]
 
     # tavily_extract event was recorded (alongside decide_plan audit events)
-    extract_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
-    ]
+    extract_events = [e for e in events if isinstance(e, ExtractEvent)]
     assert len(extract_events) == 1
     event = extract_events[0]
-    assert event.request == {"urls": [url]}
+    assert event.request == ExtractRequest(urls=[url])
+    assert event.response.results == [ExtractResult(url=url, raw_content=raw)]
 
     # new assertion was appended to the summary count
     assert summary.assertions_written == 2  # original + new_assertion
@@ -322,9 +324,7 @@ def test_fetch_action_duplicate_skipped() -> None:
     # browser.fetch was NOT called
     assert browser.fetch_calls == []
     # no tavily_extract event was recorded (decide_plan audit events still are)
-    extract_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
-    ]
+    extract_events = [e for e in events if isinstance(e, ExtractEvent)]
     assert extract_events == []
     # summary still valid
     assert isinstance(summary, PassSummary)
@@ -431,12 +431,10 @@ def test_search_action_browser_error_recorded_and_continues() -> None:
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
-    search_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_search"
-    ]
+    search_events = [e for e in events if isinstance(e, SearchEvent)]
     assert len(search_events) == 1
-    assert search_events[0].response["error"]
-    assert "details" in search_events[0].response
+    assert search_events[0].response.error
+    assert search_events[0].response.details
 
     # The failed search still consumed a turn.
     assert summary.turns_used == 1
@@ -466,12 +464,12 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
-    extract_events = [
-        e for e in events if isinstance(e, ResearchTraceEvent) and e.tool == "tavily_extract"
-    ]
+    extract_events = [e for e in events if isinstance(e, ExtractEvent)]
     assert len(extract_events) == 1
-    assert extract_events[0].response["error"]
-    assert "details" in extract_events[0].response
+    assert extract_events[0].response.error
+    assert extract_events[0].response.details
+    # `[]`, not `None`: replay counts this fetch as a turn on resume.
+    assert extract_events[0].response.results == []
 
     # No assertions extracted, but the pass did not abort.
     assert summary.assertions_written == 0

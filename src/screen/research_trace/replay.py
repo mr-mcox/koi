@@ -7,11 +7,11 @@ trace says actually happened.
 """
 
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.research_trace.events import ResearchTraceEvent, TavilyExtractResponse
+from screen.research_trace.events import DecidePlanEvent, ExtractEvent, SearchEvent, parse_event
 from screen.research_trace.trace_io import read_research_trace
 
 
@@ -33,63 +33,49 @@ class TraceReplay(BaseModel):
     target_stalls: dict[str, int] = Field(default_factory=dict)
 
 
-def _fold_search_event(event: ResearchTraceEvent, turns_used: int, prior_queries: list[str]) -> int:
-    query = event.request.get("query")
-    if query:
-        prior_queries.append(str(query))
+def _fold_search_event(event: SearchEvent, turns_used: int, prior_queries: list[str]) -> int:
+    prior_queries.append(event.request.query)
     return turns_used + 1
 
 
-def _fold_extract_event(event: ResearchTraceEvent, turns_used: int, visited_urls: list[str]) -> int:
-    """A `results` key present (even empty) means the fetch was attempted as
-    part of a research pass and consumed a turn, whether it succeeded or
-    failed. Its absence marks the
-    fatal intake-time failure recorded before any Opening/budget exists,
-    which is not a pass turn.
-    """
-    response = cast(TavilyExtractResponse, event.response)
-    if "results" not in response:
+def _fold_extract_event(event: ExtractEvent, turns_used: int, visited_urls: list[str]) -> int:
+    """Every extract with `results` set, even to `[]`, consumed a turn;
+    `ExtractResponse` says what `None` means."""
+    results = event.response.results
+    if results is None:
         return turns_used
-    results = response.get("results") or []
-    for result in results:
-        url = cast(dict[str, Any], result).get("url")
-        if url:
-            visited_urls.append(str(url))
+    visited_urls.extend(result.url for result in results)
     return turns_used + 1
 
 
-def _run_target(event: ResearchTraceEvent) -> str | None:
+def _run_target(event: DecidePlanEvent) -> str | None:
     req = event.request
-    return req.get("active_target") or req.get("primary_target")
+    return req.active_target or req.primary_target
 
 
-def _counts(event: ResearchTraceEvent) -> dict[str, int] | None:
-    """Per-target assertion count as of this decide_plan snapshot, or `None` if
-    the trace predates `target_assertion_counts`. Callers fall back to membership-only comparison for those
-    older traces rather than guessing counts, which would manufacture false stalls
-    for a target that grew past its first assertion between two runs.
+def _counts(event: DecidePlanEvent) -> dict[str, int] | None:
+    """Callers fall back to membership-only comparison when this is `None`
+    rather than guessing counts, which would manufacture false stalls for a
+    target that grew past its first assertion between two runs.
     """
-    raw = event.request.get("target_assertion_counts")
-    if isinstance(raw, dict):
-        return {str(k): int(v) for k, v in cast(dict[str, int], raw).items()}
-    return None
+    return event.request.target_assertion_counts
 
 
-def _covered(event: ResearchTraceEvent) -> set[str]:
-    return set(event.request.get("targets_covered") or [])
+def _covered(event: DecidePlanEvent) -> set[str]:
+    return set(event.request.targets_covered)
 
 
 def _segment_target_runs(
-    plans: list[tuple[int, ResearchTraceEvent]],
+    plans: list[DecidePlanEvent],
 ) -> list[tuple[int, int, str | None]]:
     """Group contiguous decide_plan events that share the same active target."""
     runs: list[tuple[int, int, str | None]] = []
     if not plans:
         return runs
     start = 0
-    current_target = _run_target(plans[0][1])
+    current_target = _run_target(plans[0])
     for i in range(1, len(plans)):
-        t = _run_target(plans[i][1])
+        t = _run_target(plans[i])
         if t != current_target:
             runs.append((start, i - 1, current_target))
             start = i
@@ -112,15 +98,15 @@ def _is_stall_by_membership(target: str, start: set[str], end: set[str]) -> bool
 
 
 def _run_boundary_counts(
-    plans: list[tuple[int, ResearchTraceEvent]], idx: int
+    plans: list[DecidePlanEvent], idx: int
 ) -> tuple[dict[str, int] | None, set[str]]:
-    event = plans[idx][1]
+    event = plans[idx]
     return _counts(event), _covered(event)
 
 
 def _count_stalls(
     runs: list[tuple[int, int, str | None]],
-    plans: list[tuple[int, ResearchTraceEvent]],
+    plans: list[DecidePlanEvent],
 ) -> dict[str, int]:
     """Count runs whose target showed no productive growth.
 
@@ -145,7 +131,7 @@ def _count_stalls(
     return stalls
 
 
-def _fold_target_stalls(events: list[ResearchTraceEvent]) -> dict[str, int]:
+def _fold_target_stalls(plans: list[DecidePlanEvent]) -> dict[str, int]:
     """Count unproductive contiguous runs per target from decide_plan events.
     A "run" is a maximal sequence of decide_plan events whose `active_target`
     (falling back to `primary_target`) is the same target. A run is a stall for
@@ -153,7 +139,6 @@ def _fold_target_stalls(events: list[ResearchTraceEvent]) -> dict[str, int]:
     was at the run's start — whether or not the target already had assertions
     from an earlier, unrelated run.
     """
-    plans = [(idx, event) for idx, event in enumerate(events) if event.tool == "decide_plan"]
     runs = _segment_target_runs(plans)
     return _count_stalls(runs, plans)
 
@@ -162,22 +147,23 @@ def replay_research_trace(path: Path) -> TraceReplay:
     turns_used = 0
     visited_urls: list[str] = []
     prior_queries: list[str] = []
-    events: list[ResearchTraceEvent] = []
+    plans: list[DecidePlanEvent] = []
 
     for raw_line in read_research_trace(path):
         line = raw_line.strip()
         if not line:
             continue
-        event = ResearchTraceEvent.model_validate_json(line)
-        events.append(event)
-        if event.tool == "tavily_search":
+        event = parse_event(line)
+        if isinstance(event, DecidePlanEvent):
+            plans.append(event)
+        elif isinstance(event, SearchEvent):
             turns_used = _fold_search_event(event, turns_used, prior_queries)
-        elif event.tool == "tavily_extract":
+        else:
             turns_used = _fold_extract_event(event, turns_used, visited_urls)
 
     return TraceReplay(
         turns_used=turns_used,
         visited_urls=visited_urls,
         prior_queries=prior_queries,
-        target_stalls=_fold_target_stalls(events),
+        target_stalls=_fold_target_stalls(plans),
     )

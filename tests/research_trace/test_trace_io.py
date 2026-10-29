@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from screen.research_trace.events import ResearchTraceEvent
+from screen.research_trace.events import (
+    ExtractEvent,
+    ExtractRequest,
+    ExtractResponse,
+    ExtractResult,
+)
 from screen.research_trace.trace_io import (
     ResearchTraceMissingError,
     append_line,
@@ -98,7 +103,7 @@ def test_append_line_accepts_already_terminated(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == "ok\n"
 
 
-def test_read_page_content_skips_blank_lines_and_non_tavily_events(
+def test_read_page_content_skips_blank_lines_and_non_extract_events(
     tmp_path: Path,
 ) -> None:
     """Blank lines and non-tavily_extract events are ignored; the first
@@ -112,7 +117,16 @@ def test_read_page_content_skips_blank_lines_and_non_tavily_events(
             {
                 "ts": "2026-08-22T12:00:00Z",
                 "tool": "decide_plan",
-                "request": {"opening_id": "x"},
+                "request": {
+                    "opening_id": "op-1",
+                    "company_id": "co-1",
+                    "company_name": "Example Co",
+                    "opening_title": "Staff Engineer",
+                    "prior_queries": [],
+                    "visited_urls": [],
+                    "targets_covered": [],
+                    "last_context": None,
+                },
                 "response": {"actions": []},
             }
         )
@@ -133,14 +147,13 @@ def test_read_page_content_skips_blank_lines_and_non_tavily_events(
     assert found_url == url
 
 
-def test_read_page_content_skips_empty_results_and_falls_back_to_event_url(
+def test_read_page_content_skips_extract_events_with_empty_results(
     tmp_path: Path,
 ) -> None:
-    """A tavily_extract event with no results is skipped; the URL on the request is
-    used when the first result omits its own url."""
-    trace_path = tmp_path / "research_traces" / "empty-then-url.jsonl"
+    """A failed fetch recorded first does not hide the page a retry fetched."""
+    trace_path = tmp_path / "research_traces" / "empty-then-page.jsonl"
     trace_path.parent.mkdir(parents=True, exist_ok=True)
-    url = "https://example.com/fallback"
+    url = "https://example.com/retried"
     trace_path.write_text(
         json.dumps(
             {
@@ -156,14 +169,14 @@ def test_read_page_content_skips_empty_results_and_falls_back_to_event_url(
                 "ts": "2026-08-22T12:00:01Z",
                 "tool": "tavily_extract",
                 "request": {"urls": [url]},
-                "response": {"results": [{"raw_content": "Fallback url content."}]},
+                "response": {"results": [{"url": url, "raw_content": "Retried content."}]},
             }
         )
         + "\n",
         encoding="utf-8",
     )
     page_content, found_url = read_page_content(trace_path)
-    assert page_content == "Fallback url content."
+    assert page_content == "Retried content."
     assert found_url == url
 
 
@@ -198,11 +211,12 @@ def test_read_page_content_handles_unicode_line_separator_in_page_text(
     trace_path = tmp_path / "research_traces" / "separators.jsonl"
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     url = "https://example.com/separator"
-    event = ResearchTraceEvent(
+    event = ExtractEvent(
         ts=datetime(2026, 8, 22, 12, 0, 0, tzinfo=UTC),
-        tool="tavily_extract",
-        request={"urls": [url]},
-        response={"results": [{"url": url, "raw_content": "Line one.\u2028Line two."}]},
+        request=ExtractRequest(urls=[url]),
+        response=ExtractResponse(
+            results=[ExtractResult(url=url, raw_content="Line one.\u2028Line two.")]
+        ),
     )
     record_event(trace_path, event)
 
