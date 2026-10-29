@@ -8,11 +8,14 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
+import numpy as np
+
 from screen.compare.picker import ComparisonSuggestion
 from screen.compare.prescreen import (
     CompareCache,
     CompareProgress,
     CompareState,
+    pick_and_consult,
     run_prescreen,
     run_speculative_prescreen,
 )
@@ -111,6 +114,74 @@ def _seed(conn, digest_a: str, digest_b: str) -> None:  # type: ignore[no-untype
     )
 
 
+def test_pick_and_consult_returns_a_confident_ruling_without_writing_it(
+    tmp_path: Path,
+) -> None:
+    """The step only proposes: committing is each loop's call, made after it checks the
+    compare version. A step that appended its own ruling would land it even when the
+    operator wrote during the Jev consult."""
+    conn = connect(tmp_path / "screen.db")
+    _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
+    config = load_scoring_config()
+
+    pick = pick_and_consult(
+        conn,
+        config,
+        verdict_provider=_FixedVerdict("tie", 1.0),
+        rubric=synthetic_rubric(),
+        rng=np.random.default_rng(config.seed),
+    )
+
+    assert pick.suggestion is not None
+    assert pick.ruling is not None
+    assert pick.ruling.provenance == "provisional"
+    assert pick.ruling.outcome == "tie"
+    assert pick.ruling.target == pick.suggestion.target
+    assert {pick.ruling.opening_a_id, pick.ruling.opening_b_id} == {
+        pick.suggestion.opening_a_id,
+        pick.suggestion.opening_b_id,
+    }
+    assert pick.jev_read == RubricVerdict(outcome="tie", confidence=1.0)
+    assert comparisons_for_target(conn, "location") == []
+
+
+def test_pick_and_consult_carries_jev_read_when_jev_is_not_confident(tmp_path: Path) -> None:
+    conn = connect(tmp_path / "screen.db")
+    _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
+    config = load_scoring_config()
+
+    pick = pick_and_consult(
+        conn,
+        config,
+        verdict_provider=_FixedVerdict("a", 0.1),
+        rubric=synthetic_rubric(),
+        rng=np.random.default_rng(config.seed),
+    )
+
+    assert pick.suggestion is not None
+    assert pick.ruling is None
+    assert pick.jev_read == RubricVerdict(outcome="a", confidence=0.1)
+
+
+def test_pick_and_consult_never_suggests_the_excluded_triple(tmp_path: Path) -> None:
+    """With location excluded, craft_direction is the only comparable dimension left."""
+    conn = connect(tmp_path / "screen.db")
+    _seed(conn, "US remote, no twin-cities office", "US remote, no twin-cities office")
+    config = load_scoring_config()
+
+    pick = pick_and_consult(
+        conn,
+        config,
+        verdict_provider=_FixedVerdict("tie", 0.0),
+        rubric=synthetic_rubric(),
+        rng=np.random.default_rng(config.seed),
+        excluded=(frozenset({"acme--a", "widgets--b"}), "location"),
+    )
+
+    assert pick.suggestion is not None
+    assert pick.suggestion.target == "craft_direction"
+
+
 def test_run_prescreen_persists_confident_verdicts_and_reports_progress(
     tmp_path: Path,
 ) -> None:
@@ -166,10 +237,10 @@ def test_run_prescreen_reports_nothing_when_jev_is_never_confident(tmp_path: Pat
     assert progress.final_suggestion_jev_read == RubricVerdict(outcome="tie", confidence=0.1)
 
 
-def test_run_prescreen_reports_no_jev_read_without_a_cached_digest(tmp_path: Path) -> None:
-    """When there's no cached digest, Jev is never consulted at all — `final_suggestion`
-    is set but `final_suggestion_jev_read` stays `None`, distinguishing "never asked"
-    from "asked but uncertain"."""
+def test_pick_and_consult_reports_no_jev_read_without_a_cached_digest(tmp_path: Path) -> None:
+    """When there's no cached digest, Jev is never consulted at all — the suggestion is
+    set but `jev_read` stays `None`, distinguishing "never asked" from "asked but
+    uncertain"."""
     conn = connect(tmp_path / "screen.db")
     upsert_company(conn, Company(id="acme", name="Acme", created_at=_NOW))
     upsert_company(conn, Company(id="widgets", name="Widgets", created_at=_NOW))
@@ -198,7 +269,6 @@ def test_run_prescreen_reports_no_jev_read_without_a_cached_digest(tmp_path: Pat
     append_assertions(conn, [_assertion("location", "Strong")], opening_id="acme--a")
     append_assertions(conn, [_assertion("location", "Strong")], opening_id="widgets--b")
     config = load_scoring_config()
-    progress = CompareProgress()
 
     class _ExplodingVerdict:
         def rule(
@@ -210,17 +280,18 @@ def test_run_prescreen_reports_no_jev_read_without_a_cached_digest(tmp_path: Pat
         ) -> RubricVerdict:
             raise AssertionError("verdict provider should not be called without cached digests")
 
-    run_prescreen(
+    pick = pick_and_consult(
         conn,
         config,
         verdict_provider=_ExplodingVerdict(),
         rubric=synthetic_rubric(),
-        progress=progress,
+        rng=np.random.default_rng(config.seed),
     )
 
-    assert progress.final_suggestion is not None
-    assert progress.final_suggestion.target == "location"
-    assert progress.final_suggestion_jev_read is None
+    assert pick.suggestion is not None
+    assert pick.suggestion.target == "location"
+    assert pick.jev_read is None
+    assert pick.ruling is None
 
 
 def test_run_prescreen_completes_with_no_suggestion_when_pool_cannot_pair(
@@ -258,7 +329,9 @@ def test_run_prescreen_completes_with_no_suggestion_when_pool_cannot_pair(
     assert progress.final_suggestion_jev_read is None
 
 
-def test_run_prescreen_sources_few_shot_examples_from_operator_rulings(tmp_path: Path) -> None:
+def test_pick_and_consult_sources_few_shot_examples_from_operator_rulings(
+    tmp_path: Path,
+) -> None:
     """A prior operator ruling with a cached digest feeds the few-shot sourcing path; a
     prior ruling naming an opening with no cached digest is skipped, not an error."""
     conn = connect(tmp_path / "screen.db")
@@ -330,19 +403,29 @@ def test_run_prescreen_sources_few_shot_examples_from_operator_rulings(tmp_path:
         ),
     )
     config = load_scoring_config()
-    progress = CompareProgress()
+    seen_examples: list[list[FewShotExample]] = []
 
-    run_prescreen(
+    class _RecordingVerdict:
+        def rule(
+            self,
+            rubric_text: str,
+            digest_a: str,
+            digest_b: str,
+            few_shot_examples: list[FewShotExample],
+        ) -> RubricVerdict:
+            seen_examples.append(few_shot_examples)
+            return RubricVerdict(outcome="tie", confidence=1.0)
+
+    pick = pick_and_consult(
         conn,
         config,
-        verdict_provider=_FixedVerdict("tie", 1.0),
+        verdict_provider=_RecordingVerdict(),
         rubric=synthetic_rubric(),
-        progress=progress,
-        max_iterations=1,
+        rng=np.random.default_rng(config.seed),
     )
 
-    assert len(progress.ruled) == 1
-    assert len(comparisons_for_target(conn, "location")) == 2
+    assert pick.ruling is not None
+    assert seen_examples == [[]]
 
 
 def test_run_prescreen_drops_a_ruling_when_the_operator_wrote_during_the_jev_call(
