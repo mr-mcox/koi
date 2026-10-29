@@ -21,7 +21,7 @@ from screen.compare.picker import ComparisonSuggestion, select_comparison
 from screen.compare.probability import pre_comparison_probability
 from screen.compare.rubric_gate import rubric_similarity_verdict
 from screen.extract.prompt import RubricText
-from screen.pool import rank_screening_pool, screening_pool_inputs
+from screen.pool import current_digest_ids, rank_screening_pool, screening_pool_inputs
 from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.scorer import stats_for_target
 from screen.score.types import ScoringConfig
@@ -276,6 +276,9 @@ def _prescreen_step(
         rulings_by_opening=rulings_by_opening,
         rng=rng,
         excluded_triples={speculating_for} if speculating_for is not None else None,
+        current_digest_ids=current_digest_ids(
+            conn, assertions_by_opening, list(config.dimension_weights)
+        ),
     )
     _prescreen_log.info(
         "picker took %.2fs (compare_version=%s)", time.monotonic() - picked_at, start_version

@@ -6,19 +6,20 @@ orchestration itself (`run_prescreen`) lives in `tests/compare/test_prescreen.py
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from screen.compare.prescreen import _outcome_for_pair
-from screen.pool import _to_score_comparison, rank_screening_pool
+from screen.pool import _to_score_comparison, current_digest_ids, rank_screening_pool
 from screen.score.loader import load_scoring_config
 from screen.score.pairwise import Comparison as ScoreComparison
 from screen.score.types import ScoringConfig
 from screen.store.db import connect
-from screen.store.repo import upsert_company, upsert_opening
+from screen.store.repo import insert_dimension_digest, upsert_company, upsert_opening
 from screen.types import Company, Comparison, Opening
+from tests.helpers import canned_assertion
 
 _NOW = datetime(2026, 9, 17, tzinfo=UTC)
 
@@ -100,3 +101,50 @@ def test_outcome_for_pair_maps_tie_and_each_winner() -> None:
 
     b_wins = ScoreComparison(winner="b", loser="a", provenance="provisional")
     assert _outcome_for_pair(b_wins, "a", "b") == "b"
+
+
+def test_current_digest_ids_names_the_latest_digest_only_while_it_covers_the_evidence(
+    tmp_path: Path,
+) -> None:
+    conn = connect(tmp_path / "screen.db")
+    upsert_company(conn, Company(id="acme", name="Acme", created_at=_NOW))
+    upsert_opening(
+        conn,
+        Opening(
+            id="acme--a",
+            company_id="acme",
+            title="Staff Engineer",
+            url="https://example.com/a",
+            research_trace_id="tx" + "0" * 18,
+            created_at=_NOW,
+        ),
+    )
+    for target in ("mission", "location"):
+        insert_dimension_digest(
+            conn,
+            opening_id="acme--a",
+            target=target,
+            digest="older",
+            assertion_count=1,
+            computed_at=_NOW,
+        )
+    latest_mission = insert_dimension_digest(
+        conn,
+        opening_id="acme--a",
+        target="mission",
+        digest="newer",
+        assertion_count=1,
+        computed_at=_NOW + timedelta(minutes=1),
+    )
+    assertions = {
+        "acme--a": [
+            canned_assertion("mission"),
+            canned_assertion("location"),
+            canned_assertion("location"),
+        ]
+    }
+
+    current = current_digest_ids(conn, assertions, ["mission", "location", "domain"])
+
+    # location's digest predates its second assertion; domain was never digested.
+    assert current == {("acme--a", "mission"): latest_mission.id}

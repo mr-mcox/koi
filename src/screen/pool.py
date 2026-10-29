@@ -23,6 +23,7 @@ from screen.store.repo import (
     assertion_rulings_for_opening,
     assertions_for_opening,
     comparisons_for_target,
+    get_dimension_digest,
     list_openings,
 )
 from screen.types import Assertion, AssertionRuling, Fit, Opening
@@ -157,6 +158,25 @@ def screening_pool_inputs(
         comparisons_by_target,
         companies_by_opening,
     )
+
+
+def current_digest_ids(
+    conn: sqlite3.Connection,
+    assertions_by_opening: dict[str, list[Assertion]],
+    targets: list[str],
+) -> dict[tuple[str, str], str]:
+    """`(opening_id, target)` → id of the digest that would be shown for it now: the
+    latest cached digest, provided it covers every current assertion on that target
+    (the same cache-hit rule `digest_record_for_target` applies). A stale or missing
+    digest has no entry, so a ruling made on it can't read as current."""
+    current: dict[tuple[str, str], str] = {}
+    for opening_id, assertions in assertions_by_opening.items():
+        for target in targets:
+            digest = get_dimension_digest(conn, opening_id, target)
+            count = sum(1 for a in assertions if a.target == target)
+            if digest is not None and digest.assertion_count >= count:
+                current[(opening_id, target)] = digest.id
+    return current
 
 
 def rank_screening_pool(

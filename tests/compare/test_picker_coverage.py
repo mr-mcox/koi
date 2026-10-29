@@ -1,48 +1,17 @@
-from datetime import UTC, datetime
-from uuid import uuid4
-
-from screen.compare.picker import _settled_pairs, select_comparison
+from screen.compare.picker import ComparisonSuggestion, select_comparison
 from screen.score.pairwise import Comparison as ScoreComparison
-from screen.score.types import ScoringConfig
-from screen.types import Assertion, Citation
+from screen.score.types import ComparisonBetaParams, ScoringConfig
 from tests.helpers import canned_assertion
 
 
-def test_settled_pairs_allows_when_digest_version_differs():
-    # Provide an operator ruling where the version recorded was "0" but now there is "1" assertion
-    comp = ScoreComparison(
-        winner="a",
-        loser="b",
-        provenance="operator",
-        winner_digest_version="0",
-        loser_digest_version="0",
-    )
-
-    cit = Citation(url="http", quote="x", host="h", source_provenance="p", independent=True)
-    a1 = Assertion(
-        id=str(uuid4()),
-        target="mission",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="x",
-        citations=[cit],
-        created_at=datetime.now(UTC),
-    )
-    assertions_by_opening = {"a": [a1]}
-
-    settled = _settled_pairs("mission", [comp], assertions_by_opening)
-    assert frozenset({"a", "b"}) not in settled
-
-
-def test_pair_priority_floor_keeps_pair_selectable():
-    # Even when `p_top_k` is 0.0, the floor keeps the pair alive for selection.
-    config = ScoringConfig(
+def _mission_config() -> ScoringConfig:
+    return ScoringConfig(
         dimension_weights={"mission": 1.0},
         dimension_guards={"mission": False},
         guard_downside=3.0,
         guard_upside=0.3,
         boundary_weight_floor=0.1,
-        comparison_beta={"operator": 0.5, "provisional": 1.0},
+        comparison_beta=ComparisonBetaParams(operator=0.5, provisional=1.0),
         seed=1,
         samples=1000,
         provenance_weight={"model_proposed": 1.0, "unexamined": 0.0},
@@ -54,6 +23,11 @@ def test_pair_priority_floor_keeps_pair_selectable():
         tie_commit_threshold=0.95,
         winner_commit_threshold=0.85,
     )
+
+
+def test_pair_priority_floor_keeps_pair_selectable():
+    # Even when `p_top_k` is 0.0, the floor keeps the pair alive for selection.
+    config = _mission_config()
     res = select_comparison(
         ["a", "b"],
         companies_by_opening={"a": "c1", "b": "c2"},
@@ -69,26 +43,44 @@ def test_pair_priority_floor_keeps_pair_selectable():
     assert res.target == "mission"
 
 
-def test_settled_pairs_blocks_when_digest_version_matches():
-    comp = ScoreComparison(
+def _pick_after_operator_ruling(
+    current_digest_ids: dict[tuple[str, str], str],
+) -> ComparisonSuggestion | None:
+    ruling = ScoreComparison(
         winner="a",
         loser="b",
         provenance="operator",
-        winner_digest_version="1",
-        loser_digest_version="0",
+        winner_digest_version="digest-a1",
+        loser_digest_version="digest-b1",
+    )
+    return select_comparison(
+        ["a", "b"],
+        companies_by_opening={"a": "c1", "b": "c2"},
+        assertions_by_opening={
+            "a": [canned_assertion("mission")],
+            "b": [canned_assertion("mission")],
+        },
+        comparisons_by_target={"mission": [ruling]},
+        p_top_k_by_opening={"a": 0.5, "b": 0.5},
+        config=_mission_config(),
+        current_digest_ids=current_digest_ids,
     )
 
-    cit = Citation(url="http", quote="x", host="h", source_provenance="p", independent=True)
-    a1 = Assertion(
-        id=str(uuid4()),
-        target="mission",
-        fit="Strong",
-        provenance="model_proposed",
-        chunk="x",
-        citations=[cit],
-        created_at=datetime.now(UTC),
-    )
-    assertions_by_opening = {"a": [a1]}
 
-    settled = _settled_pairs("mission", [comp], assertions_by_opening)
-    assert frozenset({"a", "b"}) in settled
+def test_operator_ruling_on_current_digests_is_settled():
+    assert (
+        _pick_after_operator_ruling({("a", "mission"): "digest-a1", ("b", "mission"): "digest-b1"})
+        is None
+    )
+
+
+def test_operator_ruling_is_askable_again_after_new_evidence_on_one_side():
+    suggestion = _pick_after_operator_ruling(
+        {("a", "mission"): "digest-a1", ("b", "mission"): "digest-b2"}
+    )
+    assert suggestion is not None
+    assert suggestion.target == "mission"
+
+
+def test_operator_ruling_is_askable_when_a_side_has_no_current_digest():
+    assert _pick_after_operator_ruling({("a", "mission"): "digest-a1"}) is not None

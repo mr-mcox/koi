@@ -84,10 +84,13 @@ def _qualify_for_dimension(
 def _settled_pairs(
     target: str,
     comparisons: list[Comparison],
-    assertions_by_opening: dict[str, list[Assertion]],
+    current_digest_ids: dict[tuple[str, str], str],
 ) -> set[frozenset[str]]:
-    """Pairs whose *latest* comparison on this dimension is either provisional (hard-excluded),
-    or an operator ruling where the underlying digest versions haven't changed (loop fix)."""
+    """Pairs whose *latest* comparison on this dimension is either provisional, or an
+    operator ruling where both sides' recorded digest ids are still the current digests
+    for `(opening, target)` — the operator already judged exactly the evidence the pair
+    would be shown again. A side with no current digest (none cached, or new assertions
+    since) never matches, so the pair stays askable."""
     latest_comparison: dict[frozenset[str], Comparison] = {}
     for c in comparisons:
         latest_comparison[frozenset({c.winner, c.loser})] = c
@@ -97,15 +100,14 @@ def _settled_pairs(
         if c.provenance == "provisional":
             settled.add(pair)
             continue
-
-        # For operator rulings, check if new evidence arrived since the judgment
-        count_winner = str(
-            sum(1 for a in assertions_by_opening.get(c.winner, []) if a.target == target)
-        )
-        count_loser = str(
-            sum(1 for a in assertions_by_opening.get(c.loser, []) if a.target == target)
-        )
-        if c.winner_digest_version == count_winner and c.loser_digest_version == count_loser:
+        current_winner = current_digest_ids.get((c.winner, target))
+        current_loser = current_digest_ids.get((c.loser, target))
+        if (
+            current_winner is not None
+            and current_loser is not None
+            and c.winner_digest_version == current_winner
+            and c.loser_digest_version == current_loser
+        ):
             settled.add(pair)
 
     return settled
@@ -210,11 +212,12 @@ def _best_dimension_for_pair(
     """The dimension contributing most variance to one pair's contest, scaled by
     `sqrt(weight)` (a gentler exponent than the pair-priority calculation uses — see
     module docstring) and the pair's priority (overall closeness × boundary proximity).
-    A (pair, dimension) whose latest comparison is provisional is hard-excluded, not just
-    down-weighted — unlike an operator ruling (which stays askable, variance-decayed),
-    the operator has never seen this triple, so there's nothing to re-judge until they
-    visit the review surface and override it (which records a later, operator-provenance
-    comparison on the same pair, naturally returning it here)."""
+    A (pair, dimension) in `_settled_pairs` is hard-excluded, not just down-weighted. A
+    provisional one has never been seen by the operator, so there's nothing to re-judge
+    until they visit the review surface and override it (which records a later,
+    operator-provenance comparison on the same pair, naturally returning it here). An
+    operator ruling is excluded only while both digests it was judged on are current;
+    new evidence on either side makes it askable again."""
     best_score = -1.0
     best_target: str | None = None
     for target, weight in config.dimension_weights.items():
@@ -300,6 +303,7 @@ def select_comparison(
     rulings_by_opening: dict[str, dict[str, Fit]] | None = None,
     rng: np.random.Generator | None = None,
     excluded_triples: set[tuple[frozenset[str], str]] | None = None,
+    current_digest_ids: dict[tuple[str, str], str] | None = None,
 ) -> ComparisonSuggestion | None:
     """Return the most useful comparison opportunity, or `None` if none qualifies.
     Every dimension is fit over the whole pool (unexamined openings enter at their
@@ -323,6 +327,10 @@ def select_comparison(
     (unordered pair, dimension) triples from the menu for this call only, without
     recording anything — the speculative pre-screen uses it to answer "what would come
     next" while the operator is still deciding the triple in front of them.
+    `current_digest_ids` maps `(opening_id, target)` to the digest id that would be shown
+    for it now (`screen.pool.current_digest_ids`); an operator ruling whose recorded
+    digest ids both still match is settled and skipped. Omitted, no operator ruling
+    counts as settled.
     """
     if len(opening_ids) < _MIN_PAIR:
         return None
@@ -337,7 +345,7 @@ def select_comparison(
             )
         )
         provisionally_settled_by_dimension[target] = _settled_pairs(
-            target, comparisons_by_target.get(target, []), assertions_by_opening
+            target, comparisons_by_target.get(target, []), current_digest_ids or {}
         ) | {
             pair
             for pair, excluded_target in (excluded_triples or set())
