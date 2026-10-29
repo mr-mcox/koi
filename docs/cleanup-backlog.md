@@ -21,6 +21,7 @@ wave before starting the next, because later waves move files the earlier ones e
 | after G | M | Adds tests to files F, G and H move; run it between G and H, or after H, but not alongside them |
 | after M | N | Touches `browser.py` and `tests/test_browser.py`, which M edits |
 | after M | O | Touches files across `src/`; run it alone |
+| after M | P | Touches only `compare/prescreen.py` and its tests |
 | after N | Q | Edits `research/dispatcher.py` and `intake/pipeline.py`, which N also edits |
 | any | R | Touches only `store/`, `web/queue.py` and their tests |
 
