@@ -211,15 +211,12 @@ def opening_weight(conn: sqlite3.Connection, opening: Opening, config: ScoringCo
 def eligible_weights(conn: sqlite3.Connection, config: ScoringConfig) -> dict[str, float]:
     """Every opening still in the `screening` stage, mapped to a draw weight biased
     toward the current top-K boundary: `uncertainty * boundary_weight`, where
-    `boundary_weight` is `p_top_k * (1 - p_top_k)` from a fresh pool-wide rank
+    `boundary_weight` comes from each opening's `p_top_k` in a fresh pool-wide rank
     (scouting research-targeting F16, F21 — breadth-first, biased toward fresh/contested
     openings over settling already-examined ones). There is no separate per-opening
     turn budget to filter on — the weight itself throttles: a fully examined opening's
-    uncertainty decays toward 0, and a settled-in/out opening's boundary weight decays
-    toward 0, independently. Falls back to plain uncertainty when the whole pool is
-    decisively in or out of top K (every `boundary_weight` is 0, e.g. a pool no larger
-    than `top_k`) — the boundary signal carries no information then, and a zero-weight
-    pool can't be drawn from at all. Recomputed fresh on every call — the caller
+    uncertainty decays toward 0, and an opening that looks settled out of top K decays
+    toward `boundary_weight_floor`, which keeps it drawable. Recomputed fresh on every call — the caller
     redraws from this after each turn so a just-spent turn's new assertions immediately
     affect the next draw."""
     eligible = list_openings(conn, stage="screening")
@@ -228,13 +225,10 @@ def eligible_weights(conn: sqlite3.Connection, config: ScoringConfig) -> dict[st
     uncertainty = {opening.id: opening_weight(conn, opening, config) for opening in eligible}
     ranks = rank_screening_pool(conn, config)
     p_top_k = {r.opening_id: r.p_top_k for r in ranks.opening_ranks_unguarded}
-    weighted = {
+    return {
         opening_id: unc * boundary_weight(p_top_k[opening_id], config.boundary_weight_floor)
         for opening_id, unc in uncertainty.items()
     }
-    if sum(weighted.values()) > 0:
-        return weighted
-    return uncertainty
 
 
 @dataclass

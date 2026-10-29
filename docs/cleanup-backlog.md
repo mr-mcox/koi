@@ -261,49 +261,34 @@ mislabeled, and the mismatch grows with evidence accumulated since the judgment.
 Touches: `recalibration.py`, `recalibration_run.py`, `scripts/backtest_jev_routing.py`,
 `store/migrations/0010_create_comparisons.sql`, the recalibration tests.
 
-## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *open, after G*
+## M. Raise the coverage gate to 100% line and branch, with reasoned exclusions — *done*
 
-The per-file gate in `scripts/check.py` is 95% line and branch. That slack lets a file
-carry untested lines without anyone deciding whether they are dead, defensive, or real
-logic missing a test. At 100%, every uncovered line ends in one of three places: a test
-that catches a nameable regression, deletion, or an explicit exclusion with a reason. The
-`omit` list then becomes the single reviewable statement of what touches the outside world.
+`scripts/check.py` gates every file at 100% line and branch. `EXEMPT_FILES` and its
+budget are gone, so `[tool.coverage.run] omit` in `pyproject.toml` is the only list of
+excluded files; it now includes `src/screen/baml_client/`, so the reported total no longer
+counts generated code. A new `pragma-reason` gate rejects a `# pragma: no cover` that
+lacks a reason after a dash on the same line.
 
-Gate changes:
-- `COVERAGE_TIER_PERCENT = 100` in `scripts/check.py`.
-- Allow `# pragma: no cover` only with a reason on the same line
-  (`# pragma: no cover — <why>`); add a `check.py` gate that rejects a bare pragma, the
-  same way it rejects `type: ignore`. Use it for lines a test can't reach without
-  testing the harness: `assert_never` exhaustiveness guards, true thread-timing windows,
-  and the live-default half of an injectable constructor (`client if client is not None
-  else TavilyClient(...)`).
-- Add `src/screen/baml_client/` to `[tool.coverage.run] omit`. `check.py` already exempts
-  it from the per-file gate, but it still dilutes the reported total (88% vs. near 100%
-  for first-party code).
-- Remove `browser.py` from `EXEMPT_FILES`. The file-wide exemption hides pure logic:
-  `search()`'s Tavily field mapping (`content` → `raw_content`/`snippet`, `title`),
-  `fetch()`'s retry and permanent-failure path, and `_fetch_once`'s
-  results/failed/empty branches. The constructor already takes `client=` and `sleep=`,
-  so a fake client covers all of it; only the default `TavilyClient(...)` construction is
-  live.
+`browser.py` is tested through its `client=` seam: search's `content` →
+`raw_content`/`snippet` mapping, SDK exceptions wrapped as retryable `BrowserError`s, and
+the empty-response path. Its constructor needed no pragma, because one test already builds
+a real `TavilyClient` without network I/O.
 
-Gaps to close (as of 670cd18; line numbers will move under F and G). For each, decide
-test or delete:
-- `extract/prompt.py` `PromptRubric.resolve()`: never called. Delete unless a
-  recalibration path is meant to use it.
-- `types.py` `id` `default_factory`: never fires because every caller supplies an id.
-  Drop the default, or test the path that relies on it.
-- `compare/picker.py` `if pair_priority <= 0.0: continue`: reachable only with
-  `boundary_weight_floor == 0`. Delete if the config forbids 0; otherwise test it.
-- `recalibration_run.py` `brier_noise_floor`: property never read in tests.
-- `web/compare.py`: the "opening already seen" `continue` in the provisional-comparison
-  loop.
-- `compare/prescreen.py`: the speculative walk taking a non-commit step and continuing.
-- `research/baml_planner.py`: the 0-hit search summary.
-- `research/batch.py`: the fallback to raw uncertainty when every boundary weight is zero.
-  With `boundary_weight_floor > 0` every weight is positive, so the fallback fires only
-  when every uncertainty is already zero and returns the same zeros; the docstring's
-  "a pool no larger than `top_k`" example is also wrong under `sqrt(p_top_k)`.
-
-Touches: `scripts/check.py`, `pyproject.toml`, `browser.py`, the files above, their
-tests.
+How each listed gap was closed:
+- `ScoringConfig` now rejects a `boundary_weight_floor` outside (0, 1), so every boundary
+  weight is positive. That made two branches dead, and both were deleted: the picker's
+  `pair_priority <= 0` skip, and `eligible_weights`' fallback to raw uncertainty (which
+  returned the same zeros). Its docstring's wrong `p_top_k * (1 - p_top_k)` formula and
+  `top_k` example went with it.
+- Deleted `PromptRubric.resolve()`, which had no callers. `IntakeQueueItem.id` lost its
+  `default_factory` because the repo always supplies an id; the other models keep theirs,
+  since those defaults do fire.
+- `web/compare.py` resolves the distinct opening ids from a set, so there is no seen-check
+  branch to test. A test could not have told the memo from repeated lookups.
+- In the speculative prescreen, a step that doesn't commit returns `keep_going=True` only
+  when the version moved, so the "keep going without committing" branch was unreachable.
+  The loop now ends after any step that doesn't commit, and a comment says why.
+- New tests cover the planner's 0-hit summary and `RunState.brier_noise_floor` (it must
+  compare train against noise, not one run against itself).
+- The two pragmas that had no reason (`baml_planner.py`'s `assert_never`,
+  `FakeTavily.search`) now give one.

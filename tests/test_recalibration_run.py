@@ -8,6 +8,7 @@ the baseline the run was measured against.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,19 @@ def test_new_run_state_starts_from_baseline_and_lays_out_the_run_dir(tmp_path: P
     assert state.current_rubric_text == state.baseline_rubric_text
     assert state.current_train is state.baseline_train
     assert state.rounds_completed == 0
+
+
+def test_brier_noise_floor_compares_the_baseline_train_and_noise_evaluations(
+    tmp_path: Path,
+) -> None:
+    """The floor is the jitter between the two baseline runs; measuring a run against
+    itself would always report zero and let any Brier gain count as signal."""
+    train = rr.EvaluationResult.from_cases([_case("p1"), _case("p2")])
+    noise = rr.EvaluationResult.from_cases([_case("p1"), replace(_case("p2"), p_a=0.6)])
+    state = replace(_state(tmp_path), baseline_train=train, baseline_noise=noise)
+
+    assert state.brier_noise_floor > 0.0
+    assert state.brier_noise_floor == rr.brier_noise_floor(train, noise)
 
 
 def test_save_and_load_round_trips_every_field(tmp_path: Path) -> None:

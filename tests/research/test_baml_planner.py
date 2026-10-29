@@ -151,6 +151,14 @@ def test_last_context_text_search_context() -> None:
     assert "2" in text
 
 
+def test_last_context_text_search_context_with_no_hits_says_so() -> None:
+    """An empty search must read as a dead end, not as a results list with nothing
+    under it, so the planner rephrases instead of looking for a hit to fetch."""
+    ctx = SearchContext(query="Acme staff salary", hits=[])
+    text = last_context_text(_state(last_context=ctx))
+    assert text == "Last action: searched 'Acme staff salary'. Got 0 hits."
+
+
 def test_last_context_text_search_context_lists_hit_urls_and_snippets() -> None:
     """A search hit's url/title/snippet must reach the planner — without them
     fetch is never a legal next move and the planner is stuck searching forever

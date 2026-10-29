@@ -57,7 +57,7 @@ def last_context_text(state: LoopState) -> str:
             snippet = hit.get("snippet") or hit.get("raw_content", "")[:300]
             lines.append(f"{i}. {title} — {url}\n   {snippet}")
         return "\n".join(lines)
-    assert_never(ctx)  # pragma: no cover
+    assert_never(ctx)  # pragma: no cover — exhaustiveness guard; pyright proves it unreachable
 
 
 def _assertion_weight_by_target(

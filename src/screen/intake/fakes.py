@@ -36,7 +36,7 @@ class FakeTavily:
             raise BrowserError(f"empty fixture for {url}", details={"failed_results": []})
         return SearchHit(**{k: v for k, v in results[0].items() if k in ("url", "raw_content")})
 
-    def search(self, _query: str) -> list[SearchHit]:  # pragma: no cover
+    def search(self, _query: str) -> list[SearchHit]:  # pragma: no cover — intake never searches
         raise NotImplementedError("FakeTavily.search is not used by intake tests.")
 
 

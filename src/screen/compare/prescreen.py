@@ -453,7 +453,7 @@ def run_speculative_prescreen(
     expected_version = start_version
     try:
         for _ in range(max_iterations):
-            keep_going, committed_here = _prescreen_step(
+            _, committed_here = _prescreen_step(
                 conn,
                 config,
                 verdict_provider=verdict_provider,
@@ -469,11 +469,11 @@ def run_speculative_prescreen(
                 # auto-ruling is never itself a reason to stop the speculative walk.
                 expected_version = compare_state.version
                 continue
+            # A step that didn't commit asks to keep going only when the version moved
+            # under it, so the walk ends here either way.
             if compare_state.version != expected_version:
                 _prescreen_log.debug("speculative discarded: operator wrote while it was running")
-                return
-            if not keep_going:
-                return
+            return
     finally:
         _prescreen_log.debug(
             "speculative finished in %.2fs (cached_suggestion=%s)",
