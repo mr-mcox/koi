@@ -4,6 +4,7 @@ built on `db.connect` + `mappers`. This is the layer `intake/pipeline.py` calls;
 """
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -31,6 +32,7 @@ from screen.types import (
     DimensionDigest,
     IntakeQueueItem,
     Opening,
+    Stage,
 )
 
 
@@ -60,6 +62,15 @@ def upsert_opening(conn: sqlite3.Connection, opening: Opening) -> None:
                created_at = excluded.created_at,
                stage = excluded.stage""",
         opening_to_row(opening),
+    )
+    conn.commit()
+
+
+def set_opening_stage(conn: sqlite3.Connection, opening_ids: Iterable[str], stage: Stage) -> None:
+    """Move every named opening to `stage` in one commit; unknown ids are ignored."""
+    conn.executemany(
+        "UPDATE openings SET stage = ? WHERE id = ?",
+        [(stage, opening_id) for opening_id in opening_ids],
     )
     conn.commit()
 

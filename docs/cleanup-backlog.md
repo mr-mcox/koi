@@ -412,23 +412,17 @@ Touches: `research_trace/events.py`, `research_trace/replay.py`,
 `docs/architecture/decisions.md`, `tests/research_trace/`, `tests/research/test_dispatcher.py`,
 `tests/intake/test_pipeline.py`.
 
-## R. Check the row mappers against the migrated schema — *open*
+## R. Check the row mappers against the migrated schema — *done*
 
-The tests in `tests/store/test_mappers.py` check each mapper only against its inverse.
-Suppose a migration adds a column with a default and `*_to_row` isn't updated. Every
-write then stores the default, every round trip still passes, and the value is lost
-without an error.
+`tests/store/test_schema.py` runs the real migrations and asserts that each `*_to_row`
+produces exactly its table's `PRAGMA table_info` columns. A second test fails when a
+table has no mapper and isn't listed as unmapped (`schema_migrations`, and the retired
+`dimension_rulings`). A migration that adds a column the mapper omits now fails the
+suite instead of silently storing the default.
 
-- Add a test that runs the migrations and asserts that each `*_to_row` produces exactly
-  the column set of its table (`PRAGMA table_info`). Then a missing or misspelled key
-  fails the test, not the operator's data.
-- `web/queue.prune_stale` runs `UPDATE openings SET stage` itself. It is the only SQL
-  outside `store/`. Route it through the repo, the way `web/archive.submit_stage` uses
-  `upsert_opening`, or through a bulk stage setter in `repo.py` if one pass over the
-  stale set needs it.
+`web/queue.prune_stale` closes the stale set through `repo.set_opening_stage`, a bulk
+setter with one commit, so there is no SQL left outside `store/`.
 
-A dataclass per row, or a query wrapper, is out of scope: rows exist only inside
-`mappers.py`, between the SQL schema and the Pydantic domain models, and a third copy of
-each shape would add drift, not guard against it.
-
-Touches: `store/repo.py`, `web/queue.py`, `tests/store/`, `tests/web/test_queue.py`.
+Also in this change: `stubs/typesafe_sdk/_core/content_types.pyi`. The locked
+typesafe-sdk 0.7.5 added string-form `TypeAliasType` content aliases, which failed
+pyright strict on main. The stub overrides them the same way `json_types.pyi` does.
