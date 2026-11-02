@@ -19,6 +19,9 @@ dependencies = [
     "uvicorn>=0.34.0",
 ]
 
+[project.scripts]
+recalibrate = "scripts.recalibrate_rubric:main"
+
 [dependency-groups]
 dev = [
     "black>=24.0",
@@ -127,7 +130,9 @@ reportMissingTypeStubs = "warning"
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/screen"]
+# `scripts` ships so the `recalibrate` console script resolves; it stays out of
+# `[tool.coverage.run] source` and `[tool.pyright] include`, which target src/screen.
+packages = ["src/screen", "scripts"]
 
 [tool.pytest.ini_options]
 addopts = "-ra -q"

@@ -4,10 +4,12 @@ The testable core lives in `screen.recalibration` and the run record in
 `screen.recalibration_run`; this file owns the live BAML proposer, Jev-backed
 evaluation, and the command-line glue.
 
-Run it as a file path or a dotted module — `-m` will not accept a `.py` suffix:
+Run it as a console script, a file path, or a dotted module — `-m` will not accept a
+`.py` suffix:
 
-    uv run python scripts/recalibrate_rubric.py --target location
-    uv run python -m scripts.recalibrate_rubric --target location
+    uv run recalibrate location
+    uv run python scripts/recalibrate_rubric.py location
+    uv run python -m scripts.recalibrate_rubric location
 """
 
 import os
@@ -30,7 +32,7 @@ from screen import recalibration_run as runstate
 from screen.baml_client.sync_client import b as baml
 from screen.extract.prompt import (
     PRIVATE_PLACEHOLDERS,
-    RubricText,
+    resolve_private,
     unresolved_rubric_text_for_dimension,
 )
 from screen.score.loader import load_scoring_config
@@ -38,7 +40,11 @@ from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.verdict.protocol import JevRuling, NoulJudgment
 from screen.verdict.routing import route_verdict
 
-_RUBRIC_PATH = Path(__file__).parent.parent / "rubric.yaml"
+_REPO_ROOT = Path(__file__).parent.parent
+_RUBRIC_PATH = _REPO_ROOT / "rubric.yaml"
+# The operator's real ratings. Recalibration reads them and nothing else does; the DB is
+# opened read-only, so pointing here cannot write to the live store.
+_DEFAULT_DB_PATH = _REPO_ROOT / "data" / "live" / "screen.db"
 SONNET_MODEL = "claude-sonnet-5"
 SONNET_CONNECT_TIMEOUT_MS = 10_000
 SONNET_IDLE_TIMEOUT_MS = 100_000
@@ -369,16 +375,23 @@ class AnthropicProposer:
         return "\n".join(lines)
 
 
-def _open_db(db_path: Path | None = None) -> sqlite3.Connection:
+def _private_resolver(environ: Mapping[str, str]) -> Callable[[str], str]:
+    """Substitute private config values into rubric text.
+
+    Handed to `JevEvaluator`, which resolves only for the Jev call, so the value never
+    reaches the proposer, the run state, or the rubric.yaml write-back.
+    """
+    private = {name: environ.get(name, "") for name in PRIVATE_PLACEHOLDERS}
+    return lambda text: resolve_private(text, private)
+
+
+def _open_db(db_path: Path) -> sqlite3.Connection:
     """Open the screening DB read-only.
 
     Read-only deliberately: this loop must never write to the operator's store.
     That also means pending migrations can't be applied here, so a stale DB is
     reported rather than silently surfacing as a KeyError from the row mappers.
     """
-    if db_path is None:
-        db_root = Path(os.environ.get("SCREEN_DATA_DIR", "data"))
-        db_path = db_root / "screen.db"
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     _require_current_schema(conn, str(db_path.parent))
@@ -398,8 +411,8 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
 
 
 @click.command()
-@click.option("--target", required=True, help="Rubric dimension slug.")
-@click.option("--rounds", type=int, default=3, show_default=True, help="Proposer rounds to run.")
+@click.argument("target")
+@click.option("--rounds", type=int, default=10, show_default=True, help="Proposer rounds to run.")
 @click.option(
     "--floor",
     type=int,
@@ -411,13 +424,14 @@ def _require_current_schema(conn: sqlite3.Connection, db_path: str) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path, dir_okay=False, readable=True),
-    default=None,
-    help="Path to the SQLite DB (defaults to $SCREEN_DATA_DIR/screen.db or data/screen.db).",
+    default=_DEFAULT_DB_PATH,
+    show_default=True,
+    help="Path to the SQLite DB, opened read-only.",
 )
 @click.option(
     "--context-mode",
     type=click.Choice(["sampled", "full", "compare"], case_sensitive=False),
-    default="sampled",
+    default="full",
     show_default=True,
     help="How much propose-split context to show the proposer.",
 )
@@ -459,7 +473,7 @@ def recalibrate(
     rounds: int,
     floor: int,
     seed: int,
-    db_path: Path | None,
+    db_path: Path,
     context_mode: ContextMode,
     unversioned: str,
     state_path: Path | None,
@@ -489,7 +503,7 @@ def recalibrate(
 
     run_dir = state_path.parent if state_path else runstate.default_run_dir(target)
     evaluator = JevEvaluator(
-        JevVerdictProvider(config, TypeSafeClient()), config, RubricText.load(os.environ).resolve
+        JevVerdictProvider(config, TypeSafeClient()), config, _private_resolver(os.environ)
     )
     costs = _commit_costs(config)
 
@@ -652,7 +666,7 @@ def _start_run(
     target: str,
     floor: int,
     seed: int,
-    db_path: Path | None,
+    db_path: Path,
     unversioned_digests: core.UnversionedDigests,
     context_mode: ContextMode,
     run_dir: Path,
@@ -701,7 +715,7 @@ def _run_compare_mode(
     rounds: int,
     floor: int,
     seed: int,
-    db_path: Path | None,
+    db_path: Path,
     unversioned_digests: core.UnversionedDigests,
     config,
     sonnet_effort: SonnetEffort,
@@ -714,7 +728,7 @@ def _run_compare_mode(
     propose_pairs, held_pairs = core.split_pairs(pairs, seed=seed)
     click.echo(f"  propose={len(propose_pairs)}  held-out={len(held_pairs)}")
     provider = JevVerdictProvider(config, TypeSafeClient())
-    evaluator = JevEvaluator(provider, config, RubricText.load(os.environ).resolve)
+    evaluator = JevEvaluator(provider, config, _private_resolver(os.environ))
     costs = _commit_costs(config)
     rubric_text = unresolved_rubric_text_for_dimension(target)
     t0 = time.monotonic()
@@ -931,6 +945,12 @@ def apply_candidate(slug: str, candidate_text: str, *, rubric_path: Path | None 
     return result.stdout
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point (`uv run recalibrate`). Loads `.env` first: the
+    proposer and Jev both read their API keys from the environment."""
     load_dotenv(Path(__file__).parent.parent / ".env")
     recalibrate()
+
+
+if __name__ == "__main__":
+    main()
