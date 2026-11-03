@@ -1,1 +1,1 @@
-docs/features/compare-workflow/bearing.md
+docs/features/research-target-opportunity/bearing.md
