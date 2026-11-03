@@ -2,57 +2,63 @@
 feature: research-target-opportunity
 type: bearing
 date: 2026-11-03
+commit: aa6b3ab
+branch: main
 status: orienting
 scouting: ./scouting.md
 ---
 
 ## Problem
 
-The research planner is already getting the rubric, prior queries, and last action context, but it still has too little structured opportunity signal to choose well among dimensions or keep mining a good page without churning. We want the planner to stay focused enough to continue in the same direction when a page or target still has promise, while also making promising outbound links from fetched pages available later as a backlog instead of forcing the pass to strike gold immediately.
-
-Terrain: [scouting.md](./scouting.md)
+Target choice is a deterministic ranker handing `DecidePlan` an opaque slug, so research never aims at what's actually worth learning, and it can't use the fuzzy signals a person would (what was searched, what came of it, which dimensions tend to come up dry). We want a model to choose, once per research opportunity, a question bound to one dimension, and the mechanics to hold the planner to it. Terrain: [scouting.md](./scouting.md)
 
 ## Done When
 
-- [ ] `DecidePlanRequest` carries a compact, trace-compatible shortlist of candidate targets with only deterministic data the dispatcher can compute from existing traces and the live pool → covered by planner/request shape tests
-- [ ] `DecidePlanRequest` or its supporting context carries a structured backlog of promising outbound links harvested from prior fetches, including the URL and the visible text/snippet that made each link worth keeping → covered by research-context tests
-- [ ] The planner can continue along the same target for multiple actions under the existing sticky-target leash, and a page with several useful links can keep yielding follow-up fetches without requiring a new search every turn → covered by batch/dispatcher tests and a trace replay fixture
-- [ ] Existing traces still load and replay without migration, with any new planner fields remaining optional and the replay path falling back to the old behavior when they are absent → covered by research-trace replay tests
+- [ ] Each research opportunity (intake pass or batch block) makes exactly one question-step call before the first `DecidePlan`, and every `DecidePlan` in that pass receives the same question and dimension → `tests/research/test_dispatcher.py`
+- [ ] The question step's input carries the rubric; for each dimension, past queries paired with the assertion text their fetches produced; pool-wide and this-opening run yield; and the dimension's current `half_width` → request-shape test on the step's input builder
+- [ ] Yield aggregation counts only slugs in the current `Target` vocabulary and is computed from existing `decide_plan` events with no new trace field → `tests/research_trace/` test over `trace_shapes.json` plus a retired-slug line
+- [ ] A dimension the step names outside the `Target` vocabulary fails the pass loudly; it is not silently remapped → dispatcher test
+- [ ] `rank_targets`, `select_primary_target` and `active_target_action_cap` are gone; one per-pass budget remains → `grep -rn` shows no hits in `src/`
+- [ ] Every shape in `trace_shapes.json` still loads and replays to the same `target_stalls`; new traces carry the question as an optional field → `tests/research_trace/test_events.py`
+- [ ] decisions.md records the girder change, and README's girder line names two LLM-shaped decisions → **needs you**: read the entry
 - [ ] `uv run python scripts/check.py` passes
 
 ## Approach
 
-- Keep planner context focused: the model should see a small ranked shortlist of candidate targets, not a free-form essay per target.
-- Make the shortlist deterministic and compact: use current assertions, recent target stalls, and expected ranking impact to propose candidate targets; do not add another model-generated pre-summary layer.
-- Expose page opportunity as structured context, not implicit text hunting: when a fetch reveals promising outbound links, retain them as a backlog the planner can revisit later by URL.
-- Preserve the existing action vocabulary (`search`, `fetch`, `stop`); visiting a discovered link is still a fetch, but the link must remain visible after the page that exposed it is no longer the immediate context.
-- Keep the current moderate leash: `research_block_turns` / `active_target_action_cap` continue to let a target keep the pass for several turns, so a useful page can be mined before re-ranking.
-- Prefer optional fields over schema churn: add planner/context fields in a way older traces can ignore, and derive new rankings from replayable trace data rather than rewriting the trace format.
+- A new BAML function, called by the dispatcher, returns `{dimension, question}`. It performs no tool calls and mutates no state; the dispatcher owns when it runs and what changes. The girder extends, it doesn't break (→ scouting F11, F19)
+- The question step is the only target chooser; the deterministic ranker is deleted, not kept as a pre-filter or fallback, and a failed call fails the pass like `DecidePlan` does (→ scouting F16, F29, F31)
+- The chosen dimension is written into the existing `primary_target`, so stall replay keys on it unchanged for old and new traces; the question text is a new optional audit field (→ scouting F13, F30, decisions E8)
+- Yield is derived, not stored: pool-wide and per-opening runs/yielded per dimension are folded from `decide_plan` events at the start of each opportunity (→ scouting F23, F32)
+- Query→assertion pairing joins each assertion's citation URL to the search whose hits contained it, and drops the pairing when no search contains the URL (→ scouting F25, F34)
+- **Fixed leash, no yield-based extension:** one budget, `research_block_turns`, per opportunity. The live data shows a run that has already yielded is no more likely to yield again (→ scouting F21, F33)
 
 ## Not Doing
 
-- Free-form prose per target or a strong-model-generated target essay — the planner needs structured opportunity, not another layer of narration.
-- `last_success_turn` or similar bookkeeping that only says when a target last worked — yield history matters more than a timestamp.
-- A new navigation action separate from `fetch` — discovered URLs are still fetched, not a new verb.
-- Forcing the planner to switch targets every turn — that would create churn and defeat the sticky-target leash.
-- Requiring a trace migration before the new planner/context fields land — existing traces must keep replaying.
+- Outbound-link backlog — its own feature (→ `docs/features/outbound-link-backlog/scouting.md`)
+- Extending the leash on yield — unsupported by F33; revisit via Recalibrate
+- A dry-streak early exit inside a pass — a k=3 cutoff would have cut 15 late yields (F35); cross-pass "nothing to see here" comes from the yield signal the step reads
+- Questions spanning several dimensions, or stall accounting keyed on question text
+- Caching yield aggregates, or a fallback when the question step fails
+
+## Testing
+
+Test-first by default. Exempt:
+- `src/screen/baml_client/` — generated
+- `src/screen/baml_src/research.baml` prompt text — covered by `baml-cli test` smoke tests, run by hand (cost per run), not in `check.py`
 
 ## Recalibrate When
 
-- If the shortlist becomes so large or wordy that the planner starts churning between targets instead of mining one useful line of inquiry.
-- If outbound-link backlog visibility does not improve follow-through on pages with multiple relevant links.
-- If a structured link backlog proves too brittle to carry through trace replay without widening the prompt again.
-- If the planner still cannot keep going in the same direction after a useful fetch, even with the existing sticky-target cap.
-- If additive backward compatibility (decisions.md E8) forces a pile of optional/null fields or
-  branching read paths to keep old traces replaying, stop: a versioned trace schema plus a
-  compatibility layer that upconverts old lines is likely cheaper than growing one payload
-  forever. That supersedes E8's "payloads only grow" rule, so it is an escalation and needs a
-  decisions.md entry, not an in-feature call.
+- If the question step names the same low-yield dimension pass after pass on one opening, stop: the yield signal isn't steering it.
+- If question-driven traces show post-yield steps producing well above the F33 baseline (~10%), stop: the extension case is back on.
+- If the question step's input passes ~8k tokens on a well-researched opening, stop: the pairing needs summarizing (digest, F27), and that's a shape change.
+- If the citation-URL join attributes fewer than ~80% of assertions to a query, stop: F26's rendering needs rethinking.
+- If keeping old traces replaying needs more than the optional question field, stop (decisions E8 escalation).
 
 ## Agreed
 
-- The rubric stays visible to the planner so it knows what each dimension is trying to falsify or validate.
-- The planner gets a small deterministic shortlist of candidate targets rather than a larger free-form target essay.
-- Promising outbound links from fetched pages should be retained as structured backlog so future turns can revisit them directly.
-- The existing action vocabulary remains unchanged: `search`, `fetch`, `stop`.
-- Existing traces must keep loading and replaying; new fields, if any, are optional and backward compatible.
+- Two LLM-shaped decisions in the research loop, not one; the dispatcher still owns every tool call and every mutation (→ scouting F19)
+- One dimension per question; other-dimension assertions are an accepted side effect, not multi-target questions (→ scouting F14)
+- Retire the deterministic ranker rather than keep it as a filter or fallback (→ scouting F16)
+- Pick once per opportunity; the next draw picks a new opening and a new question, with no mid-pass re-targeting (→ scouting F20)
+- Turn budget and per-target cap collapse into one number (→ scouting F12, F22)
+- The link backlog is a separate follow-up feature (→ scouting F17)
