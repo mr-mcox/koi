@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StopAction(BaseModel):
-    """Terminal action — the planner has nothing more to do."""
+    """Terminal action — the navigator has nothing more to do."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -16,9 +16,9 @@ from screen.browser import Browser, BrowserError
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
-from screen.research.baml_planner import select_primary_target
+from screen.research.baml_navigator import select_primary_target
 from screen.research.context import FetchContext, SearchContext
-from screen.research.protocol import Planner
+from screen.research.protocol import Navigator
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -64,7 +64,7 @@ def _target_assertion_counts(state: LoopState) -> dict[str, int]:
 
 
 def _plan_request(state: LoopState) -> DecidePlanRequest:
-    """Snapshot of what the planner had to decide from, for the audit trail.
+    """Snapshot of what the navigator had to decide from, for the audit trail.
 
     Omits `page_content` and `rubric_text` — static per pass, and large;
     everything here is what actually varies turn to turn.
@@ -77,8 +77,6 @@ def _plan_request(state: LoopState) -> DecidePlanRequest:
         turns_used=state.turns_used,
         turn_budget=state.turn_budget,
         primary_target=state.primary_target,
-        active_target=state.active_target,
-        active_target_actions=state.active_target_actions,
         prior_queries=list(state.prior_queries),
         visited_urls=list(state.visited_urls),
         targets_covered=_targets_covered(state),
@@ -89,30 +87,10 @@ def _plan_request(state: LoopState) -> DecidePlanRequest:
     )
 
 
-def _advance_active_target(state: LoopState) -> LoopState:
-    """Increment the sticky-target counter after a budget-consuming action.
-
-    If the action was planned for a new primary target, start a new sticky
-    session at 1. If it was planned for the current active target, increment.
-    If `primary_target` is not set (e.g. tests with a FakePlanner), leave the
-    state unchanged.
-    """
-    if state.primary_target is None:
-        return state
-    if state.primary_target == state.active_target:
-        return state.model_copy(update={"active_target_actions": state.active_target_actions + 1})
-    return state.model_copy(
-        update={
-            "active_target": state.primary_target,
-            "active_target_actions": 1,
-        }
-    )
-
-
 def dispatch(
     state: LoopState,
     *,
-    planner: Planner,
+    navigator: Navigator,
     deps: DispatchDeps,
     scoring_config: ScoringConfig | None = None,
 ) -> PassSummary:
@@ -120,18 +98,19 @@ def dispatch(
     Loops until StopAction or search budget exhaustion.
     Raises RuntimeError on empty action lists or unrecognized tags.
 
-    `scoring_config` is required for the composite uncertainty ranking that
-    selects the planner's `primary_target` each turn. When omitted, the loop
-    trusts whatever `primary_target` is already on `state` (used by tests).
+    `scoring_config`, when given, selects the pass's `primary_target` once
+    before the loop starts — one target for the whole pass, not re-ranked
+    turn to turn. Omitted, the loop trusts whatever `primary_target` is
+    already on `state` (used by tests).
     """
     current = state
-    while True:
-        if scoring_config is not None:
-            primary_target = select_primary_target(current, scoring_config)
-            current = current.model_copy(update={"primary_target": primary_target})
+    if scoring_config is not None:
+        primary_target = select_primary_target(current, scoring_config)
+        current = current.model_copy(update={"primary_target": primary_target})
 
+    while True:
         request = _plan_request(current)
-        actions = planner.plan(current)
+        actions = navigator.plan(current)
         deps.on_event(
             DecidePlanEvent(
                 ts=datetime.now(UTC),
@@ -141,13 +120,13 @@ def dispatch(
         )
         if not actions:
             raise RuntimeError(
-                "Planner returned an empty action list — must include at least [stop]."
+                "Navigator returned an empty action list — must include at least [stop]."
             )
         action = actions[0]
         result = _dispatch_one(action, current, deps)
         if isinstance(result, PassSummary):
             return result
-        current = _advance_active_target(result)
+        current = result
 
         if current.turns_used >= current.turn_budget:
             return PassSummary(
@@ -195,9 +174,9 @@ def _handle_search(
 ) -> LoopState:
     """Issue a search query, record the event, and return updated state.
     Zero hits is valid; last_context records the empty result and the
-    planner decides whether to refine the query. A BrowserError (e.g. Tavily
+    navigator decides whether to refine the query. A BrowserError (e.g. Tavily
     transport failure) is recorded the same way — as a turn with zero hits —
-    so a single failed search doesn't abort the pass when the planner can
+    so a single failed search doesn't abort the pass when the navigator can
     try something else.
     """
     try:
@@ -241,7 +220,7 @@ def _handle_fetch(
     """Fetch a URL, extract assertions, return updated state for the next cycle.
 
     Duplicate URLs are silently skipped — FetchContext records the URL with
-    empty targets_added so the planner can see it was attempted.
+    empty targets_added so the navigator can see it was attempted.
     Zero new assertions is not an error and does not force stop.
 
     `deps.on_assertions`, when set, is called with the new assertions (never

@@ -37,21 +37,15 @@ class LoopState(BaseModel):
     last_context: SearchContext | FetchContext | None = None
     visited_urls: list[str] = []
     prior_queries: list[str] = []
-    # All rubric targets the planner may be asked to research. Needed so an
+    # All rubric targets the navigator may be asked to research. Needed so an
     # unexamined target can outrank a thinly examined one in the uncertainty ranking.
     targets: list[str] = []
-    # Sticky target: once selected, the planner stays on it until it either reports
-    # no leads or hits the per-target action cap. Prevents search/fetch thrash when
-    # a fetch on one target incidentally yields assertions about another.
-    active_target: str | None = None
-    active_target_actions: int = 0
-    active_target_action_cap: Annotated[int, Field(ge=0)]
     # Derived from the research trace on resume: how many contiguous runs on each
     # target ended without adding an assertion for that target. Multiplied into the
     # per-target uncertainty ranking so failed targets sink without becoming permanently
     # unreachable (the S-curve floor stays above zero).
     target_stall_counts: dict[str, int] = Field(default_factory=dict)
-    # Transient directive computed by the dispatcher (or planner in tests) and
+    # Transient directive computed by the dispatcher (or navigator in tests) and
     # passed to DecidePlan so the model knows which target to focus this turn.
     primary_target: str | None = None
 

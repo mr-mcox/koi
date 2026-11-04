@@ -22,7 +22,7 @@ from screen.extract.prompt import (
 from screen.extract.protocol import Extractor
 from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.protocol import Planner
+from screen.research.protocol import Navigator
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import ResearchTraceEvent
 from screen.research_trace.replay import TraceReplay, replay_research_trace
@@ -66,7 +66,7 @@ class RunDispatchDeps:
     instead of `run_dispatch`'s signature and every call site that relays it.
     Production instances come from `screen.wiring`."""
 
-    planner: Planner
+    navigator: Navigator
     browser: Browser
     extractor: Extractor
     digester: Digester
@@ -121,7 +121,6 @@ def run_dispatch(
         visited_urls=replay.visited_urls,
         prior_queries=replay.prior_queries,
         targets=targets,
-        active_target_action_cap=scoring_config.research_block_turns,
         target_stall_counts=replay.target_stalls,
     )
 
@@ -130,7 +129,7 @@ def run_dispatch(
 
     summary = dispatch(
         state,
-        planner=deps.planner,
+        navigator=deps.navigator,
         deps=DispatchDeps(
             browser=deps.browser,
             extractor=deps.extractor,
@@ -309,21 +308,21 @@ def _run_batch_turn(
     total_spent: int,
     touched: list[str],
     progress: BatchProgress,
-    planner_factory: Callable[[], Planner] | None,
+    navigator_factory: Callable[[], Navigator] | None,
     deps: RunDispatchDeps,
 ) -> tuple[str, int, DrawEvent | None]:
     """Draw one opening and spend up to one block of actions on it before the next
     draw. The block size is capped by `research_block_turns` and the remaining
     batch budget. Returns `(opening_id, actions_spent, draw_event)`; `draw_event` is
-    `None` when the planner stalled without spending any actions, so the caller can
+    `None` when the navigator stalled without spending any actions, so the caller can
     stop redrawing it this batch.
     """
     opening_id = draw_opening(weights, rng)
     opening = cast(Opening, get_opening(conn, opening_id))
     progress.current_opening_id = opening_id
     turn_deps = (
-        dataclasses.replace(deps, planner=planner_factory())
-        if planner_factory is not None
+        dataclasses.replace(deps, navigator=navigator_factory())
+        if navigator_factory is not None
         else deps
     )
     block_size = min(cfg.research_block_turns, batch_size - total_spent)
@@ -409,13 +408,13 @@ def run_batch(
     *,
     deps: RunDispatchDeps,
     config: ScoringConfig | None = None,
-    planner_factory: Callable[[], Planner] | None = None,
+    navigator_factory: Callable[[], Navigator] | None = None,
     on_draw: Callable[[DrawEvent], None] | None = None,
     now_fn: Callable[[], float] = time.perf_counter,
 ) -> tuple[int, list[str]]:
     """Spend up to `batch_size` actions on opportunities drawn by aggregate remaining
     uncertainty. Each opportunity is a block of up to `research_block_turns`
-    actions on one opening, capped by the remaining batch budget, so the planner can work down a line of inquiry before the next draw.
+    actions on one opening, capped by the remaining batch budget, so the navigator can work down a line of inquiry before the next draw.
     The draw is seeded from `config.seed`, so a batch run against an unchanged DB snapshot
     reproduces the same sequence of draws.
 
@@ -427,9 +426,9 @@ def run_batch(
     time without sleeping.
 
     `deps` carries browser/extractor/digester, held for the whole batch run.
-    `planner_factory`, if given, is called once per opportunity — the planner is
+    `navigator_factory`, if given, is called once per opportunity — the navigator is
     stateful across the actions in a block in the test fakes, so it can't be reused
-    across draws the way the other collaborators are; omitted, `deps.planner` is
+    across draws the way the other collaborators are; omitted, `deps.navigator` is
     reused for every draw instead.
     """
     cfg = config if config is not None else load_scoring_config()
@@ -458,7 +457,7 @@ def run_batch(
             total_spent=total_spent,
             touched=touched,
             progress=progress,
-            planner_factory=planner_factory,
+            navigator_factory=navigator_factory,
             deps=deps,
         )
         if spent == 0:
@@ -497,10 +496,10 @@ def eta_text(seconds: float) -> str:
 
 @dataclass
 class BatchEngine:
-    """Runs a research batch off the request thread. `planner_factory` supplies a fresh
-    planner per draw; `deps_factory` the batch's other collaborators."""
+    """Runs a research batch off the request thread. `navigator_factory` supplies a fresh
+    navigator per draw; `deps_factory` the batch's other collaborators."""
 
-    planner_factory: Callable[[], Planner]
+    navigator_factory: Callable[[], Navigator]
     deps_factory: Callable[[], RunDispatchDeps]
 
     def run(
@@ -521,7 +520,7 @@ class BatchEngine:
                 data_root,
                 batch_size,
                 progress,
-                planner_factory=self.planner_factory,
+                navigator_factory=self.navigator_factory,
                 deps=self.deps_factory(),
                 on_draw=print_draw_event,
             )

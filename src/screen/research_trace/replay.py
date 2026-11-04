@@ -7,11 +7,13 @@ trace says actually happened.
 """
 
 from pathlib import Path
+from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from screen.research_trace.events import DecidePlanEvent, SearchEvent, parse_event
 from screen.research_trace.trace_io import read_research_trace
+from screen.types import Target
 
 
 class TraceReplay(BaseModel):
@@ -111,6 +113,41 @@ def _count_stalls(
         if stalled:
             stalls[target] = stalls.get(target, 0) + 1
     return stalls
+
+
+class TargetYield(BaseModel):
+    """How often research on one rubric dimension actually produced an assertion.
+
+    `runs` and `yielded` are counted the same way `target_stalls` counts stalls
+    (contiguous `decide_plan` runs sharing a target) — `yielded` is simply the
+    non-stalled runs, so the two stay consistent by construction.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    runs: int
+    yielded: int
+
+
+def fold_target_yield(plans: list[DecidePlanEvent]) -> dict[str, TargetYield]:
+    """Per-target run/yield counts, restricted to the current rubric's `Target`
+    vocabulary. A trace may carry runs on a slug the rubric has since retired
+    (e.g. `non_scoring:obtainability`) — those are dropped rather than
+    reported, since a question step choosing among today's dimensions has no
+    use for a rate on one that no longer exists.
+    """
+    current_targets = get_args(Target)
+    runs = _segment_target_runs(plans)
+    stalls = _count_stalls(runs, plans)
+    run_counts: dict[str, int] = {}
+    for _, _, target in runs:
+        if not target or target not in current_targets:
+            continue
+        run_counts[target] = run_counts.get(target, 0) + 1
+    return {
+        target: TargetYield(runs=total, yielded=total - stalls.get(target, 0))
+        for target, total in run_counts.items()
+    }
 
 
 def _fold_target_stalls(plans: list[DecidePlanEvent]) -> dict[str, int]:

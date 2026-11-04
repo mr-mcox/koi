@@ -25,9 +25,10 @@ strand a summary here.
   [decisions.md](decisions.md) E5
 - **Rubric text is load-bearing and versioned** — the extraction prompt is generated from
   `rubric.yaml`, never freeform → [decisions.md](decisions.md) R4 · `tests/test_rubric.py`
-- **The dispatcher owns every tool call and all state mutation.** `DecidePlan` is the only
-  LLM-shaped decision; Tavily is dispatched, never agent-called. Rejecting this means
-  rejecting the four-state loop → `tests/research/test_dispatcher.py`
+- **The dispatcher owns every tool call and all state mutation.** An LLM call may only
+  read state and propose; it never acts or mutates directly, and may not call Tavily
+  itself. This covers however many LLM-shaped decisions the loop has, not a count fixed
+  at one → [decisions.md](decisions.md) E9 · `tests/research/test_dispatcher.py`
 - **No agent framework.** BAML covers structured output; adding a framework is a vocabulary
   change, not a dependency change
 - **Dependency direction runs one way** — `intake/` may import `research/`, never the

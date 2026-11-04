@@ -19,7 +19,7 @@ from screen.research.batch import (
     run_batch,
     run_dispatch,
 )
-from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.fakes import FakeBrowser, FakeNavigator
 from screen.research_trace.trace_io import ResearchTraceMissingError, research_trace_path_for
 from screen.score.loader import load_scoring_config
 from screen.store.db import connect
@@ -49,13 +49,13 @@ def _seed_opening_with_trace(
     return trace_path
 
 
-def _search_then_stop_planner() -> FakePlanner:
-    return FakePlanner(sequence=[[SearchAction(query=_QUERY)], [StopAction(reason="done")]])
+def _search_then_stop_navigator() -> FakeNavigator:
+    return FakeNavigator(sequence=[[SearchAction(query=_QUERY)], [StopAction(reason="done")]])
 
 
 def _build_engine(tmp_path: Path) -> BatchEngine:
     return BatchEngine(
-        planner_factory=_search_then_stop_planner,
+        navigator_factory=_search_then_stop_navigator,
         deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={_QUERY: []}),
             extractor=FakeExtractor([[canned_assertion()]]),
@@ -75,7 +75,7 @@ def test_batch_runs_across_openings_in_screening_stage(tmp_path: Path) -> None:
         tmp_path,
         4,
         progress,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -99,7 +99,7 @@ def test_batch_progress_reports_eta_from_measured_turn_timing(tmp_path: Path) ->
         tmp_path,
         4,
         progress,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
         now_fn=lambda: next(times),
     )
@@ -124,7 +124,7 @@ def test_batch_progress_records_no_rate_when_no_time_elapsed(tmp_path: Path) -> 
         tmp_path,
         4,
         progress,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
         now_fn=lambda: 5.0,
     )
@@ -151,7 +151,7 @@ def test_batch_skips_openings_not_in_screening_stage(tmp_path: Path) -> None:
         tmp_path,
         4,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -169,7 +169,7 @@ def test_batch_with_no_screening_openings_is_a_no_op(tmp_path: Path) -> None:
         tmp_path,
         4,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -186,7 +186,7 @@ def test_batch_size_zero_is_a_no_op(tmp_path: Path) -> None:
         tmp_path,
         0,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -203,7 +203,7 @@ def test_batch_revisits_same_opening_across_rounds_within_one_batch(tmp_path: Pa
         tmp_path,
         3,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -239,7 +239,7 @@ def test_batch_draws_the_higher_uncertainty_opening_more_often(tmp_path: Path) -
         tmp_path,
         30,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
         on_draw=lambda event: draws.append(event.opening_id),
     )
@@ -323,7 +323,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
         tmp_path,
         10,
         None,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
         on_draw=lambda event: draws1.append(event.opening_id),
     )
@@ -338,7 +338,7 @@ def test_batch_draw_sequence_is_reproducible_for_an_unchanged_snapshot(tmp_path:
         tmp_path_2,
         10,
         None,
-        planner_factory=engine2.planner_factory,
+        navigator_factory=engine2.navigator_factory,
         deps=engine2.deps_factory(),
         on_draw=lambda event: draws2.append(event.opening_id),
     )
@@ -351,7 +351,7 @@ def test_batch_engine_opens_own_connection(tmp_path: Path) -> None:
     background task outlives any request-scoped connection."""
     _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
-        planner_factory=_search_then_stop_planner,
+        navigator_factory=_search_then_stop_navigator,
         deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={_QUERY: []}),
             extractor=FakeExtractor([[canned_assertion()]]),
@@ -386,12 +386,12 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
     """A turn that fetches (not just searches) writes its assertions durably —
     readable from a brand-new connection, not just the one the batch used.
     Regression: every existing batch/engine test only ever exercises a
-    search-then-stop planner, so a fetch action's on_assertions -> append_assertions
+    search-then-stop navigator, so a fetch action's on_assertions -> append_assertions
     path was never exercised at the batch level."""
     url = "https://example.com/acme--eng/second-page"
     _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
-        planner_factory=lambda: FakePlanner(
+        navigator_factory=lambda: FakeNavigator(
             sequence=[[FetchAction(url=url)], [StopAction(reason="done")]]
         ),
         deps_factory=lambda: fake_dispatch_deps(
@@ -409,14 +409,14 @@ def test_batch_fetch_turn_persists_assertions_visible_to_a_fresh_connection(
 
 
 def test_batch_turn_spends_multiple_actions_on_one_draw(tmp_path: Path) -> None:
-    """A single bandit draw should give the planner up to
+    """A single bandit draw should give the navigator up to
     `research_block_turns` actions to work down a line of inquiry on the
     same opening, instead of resetting after one action — the sticky-target continuity
     (sticky target + per-target cap)."""
     url = "https://example.com/acme--eng/second-page"
     _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
-        planner_factory=lambda: FakePlanner(
+        navigator_factory=lambda: FakeNavigator(
             sequence=[
                 [SearchAction(query="find page")],
                 [FetchAction(url=url)],
@@ -449,11 +449,11 @@ def test_batch_engine_prints_opportunity_summary(
     what changed about that opening: rank, assertions filed, actions spent, and
     stop reason. The stop action itself does not consume a turn, so a block
     budget of 3 with a search+fetch+stop sequence spends 2 turns and ends with
-    the planner's stop reason."""
+    the navigator's stop reason."""
     url = "https://example.com/acme--eng/second-page"
     _seed_opening_with_trace(tmp_path, "acme--eng")
     engine = BatchEngine(
-        planner_factory=lambda: FakePlanner(
+        navigator_factory=lambda: FakeNavigator(
             sequence=[
                 [SearchAction(query="find page")],
                 [FetchAction(url=url)],
@@ -492,7 +492,7 @@ def test_batch_turn_reports_no_actions_when_action_cap_is_zero(tmp_path: Path) -
         3,
         None,
         config=zero_cap_config,
-        planner_factory=engine.planner_factory,
+        navigator_factory=engine.navigator_factory,
         deps=engine.deps_factory(),
     )
     conn.close()
@@ -510,13 +510,13 @@ def test_resume_opening_spends_nothing_when_no_budget_remains(tmp_path: Path) ->
 
     planned: list[str] = []
 
-    class _RecordingPlanner(FakePlanner):
+    class _RecordingNavigator(FakeNavigator):
         def plan(self, state: object) -> list[StopAction]:
             planned.append("planned")
             return [StopAction(reason="should not be reached")]
 
     result = resume_opening(
-        conn, tmp_path, opening, 0, deps=fake_dispatch_deps(planner=_RecordingPlanner())
+        conn, tmp_path, opening, 0, deps=fake_dispatch_deps(navigator=_RecordingNavigator())
     )
     conn.close()
 
@@ -565,7 +565,7 @@ def test_run_dispatch_uses_default_digester_when_none_provided(tmp_path: Path) -
         opening_title="Eng",
         turn_budget=1,
         deps=fake_dispatch_deps(
-            planner=FakePlanner([[StopAction(reason="default digester test")]]),
+            navigator=FakeNavigator([[StopAction(reason="default digester test")]]),
             browser=FakeBrowser(),
             extractor=FakeExtractor([[canned_assertion()]]),
             update_digests=_fake_update_digests,

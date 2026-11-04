@@ -7,7 +7,7 @@ from screen.research.actions import Action, StopAction
 from screen.research.state import LoopState
 
 
-class FakePlanner:
+class FakeNavigator:
     """Iterates a sequence of action lists, one per plan() call.
     Defaults to [[StopAction(reason="Fake stop.")]] if no sequence given.
     """

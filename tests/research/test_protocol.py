@@ -1,15 +1,15 @@
-"""Tests for Planner structural typing and FakePlanner.
-- FakePlanner satisfies Planner via runtime_checkable
-- FakePlanner returns its configured action list unchanged
-- default FakePlanner returns [StopAction()]
-- FakePlanner in sequence mode advances per call and repeats last
+"""Tests for Navigator structural typing and FakeNavigator.
+- FakeNavigator satisfies Navigator via runtime_checkable
+- FakeNavigator returns its configured action list unchanged
+- default FakeNavigator returns [StopAction()]
+- FakeNavigator in sequence mode advances per call and repeats last
 """
 
 import pytest
 
 from screen.research.actions import FetchAction, SearchAction, StopAction
-from screen.research.fakes import FakePlanner
-from screen.research.protocol import Planner
+from screen.research.fakes import FakeNavigator
+from screen.research.protocol import Navigator
 from screen.research.state import LoopState
 from screen.types import Assertion, Citation
 
@@ -41,81 +41,80 @@ def _state() -> LoopState:
         rubric_text="craft_direction: ...",
         assertions=[assertion],
         turn_budget=5,
-        active_target_action_cap=5,
         turns_used=0,
     )
 
 
-def test_fake_planner_satisfies_protocol() -> None:
-    planner = FakePlanner()
-    assert isinstance(planner, Planner)
+def test_fake_navigator_satisfies_protocol() -> None:
+    navigator = FakeNavigator()
+    assert isinstance(navigator, Navigator)
 
 
-def test_fake_planner_default_returns_stop() -> None:
-    planner = FakePlanner()
-    actions = planner.plan(_state())
+def test_fake_navigator_default_returns_stop() -> None:
+    navigator = FakeNavigator()
+    actions = navigator.plan(_state())
     assert len(actions) == 1
     assert isinstance(actions[0], StopAction)
 
 
-def test_fake_planner_configured_actions_returned_unchanged() -> None:
+def test_fake_navigator_configured_actions_returned_unchanged() -> None:
     stop = StopAction(reason="Configured reason.")
-    planner = FakePlanner(sequence=[[stop]])
-    actions = planner.plan(_state())
+    navigator = FakeNavigator(sequence=[[stop]])
+    actions = navigator.plan(_state())
     assert actions == [stop]
 
 
-def test_fake_planner_plan_called_multiple_times() -> None:
-    """FakePlanner returns the same list on every call (stateless)."""
-    planner = FakePlanner()
-    first = planner.plan(_state())
-    second = planner.plan(_state())
+def test_fake_navigator_plan_called_multiple_times() -> None:
+    """FakeNavigator returns the same list on every call (stateless)."""
+    navigator = FakeNavigator()
+    first = navigator.plan(_state())
+    second = navigator.plan(_state())
     assert first == second
 
 
 # ---------------------------------------------------------------------------
-# FakePlanner sequence mode
+# FakeNavigator sequence mode
 # ---------------------------------------------------------------------------
 
 
-def test_fake_planner_sequence_mode_advances_per_call() -> None:
+def test_fake_navigator_sequence_mode_advances_per_call() -> None:
     stop1 = StopAction(reason="reason one")
     stop2 = StopAction(reason="reason two")
     stop3 = StopAction(reason="reason three")
-    planner = FakePlanner(sequence=[[stop1], [stop2], [stop3]])
-    assert planner.plan(_state()) == [stop1]
-    assert planner.plan(_state()) == [stop2]
-    assert planner.plan(_state()) == [stop3]
+    navigator = FakeNavigator(sequence=[[stop1], [stop2], [stop3]])
+    assert navigator.plan(_state()) == [stop1]
+    assert navigator.plan(_state()) == [stop2]
+    assert navigator.plan(_state()) == [stop3]
 
 
-def test_fake_planner_sequence_mode_repeats_last_when_exhausted() -> None:
+def test_fake_navigator_sequence_mode_repeats_last_when_exhausted() -> None:
     stop = StopAction(reason="final")
-    planner = FakePlanner(sequence=[[StopAction(reason="first")], [stop]])
-    planner.plan(_state())  # index=0
-    planner.plan(_state())  # index=1 (last)
+    navigator = FakeNavigator(sequence=[[StopAction(reason="first")], [stop]])
+    navigator.plan(_state())  # index=0
+    navigator.plan(_state())  # index=1 (last)
     # All subsequent calls repeat the last.
-    assert planner.plan(_state()) == [stop]
-    assert planner.plan(_state()) == [stop]
+    assert navigator.plan(_state()) == [stop]
+    assert navigator.plan(_state()) == [stop]
 
 
-def test_fake_planner_sequence_single_step_repeats() -> None:
+def test_fake_navigator_sequence_single_step_repeats() -> None:
     """A single-step sequence returns that step on every call."""
     stop = StopAction(reason="done")
-    planner = FakePlanner(sequence=[[stop]])
-    assert planner.plan(_state()) == [stop]
-    assert planner.plan(_state()) == [stop]  # repeats last
+    navigator = FakeNavigator(sequence=[[stop]])
+    assert navigator.plan(_state()) == [stop]
+    assert navigator.plan(_state()) == [stop]  # repeats last
 
 
-def test_fake_planner_sequence_mode_with_action_types() -> None:
+def test_fake_navigator_sequence_mode_with_action_types() -> None:
     search = SearchAction(query="q")
     fetch = FetchAction(url="https://example.com/x")
     stop = StopAction(reason="done")
-    planner = FakePlanner(sequence=[[search], [fetch], [stop]])
-    assert planner.plan(_state()) == [search]
-    assert planner.plan(_state()) == [fetch]
-    assert planner.plan(_state()) == [stop]
+    navigator = FakeNavigator(sequence=[[search], [fetch], [stop]])
+    assert navigator.plan(_state()) == [search]
+    assert navigator.plan(_state()) == [fetch]
+    assert navigator.plan(_state()) == [stop]
 
 
-def test_fake_planner_empty_sequence_raises() -> None:
+def test_fake_navigator_empty_sequence_raises() -> None:
     with pytest.raises(ValueError, match="non-empty"):
-        FakePlanner(sequence=[])
+        FakeNavigator(sequence=[])

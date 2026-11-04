@@ -17,7 +17,7 @@ from screen.extract.prompt import RubricText
 from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
 from screen.research.batch import BatchEngine, RunDispatchDeps
-from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.fakes import FakeBrowser, FakeNavigator
 from screen.store.repo import append_assertions, upsert_company, upsert_opening
 from screen.types import (
     Assertion,
@@ -126,8 +126,8 @@ def fake_extractor() -> FakeExtractor:
     return FakeExtractor([[canned_assertion()]])
 
 
-def fake_planner(reason: str = "All rubric dimensions addressed.") -> FakePlanner:
-    return FakePlanner(sequence=[[StopAction(reason=reason)]])
+def fake_navigator(reason: str = "All rubric dimensions addressed.") -> FakeNavigator:
+    return FakeNavigator(sequence=[[StopAction(reason=reason)]])
 
 
 def fake_digester() -> FakeDigester:
@@ -136,7 +136,7 @@ def fake_digester() -> FakeDigester:
 
 def fake_dispatch_deps(**overrides: Any) -> RunDispatchDeps:
     deps = RunDispatchDeps(
-        planner=fake_planner(),
+        navigator=fake_navigator(),
         browser=FakeBrowser(),
         extractor=fake_extractor(),
         digester=fake_digester(),
@@ -167,7 +167,7 @@ def fake_app_deps(**overrides: Any) -> AppDeps:
         rubric=synthetic_rubric(),
         digester=fake_digester(),
         verdict_provider=_UnconsultedVerdictProvider(),
-        batch_engine=BatchEngine(planner_factory=fake_planner, deps_factory=fake_dispatch_deps),
+        batch_engine=BatchEngine(navigator_factory=fake_navigator, deps_factory=fake_dispatch_deps),
         intake_fn=_intake_not_configured,
     )
     return dataclasses.replace(deps, **overrides)

@@ -157,7 +157,7 @@ def identify_research_trace(
     its canned-result cursor per call, so sharing one instance across both
     call sites would starve the second of results a real BAML client
     wouldn't. `deps_factory` supplies the dispatch loop's other collaborators
-    (planner, browser, digester); its `extractor` field is overridden below.
+    (navigator, browser, digester); its `extractor` field is overridden below.
     """
     try:
         page_content, url = read_page_content(research_trace_path)

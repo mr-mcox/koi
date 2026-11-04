@@ -29,7 +29,7 @@ class _Payload(BaseModel):
 
 
 class DecidePlanRequest(_Payload):
-    """Snapshot of what the planner decided from. `replay` rebuilds stall state
+    """Snapshot of what the navigator decided from. `replay` rebuilds stall state
     from `active_target`, `primary_target`, `targets_covered` and
     `target_assertion_counts`; the rest is audit trail.
 
@@ -104,7 +104,7 @@ class _Event(BaseModel):
 
 
 class DecidePlanEvent(_Event):
-    """The planner's own audit record; not a budget-consuming turn."""
+    """The navigator's own audit record; not a budget-consuming turn."""
 
     tool: Literal["decide_plan"] = "decide_plan"
     request: DecidePlanRequest

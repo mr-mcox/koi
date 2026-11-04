@@ -18,7 +18,7 @@ from screen.extract.protocol import Extractor
 from screen.intake.baml_identifier import BAMLIdentifier
 from screen.intake.pipeline import db_path_for, intake_url
 from screen.paths import data_dir
-from screen.research.baml_planner import BAMLPlanner
+from screen.research.baml_navigator import BAMLNavigator
 from screen.research.batch import BatchEngine, RunDispatchDeps
 from screen.score.loader import load_scoring_config
 from screen.verdict.jev_assertion_classifier import JevAssertionClassifier
@@ -35,7 +35,7 @@ def build_extractor(rubric: RubricText) -> Extractor:
 
 def build_dispatch_deps(rubric: RubricText, environ: Mapping[str, str]) -> RunDispatchDeps:
     return RunDispatchDeps(
-        planner=BAMLPlanner(),
+        navigator=BAMLNavigator(),
         browser=build_browser(environ),
         extractor=build_extractor(rubric),
         digester=BAMLDigester(),
@@ -67,7 +67,7 @@ def build_app(environ: Mapping[str, str]) -> FastAPI:
         digester=BAMLDigester(),
         verdict_provider=JevVerdictProvider(load_scoring_config()),
         batch_engine=BatchEngine(
-            planner_factory=BAMLPlanner,
+            navigator_factory=BAMLNavigator,
             deps_factory=lambda: build_dispatch_deps(rubric, environ),
         ),
         intake_fn=build_intake_fn(data_root, rubric, environ),

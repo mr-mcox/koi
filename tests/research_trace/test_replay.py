@@ -21,7 +21,7 @@ from screen.research_trace.events import (
     SearchRequest,
     SearchResponse,
 )
-from screen.research_trace.replay import replay_research_trace
+from screen.research_trace.replay import fold_target_yield, replay_research_trace
 from screen.research_trace.trace_io import append_line
 
 
@@ -246,3 +246,38 @@ def test_replay_counts_based_stall_accumulates_across_repicks(tmp_path: Path) ->
 
     replay = replay_research_trace(path)
     assert replay.target_stalls["compensation"] == 3
+
+
+def test_fold_target_yield_counts_runs_and_yields_per_target() -> None:
+    """One stalled run (membership-based: never covered) and one productive
+    run (covered by its own end) on different targets."""
+    plans = [
+        _plan_event("compensation", []),
+        _plan_event("agentic", ["agentic"]),
+    ]
+    yields = fold_target_yield(plans)
+    assert yields["compensation"].runs == 1
+    assert yields["compensation"].yielded == 0
+    assert yields["agentic"].runs == 1
+    assert yields["agentic"].yielded == 1
+
+
+def test_fold_target_yield_drops_slugs_outside_current_target_vocabulary() -> None:
+    """A retired slug (e.g. `non_scoring:obtainability`) from an old trace must
+    not appear in the aggregate — only current rubric dimensions count."""
+    plans = [
+        _plan_event("non_scoring:obtainability", [], target_assertion_counts={}),
+        _plan_event(
+            "non_scoring:obtainability",
+            ["non_scoring:obtainability"],
+            target_assertion_counts={"non_scoring:obtainability": 1},
+        ),
+        _plan_event("agentic", [], target_assertion_counts={}),
+    ]
+    yields = fold_target_yield(plans)
+    assert "non_scoring:obtainability" not in yields
+    assert yields["agentic"].runs == 1
+
+
+def test_fold_target_yield_empty_plans() -> None:
+    assert fold_target_yield([]) == {}

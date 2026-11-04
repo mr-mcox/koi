@@ -211,7 +211,7 @@ def test_assertion_rejects_retired_extractive_business_target() -> None:
 
 def test_assertion_rejects_retired_obtainability_target() -> None:
     """Obtainability retired with the whole non-scoring target family (cleanup item C):
-    the planner spent turns and the extractor spent tokens on a target nothing read."""
+    the navigator spent turns and the extractor spent tokens on a target nothing read."""
     with pytest.raises(ValidationError):
         Assertion.model_validate(_assertion(target="non_scoring:obtainability"))
 

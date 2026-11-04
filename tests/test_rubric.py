@@ -54,7 +54,7 @@ def test_rubric_has_no_constraints_section(rubric: dict) -> None:  # type: ignor
 
 def test_rubric_has_no_non_scoring_section(rubric: dict) -> None:  # type: ignore[type-arg]
     """Non-scoring targets retired (cleanup item C): nothing read them, but the research
-    planner spent turns and the extractor spent tokens on them."""
+    navigator spent turns and the extractor spent tokens on them."""
     assert "non_scoring" not in rubric
 
 

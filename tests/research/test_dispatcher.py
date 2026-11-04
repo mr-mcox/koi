@@ -20,7 +20,7 @@ from pydantic import ConfigDict
 from screen.extract.fakes import FakeExtractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.fakes import FakeBrowser, FakeNavigator
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -56,7 +56,6 @@ def _state(
         "rubric_text": "craft_direction: ...",
         "assertions": assertions if assertions is not None else [canned_assertion()],
         "turn_budget": 5,
-        "active_target_action_cap": 5,
         "turns_used": turns_used,
         "visited_urls": visited_urls if visited_urls is not None else [],
     }
@@ -86,7 +85,7 @@ def test_dispatch_stop_returns_pass_summary() -> None:
     stop = StopAction(reason="All rubric dimensions addressed.")
     summary = dispatch(
         state,
-        planner=FakePlanner(sequence=[[stop]]),
+        navigator=FakeNavigator(sequence=[[stop]]),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -98,8 +97,8 @@ def test_dispatch_stop_returns_pass_summary() -> None:
 
 
 def test_decide_plan_event_records_request_and_response() -> None:
-    """Every planner.plan() call is recorded as a decide_plan event: the
-    request carries the state snapshot the planner saw, the response carries
+    """Every navigator.plan() call is recorded as a decide_plan event: the
+    request carries the state snapshot the navigator saw, the response carries
     the action(s) it returned."""
     stop = StopAction(reason="Nothing left to check.")
     events: list[object] = []
@@ -107,7 +106,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
 
     dispatch(
         state,
-        planner=FakePlanner(sequence=[[stop]]),
+        navigator=FakeNavigator(sequence=[[stop]]),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -130,7 +129,7 @@ def test_dispatch_threads_budget_counters() -> None:
     state = _state(turns_used=2)
     summary = dispatch(
         state,
-        planner=FakePlanner(),
+        navigator=FakeNavigator(),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -146,22 +145,22 @@ def test_dispatch_unknown_tag_raises_runtime_error() -> None:
         model_config = ConfigDict(extra="forbid", frozen=True)
         tag: Literal["future_tag"] = "future_tag"  # type: ignore[assignment]
 
-    planner: FakePlanner = FakePlanner(sequence=[[UnknownAction(reason="x")]])  # type: ignore[arg-type]
+    navigator: FakeNavigator = FakeNavigator(sequence=[[UnknownAction(reason="x")]])  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="future_tag"):
         dispatch(
             _state(),
-            planner=planner,
+            navigator=navigator,
             deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
 
 def test_dispatch_empty_action_list_raises_runtime_error() -> None:
-    """A planner returning [] must raise RuntimeError — the loop requires at least [stop]."""
-    planner = FakePlanner(sequence=[[]])  # type: ignore[arg-type]
+    """A navigator returning [] must raise RuntimeError — the loop requires at least [stop]."""
+    navigator = FakeNavigator(sequence=[[]])  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="empty action list"):
         dispatch(
             _state(),
-            planner=planner,
+            navigator=navigator,
             deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
@@ -177,7 +176,7 @@ def test_search_action_happy_path() -> None:
 
     browser = FakeBrowser(search_fixtures={query: hits})
     stop = StopAction(reason="Covered.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [SearchAction(query=query)],
             [stop],
@@ -189,7 +188,7 @@ def test_search_action_happy_path() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -210,7 +209,7 @@ def test_search_action_happy_path() -> None:
 def test_budget_guard_fires() -> None:
     """After a SearchAction that pushes turns_used to turn_budget,
     the dispatcher returns PassSummary with stopped_reason='turn budget exhausted'
-    without calling planner.plan again."""
+    without calling navigator.plan again."""
     query = "Company A comp"
     hits: list[object] = []
 
@@ -219,27 +218,27 @@ def test_budget_guard_fires() -> None:
     # If the guard misfires and calls plan() again, the second element would return stop;
     # but the guard must fire BEFORE the next plan() call.
     stop = StopAction(reason="Should not be reached.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [SearchAction(query=query)],
             [stop],  # must NOT be reached
         ]
     )
     plan_calls: list[int] = []
-    original_plan = planner.plan
+    original_plan = navigator.plan
 
     def counting_plan(s: LoopState) -> list[Action]:  # type: ignore[type-arg]
         plan_calls.append(1)
         return original_plan(s)
 
-    planner.plan = counting_plan  # type: ignore[method-assign]
+    navigator.plan = counting_plan  # type: ignore[method-assign]
 
     state = _state(turns_used=0)
     state = state.model_copy(update={"turn_budget": 1})
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -260,7 +259,7 @@ def test_fetch_action_happy_path() -> None:
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": raw}})
     extractor = FakeExtractor([[new_assertion]])
     stop = StopAction(reason="Done after fetch.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [FetchAction(url=url)],
             [stop],
@@ -272,7 +271,7 @@ def test_fetch_action_happy_path() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
@@ -293,7 +292,7 @@ def test_fetch_action_happy_path() -> None:
     assert summary.turns_used == 1
 
     # FetchContext in last_context carried the new target
-    # (accessible by inspecting the state passed to the second planner.plan call
+    # (accessible by inspecting the state passed to the second navigator.plan call
     # — we verify via the summary assertion count and the browser call)
     assert isinstance(summary, PassSummary)
 
@@ -305,7 +304,7 @@ def test_fetch_action_duplicate_skipped() -> None:
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": "content"}})
     extractor = FakeExtractor([[]])
     stop = StopAction(reason="Done.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [FetchAction(url=url)],
             [stop],
@@ -317,7 +316,7 @@ def test_fetch_action_duplicate_skipped() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
@@ -338,7 +337,7 @@ def test_fetch_action_zero_assertions_continues() -> None:
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": raw}})
     extractor = FakeExtractor([[]])  # zero assertions returned
     stop = StopAction(reason="Nothing more to do.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [FetchAction(url=url)],
             [stop],
@@ -349,7 +348,7 @@ def test_fetch_action_zero_assertions_continues() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=extractor, on_event=_noop),
     )
 
@@ -360,62 +359,54 @@ def test_fetch_action_zero_assertions_continues() -> None:
     assert summary.stopped_reason == "Nothing more to do."
 
 
-def test_dispatch_sticky_target_increments_action_counter() -> None:
-    """When the planner keeps the same primary target across turns, the
-    dispatcher increments active_target_actions rather than resetting it."""
+def test_dispatch_computes_primary_target_once_before_loop() -> None:
+    """The pass selects one target up front and holds it for every turn —
+    `scoring_config` is consulted once, not re-ranked turn to turn, even as
+    new assertions land that would shift the ranking."""
     config = load_scoring_config()
-    query = "Acme Corp compensation"
-    browser = FakeBrowser(search_fixtures={query: []})
+    url = "https://example.com/acme-comp"
+    new_assertion = canned_assertion(target="craft_direction")
+    browser = FakeBrowser(fetch_fixtures={url: {"raw_content": "Acme pays well."}})
     stop = StopAction(reason="Done.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
-            [SearchAction(query=query)],
-            [SearchAction(query=query)],
+            [FetchAction(url=url)],
             [stop],
         ]
     )
 
-    state = _state(
-        targets=["craft_direction", "compensation"],
-        active_target="compensation",
-        active_target_actions=1,
-        active_target_action_cap=10,
-    )
-
+    # Both targets start unexamined, tied; "compensation" wins the tie-break.
+    # A fetch adds a craft_direction assertion, which would flip a per-turn
+    # re-rank toward compensation staying ahead — but only if ranking ran again.
+    state = _state(assertions=[], targets=["craft_direction", "compensation"])
     recorded: list[LoopState] = []
-    original_plan = planner.plan
+    original_plan = navigator.plan
 
     def recording_plan(s: LoopState) -> list[Action]:
         recorded.append(s)
         return original_plan(s)
 
-    planner.plan = recording_plan  # type: ignore[method-assign]
+    navigator.plan = recording_plan  # type: ignore[method-assign]
 
     dispatch(
         state,
-        planner=planner,
-        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
+        navigator=navigator,
+        deps=_deps(browser=browser, extractor=_fake_extractor([[new_assertion]]), on_event=_noop),
         scoring_config=config,
     )
 
-    # First plan call saw the initial state.
-    assert recorded[0].active_target_actions == 1
-    # Second plan call saw the state after one action on the same target.
-    assert recorded[1].active_target == "compensation"
-    assert recorded[1].active_target_actions == 2
-    # Third plan call saw the state after two actions on the same target.
-    assert recorded[2].active_target == "compensation"
-    assert recorded[2].active_target_actions == 3
+    assert recorded[0].primary_target == "compensation"
+    assert recorded[1].primary_target == "compensation"
 
 
 def test_search_action_browser_error_recorded_and_continues() -> None:
     """A failed search records a tavily_search event with the error and
-    details, counts as a turn, and lets the planner continue rather than
+    details, counts as a turn, and lets the navigator continue rather than
     aborting the pass."""
     query = "Acme Corp compensation"
     browser = FakeBrowser(search_fixtures={})  # no fixture → BrowserError
     stop = StopAction(reason="Nothing more to try.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [SearchAction(query=query)],
             [stop],
@@ -427,7 +418,7 @@ def test_search_action_browser_error_recorded_and_continues() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -444,11 +435,11 @@ def test_search_action_browser_error_recorded_and_continues() -> None:
 def test_fetch_action_browser_error_recorded_and_continues() -> None:
     """A failed fetch records a tavily_extract event with the error and
     details, adds the URL to visited_urls (so it isn't retried), counts
-    as a turn, and lets the planner continue rather than aborting the pass."""
+    as a turn, and lets the navigator continue rather than aborting the pass."""
     url = "https://acme.wd1.myworkdayjobs.example/blocked-posting"
     browser = FakeBrowser(fetch_fixtures={})  # no fixture → BrowserError
     stop = StopAction(reason="Nothing more to try.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [FetchAction(url=url)],
             [stop],
@@ -460,7 +451,7 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
 
     summary = dispatch(
         state,
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -480,11 +471,11 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
 
 def test_fetch_action_browser_error_marks_url_visited() -> None:
     """A failed fetch adds the URL to visited_urls so a subsequent plan()
-    call sees it and the planner doesn't retry the same dead URL forever."""
+    call sees it and the navigator doesn't retry the same dead URL forever."""
     url = "https://www.acmehealth.example/about/careers-list/blocked"
     browser = FakeBrowser(fetch_fixtures={})
     stop = StopAction(reason="Done.")
-    planner = FakePlanner(
+    navigator = FakeNavigator(
         sequence=[
             [FetchAction(url=url)],
             [stop],
@@ -492,17 +483,17 @@ def test_fetch_action_browser_error_marks_url_visited() -> None:
     )
 
     recorded: list[LoopState] = []
-    original_plan = planner.plan
+    original_plan = navigator.plan
 
     def recording_plan(s: LoopState) -> list[Action]:
         recorded.append(s)
         return original_plan(s)
 
-    planner.plan = recording_plan  # type: ignore[method-assign]
+    navigator.plan = recording_plan  # type: ignore[method-assign]
 
     dispatch(
         _state(assertions=[]),
-        planner=planner,
+        navigator=navigator,
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
     )
 

@@ -426,6 +426,20 @@ traces, and Pydantic already gives the schema and the validation. **Rejected:**
 `extra="forbid"` on payloads. It would make every retired key a load failure on resume,
 and the write side is already checked statically.
 
+### E9 · The dispatcher's "only `DecidePlan`" clause widens to "any LLM call may only read and propose" · `adopted` (2026-11, research-target-opportunity)
+
+E5's loop added a question step ahead of `DecidePlan`: a model call that picks one rubric
+dimension and writes a research question, with no tool access and no state mutation of its
+own — the dispatcher still decides when it runs and folds its output in. The original
+girder wording ("`DecidePlan` is the only LLM-shaped decision") named a count, and the count
+just became two. What the wording was actually protecting — no LLM call acts on the world
+or changes state directly — survives unchanged, so the girder is reworded to say that
+instead of being re-escalated at the next LLM call added to the loop.
+
+**Rejected:** keeping the girder as a fixed count and re-escalating each time a call is
+added. It would mean renaming the invariant every time the loop grows, for a wording that
+never described the actual constraint.
+
 ---
 
 ## Rubric

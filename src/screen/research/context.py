@@ -1,6 +1,6 @@
 """Pass-state context types: SearchContext and FetchContext.
 
-These record what the last browser action produced so the planner can
+These record what the last browser action produced so the navigator can
 reason about what to source next. They live in research/ — not in browser.py —
 because they are pass-state types, not browser return types.
 """
@@ -15,7 +15,7 @@ from screen.browser import SearchHit
 class SearchContext(BaseModel):
     """Records the result of a search action.
 
-    Zero hits is a valid outcome and is not an error; the planner decides
+    Zero hits is a valid outcome and is not an error; the navigator decides
     whether to refine the query or give up.
     """
 
@@ -29,7 +29,7 @@ class FetchContext(BaseModel):
     """Records the result of a fetch action.
 
     targets_added=[] is valid — a hub page with no scorable claims does not
-    force a stop. The planner sees the empty list and decides what to do next.
+    force a stop. The navigator sees the empty list and decides what to do next.
     snippet is the first 500 chars of raw content (enough for link spotting).
     """
 

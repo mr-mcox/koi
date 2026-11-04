@@ -13,7 +13,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.intake.fakes import FakeIdentifier
 from screen.intake.pipeline import IntakePipelineError, identify_research_trace
 from screen.research.actions import StopAction
-from screen.research.fakes import FakePlanner
+from screen.research.fakes import FakeNavigator
 from screen.store.db import connect
 from screen.store.repo import assertions_for_opening
 from screen.types import IdentificationResult
@@ -26,8 +26,8 @@ from tests.helpers import (
 )
 
 
-def _default_planner() -> FakePlanner:
-    return FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
+def _default_navigator() -> FakeNavigator:
+    return FakeNavigator(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
 
 
 def _default_extractor() -> FakeExtractor:
@@ -49,7 +49,7 @@ def test_identify_research_trace_writes_company_and_opening(tmp_path: Path) -> N
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
 
@@ -72,7 +72,7 @@ def test_identify_research_trace_leaves_trace_at_final_path(tmp_path: Path) -> N
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
     assert research_trace_path.exists()
@@ -90,7 +90,7 @@ def test_identify_research_trace_records_decide_plan_event(tmp_path: Path) -> No
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
     tools = [
@@ -112,7 +112,7 @@ def test_identify_research_trace_ignores_sibling_files(tmp_path: Path) -> None:
         identifier_factory=lambda: fake_identifier(title="Eng"),
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
     assert research_trace_path.exists()
@@ -171,7 +171,7 @@ def test_identify_research_trace_skips_blank_and_non_tavily_lines(tmp_path: Path
         ),
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
     conn = sqlite3.connect(tmp_path / "screen.db")
@@ -217,7 +217,7 @@ def test_identify_research_trace_writes_assertions_to_db(tmp_path: Path) -> None
         identifier_factory=fake_identifier,
         extractor_factory=_default_extractor,
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=_default_digester()
+            navigator=_default_navigator(), digester=_default_digester()
         ),
     )
 

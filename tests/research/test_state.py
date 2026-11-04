@@ -31,7 +31,6 @@ def _loop_state(**kwargs: object) -> LoopState:
         "rubric_text": "craft_direction: ...",
         "assertions": [canned_assertion()],
         "turn_budget": 5,
-        "active_target_action_cap": 5,
         "turns_used": 0,
     }
     defaults.update(kwargs)
@@ -65,7 +64,6 @@ def test_loop_state_extra_forbid() -> None:
             rubric_text="r",
             assertions=[],
             turn_budget=5,
-            active_target_action_cap=5,
             turns_used=0,
             unexpected_field="boom",  # type: ignore[call-arg]
         )
@@ -168,3 +166,30 @@ def test_stop_action_frozen() -> None:
 def test_stop_action_extra_forbid() -> None:
     with pytest.raises(ValidationError):
         StopAction(reason="done", surprise="boom")  # type: ignore[call-arg]
+
+
+def test_loop_state_has_no_active_target_cap_field() -> None:
+    """One target for the whole pass (the question step picks it once) —
+    the sticky-target machinery (active_target/active_target_actions/
+    active_target_action_cap) has no job left and is gone from LoopState."""
+    defaults: dict[str, object] = {
+        "opening_id": "op-abc",
+        "company_id": "co-xyz",
+        "company_name": "Acme Corp",
+        "opening_title": "Staff Software Engineer",
+        "page_content": "Some posting text.",
+        "url": "https://example.com/jobs/1",
+        "rubric_text": "craft_direction: ...",
+        "assertions": [canned_assertion()],
+        "turn_budget": 5,
+        "turns_used": 0,
+    }
+    state = LoopState(**defaults)  # type: ignore[arg-type]
+    assert not hasattr(state, "active_target")
+    assert not hasattr(state, "active_target_actions")
+    assert not hasattr(state, "active_target_action_cap")
+
+
+def test_loop_state_rejects_active_target_action_cap() -> None:
+    with pytest.raises(ValidationError):
+        _loop_state(active_target_action_cap=5)

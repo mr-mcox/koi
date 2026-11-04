@@ -1,7 +1,9 @@
-// DecidePlan — the one LLM-shaped decision in the research dispatch pass.
+// DecidePlan — the Navigator's call: given a fixed research question and
+// target, decide the next move in a research pass.
 //
 // Shape 1 invariant: BAML generates the plan; the hand-written
-// dispatcher owns every tool call and all state mutation.
+// dispatcher owns every tool call and all state mutation. An LLM call may
+// only read state and propose, never act or mutate directly (decisions.md E9).
 //
 // Returns a list of actions. StopAction, FetchAction, and SearchAction are
 // the supported tags. The output schema is a tagged union; the dispatcher
@@ -38,7 +40,7 @@ function DecidePlan(
 ) -> Action[] {
   client Fireworks
   prompt #"
-    You are a research-pass planner for a job screener.
+    You are a research-pass navigator for a job screener.
 
     ## Your job
     Decide what to do next in a research pass on a job opening.
@@ -213,7 +215,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 // Fixture: search results already contain an on-target, fetchable URL — the
 // model must fetch it rather than search again. Reproduces a live trap: three
 // consecutive searches for the same active target, each returning a relevant
-// hit, but the planner never transitioned to fetch and the pass burned its
+// hit, but the navigator never transitioned to fetch and the pass burned its
 // whole turn budget without filing a single assertion. URLs and company details
 // are generic so the fixture can be checked in.
 test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {

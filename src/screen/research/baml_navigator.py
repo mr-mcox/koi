@@ -5,7 +5,7 @@ Coerces the generated `baml_client.types.StopAction` into the canonical
 `tests/research/test_baml_shape.py` pins this at test time.
 
 Also owns the deterministic composite-uncertainty ranking that picks the
-planner's `primary_target` for each turn. The ranking is pure: it reads the
+navigator's `primary_target` for each turn. The ranking is pure: it reads the
 current assertions and operator rulings, never a stored history.
 """
 
@@ -32,7 +32,7 @@ def _prior_queries_text(state: LoopState) -> str:
 
 
 def last_context_text(state: LoopState) -> str:
-    """Render state.last_context to a short prose paragraph for the planner.
+    """Render state.last_context to a short prose paragraph for the navigator.
 
     Returns an empty string when last_context is None (first cycle).
     """
@@ -97,29 +97,20 @@ def rank_targets(state: LoopState, config: ScoringConfig) -> list[tuple[str, flo
 
 
 def select_primary_target(state: LoopState, config: ScoringConfig) -> str:
-    """Pick the target the planner should focus on this turn.
-
-    Sticky target: while `active_target` is set and the per-target action cap
-    has not been reached, stay on that target. This prevents mid-chain thrash
-    when a fetch on one target incidentally yields assertions about another.
-    Once the cap is reached, re-rank and start a new sticky session.
+    """Pick the target the pass should focus on, once per pass — the dispatcher
+    calls this before the loop starts and holds the result for every turn.
     """
-    if (
-        state.active_target is not None
-        and state.active_target_actions < state.active_target_action_cap
-    ):
-        return state.active_target
     ranked = rank_targets(state, config)
     return ranked[0][0] if ranked else "craft_direction"
 
 
-class BAMLPlanner:
+class BAMLNavigator:
     """Calls DecidePlan via the generated BAML sync client.
 
-    If `state.primary_target` is already set (the dispatcher owns the sticky
-    target logic), it is passed through. Otherwise this planner computes it
-    from the composite signal — useful for direct tests of the planner without
-    the full dispatcher loop.
+    If `state.primary_target` is already set (the dispatcher picks it once,
+    before the loop starts), it is passed through. Otherwise this navigator
+    computes it from the composite signal itself — useful for direct tests
+    without the full dispatcher loop.
     """
 
     def __init__(self, config: ScoringConfig | None = None, client: BamlSyncClient = b) -> None:
@@ -164,6 +155,6 @@ def _coerce(generated: object) -> Action:
         return SearchAction(query=str(query))
 
     raise RuntimeError(
-        f"BAMLPlanner received unrecognized action tag '{tag}' from DecidePlan. "
+        f"BAMLNavigator received unrecognized action tag '{tag}' from DecidePlan. "
         "Update research.baml and add a coercion branch here."
     )

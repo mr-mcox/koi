@@ -210,7 +210,7 @@ def test_tavily_browser_search_wraps_sdk_exceptions() -> None:
 
 
 def test_tavily_browser_search_maps_content_to_raw_content_and_snippet() -> None:
-    """Tavily search returns page text as `content`; the planner reads `raw_content`
+    """Tavily search returns page text as `content`; the navigator reads `raw_content`
     and `snippet`, so a hit without that mapping reaches it with no text at all."""
     spy = _SpyTavilyClient(
         search_response={

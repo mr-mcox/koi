@@ -82,8 +82,8 @@ def _live_server(app: FastAPI) -> Iterator[str]:
         thread.join(timeout=2)
 
 
-class PausablePlanner:
-    """Fake planner that blocks on the first `plan()` call until `gate` is set,
+class PausableNavigator:
+    """Fake navigator that blocks on the first `plan()` call until `gate` is set,
     then returns one `SearchAction` and stops on subsequent calls."""
 
     def __init__(self, gate: threading.Event) -> None:
@@ -99,10 +99,10 @@ class PausablePlanner:
 
 
 def _pausable_engine(gate: threading.Event) -> BatchEngine:
-    """Engine whose first-turn planner blocks on `gate`, then spends one fake turn."""
-    shared_planner = PausablePlanner(gate)
+    """Engine whose first-turn navigator blocks on `gate`, then spends one fake turn."""
+    shared_navigator = PausableNavigator(gate)
     return BatchEngine(
-        planner_factory=lambda: shared_planner,
+        navigator_factory=lambda: shared_navigator,
         deps_factory=lambda: fake_dispatch_deps(
             browser=FakeBrowser(search_fixtures={"paused query": []}),
             extractor=FakeExtractor([[canned_assertion("craft_direction", "Strong", "ratified")]]),
@@ -113,7 +113,7 @@ def _pausable_engine(gate: threading.Event) -> BatchEngine:
 
 def test_batch_start_returns_before_turn_is_spent(db_path: Path) -> None:
     """POST /batch schedules the work in a background task and returns immediately,
-    before the slow planner even finishes its first `plan()` call."""
+    before the slow navigator even finishes its first `plan()` call."""
     _seed_live_opening(db_path, "acme--eng")
     gate = threading.Event()
     app = make_app(

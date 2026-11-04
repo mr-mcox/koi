@@ -7,7 +7,7 @@ from pathlib import Path
 from screen.digest.fakes import FakeDigester
 from screen.intake.pipeline import run_dispatch
 from screen.research.actions import StopAction
-from screen.research.fakes import FakePlanner
+from screen.research.fakes import FakeNavigator
 from screen.store.db import connect
 from screen.store.repo import (
     append_assertions,
@@ -23,7 +23,7 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
     assertions = [canned_assertion("craft_direction"), canned_assertion("mission")]
     append_assertions(conn, assertions, opening_id="opening")
     digester = FakeDigester(["stretch digest", "mission digest"])
-    planner = FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
+    navigator = FakeNavigator(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
 
     run_dispatch(
         conn,
@@ -35,7 +35,7 @@ def test_run_dispatch_warms_digest_cache_for_every_target(tmp_path: Path) -> Non
         company_name="Example Co",
         opening_title="Eng",
         turn_budget=5,
-        deps=fake_dispatch_deps(planner=planner, digester=digester),
+        deps=fake_dispatch_deps(navigator=navigator, digester=digester),
     )
 
     assert digester.calls == 2

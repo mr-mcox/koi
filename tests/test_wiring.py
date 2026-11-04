@@ -9,7 +9,7 @@ from screen.browser import TavilyBrowser
 from screen.digest.baml_digester import BAMLDigester
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import MissingPrivateConfigError
-from screen.research.baml_planner import BAMLPlanner
+from screen.research.baml_navigator import BAMLNavigator
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
 from screen.wiring import build_app, build_dispatch_deps
 from tests.helpers import SYNTHETIC_PRIVATE, synthetic_rubric
@@ -31,7 +31,7 @@ def test_app_uses_the_live_adapters_against_the_configured_data_dir(tmp_path: Pa
 def test_dispatch_deps_use_the_live_adapters() -> None:
     deps = build_dispatch_deps(synthetic_rubric(), {"TAVILY_API_KEY": "k"})
 
-    assert isinstance(deps.planner, BAMLPlanner)
+    assert isinstance(deps.navigator, BAMLNavigator)
     assert isinstance(deps.browser, TavilyBrowser)
     assert isinstance(deps.extractor, BAMLExtractor)
     assert isinstance(deps.digester, BAMLDigester)

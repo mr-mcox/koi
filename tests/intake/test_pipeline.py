@@ -16,7 +16,7 @@ from screen.digest.fakes import FakeDigester
 from screen.extract.fakes import FakeExtractor
 from screen.intake import pipeline as pipeline_module
 from screen.research.actions import FetchAction, StopAction
-from screen.research.fakes import FakeBrowser, FakePlanner
+from screen.research.fakes import FakeBrowser, FakeNavigator
 from screen.research_trace.ids import derive_research_trace_id
 from screen.research_trace.trace_io import read_page_content, research_trace_path_for
 from tests.helpers import canned_assertion, fake_dispatch_deps, fake_extractor, fake_identifier
@@ -36,8 +36,8 @@ class _FailingFetcher:
         raise self._error
 
 
-def _default_planner() -> FakePlanner:
-    return FakePlanner(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
+def _default_navigator() -> FakeNavigator:
+    return FakeNavigator(sequence=[[StopAction(reason="All rubric dimensions addressed.")]])
 
 
 def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) -> None:
@@ -51,7 +51,7 @@ def test_pipeline_writes_domain_rows_to_sqlite_not_json_files(tmp_path: Path) ->
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
+            navigator=_default_navigator(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
 
@@ -149,7 +149,7 @@ def test_pipeline_returns_stop_reason(tmp_path: Path) -> None:
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_default_planner(), digester=FakeDigester(["Synthetic digest."])
+            navigator=_default_navigator(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
     assert "All rubric dimensions addressed." in reason
@@ -161,8 +161,8 @@ def test_pipeline_dispatch_persists_fetch_assertions(tmp_path: Path) -> None:
     url = "https://example.com/jobs/42"
     fetch_url = "https://levels.fyi/companies/example-co"
 
-    def _planner() -> FakePlanner:
-        return FakePlanner(
+    def _navigator() -> FakeNavigator:
+        return FakeNavigator(
             sequence=[
                 [FetchAction(url=fetch_url)],
                 [StopAction(reason="Second fetch done.")],
@@ -184,7 +184,7 @@ def test_pipeline_dispatch_persists_fetch_assertions(tmp_path: Path) -> None:
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_planner(), browser=_browser(), digester=FakeDigester(["Synthetic digest."])
+            navigator=_navigator(), browser=_browser(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
 
@@ -219,12 +219,12 @@ def test_pipeline_intake_records_failure_details_in_trace(tmp_path: Path) -> Non
 def test_pipeline_dispatch_continues_past_failed_fetch(tmp_path: Path) -> None:
     """A research-pass FetchAction that fails (no fixture, simulating a
     blocked/unfetchable page) does not abort the pipeline — the pass records
-    the failure and continues to the planner's next action."""
+    the failure and continues to the navigator's next action."""
     url = "https://example.com/jobs/42"
     blocked_url = "https://www.acmehealth.example/about/careers-list/blocked"
 
-    def _planner() -> FakePlanner:
-        return FakePlanner(
+    def _navigator() -> FakeNavigator:
+        return FakeNavigator(
             sequence=[
                 [FetchAction(url=blocked_url)],
                 [StopAction(reason="Gave up after block.")],
@@ -238,7 +238,7 @@ def test_pipeline_dispatch_continues_past_failed_fetch(tmp_path: Path) -> None:
         identifier_factory=fake_identifier,
         extractor_factory=lambda: FakeExtractor([[canned_assertion()]]),
         deps_factory=lambda: fake_dispatch_deps(
-            planner=_planner(), digester=FakeDigester(["Synthetic digest."])
+            navigator=_navigator(), digester=FakeDigester(["Synthetic digest."])
         ),
     )
 
