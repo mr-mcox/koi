@@ -8,6 +8,10 @@ uv.lock
 # Runtime artifacts (every slice writes here)
 data/
 
+# Spike/throwaway scripts and their outputs — real company names and live-call
+# results live here; never committed (AGENTS.md privacy rules)
+scratch/
+
 # Code artifacts
 *.pyc
 

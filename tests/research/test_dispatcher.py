@@ -21,7 +21,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakeNavigator, FakeSurveyor
-from screen.research.question import ResearchQuestion
+from screen.research.question import NOT_YET_AVAILABLE, ResearchQuestion
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -126,6 +126,32 @@ def test_decide_plan_event_records_request_and_response() -> None:
     assert event.request.target_assertion_counts == {"craft_direction": 1}
     assert event.request.last_context is None
     assert event.response.actions == [{"tag": "stop", "reason": "Nothing left to check."}]
+
+
+def test_decide_plan_request_carries_assertion_history_for_the_fixed_target() -> None:
+    """The Navigator's request carries its own target's assertion content — fit,
+    chunk, citation URLs — not just the counts. Scoped to
+    `primary_target` alone, unlike the Surveyor's history across every dimension."""
+    stop = StopAction(reason="Done.")
+    craft_assertion = canned_assertion(target="craft_direction", chunk="Ships weekly.")
+    off_target = canned_assertion(target="compensation", chunk="Pays well.")
+    state = _state(
+        assertions=[craft_assertion, off_target], targets=["craft_direction", "compensation"]
+    )
+    events: list[object] = []
+
+    dispatch(
+        state,
+        navigator=FakeNavigator(sequence=[[stop]]),
+        surveyor=FakeSurveyor(),
+        deps=_deps(on_event=events.append),
+    )
+
+    plan_events = [e for e in events if isinstance(e, DecidePlanEvent)]
+    history = plan_events[0].request.assertion_history
+    assert history is not None
+    assert "Ships weekly." in history
+    assert "Pays well." not in history
 
 
 def test_dispatch_threads_budget_counters() -> None:
@@ -371,8 +397,8 @@ def test_fetch_action_zero_assertions_continues() -> None:
 
 
 def test_dispatch_surveys_once_before_loop_and_threads_question() -> None:
-    """The pass asks the Surveyor exactly once, before the first DecidePlan,
-    and every DecidePlan call in the pass sees the same dimension/question —
+    """The pass asks the Surveyor exactly once, before the first Navigate call,
+    and every Navigate call in the pass sees the same dimension/question —
     not re-surveyed turn to turn."""
     url = "https://example.com/acme-comp"
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": "Acme pays well."}})
@@ -413,6 +439,34 @@ def test_dispatch_surveys_once_before_loop_and_threads_question() -> None:
     assert survey_events[0].request.dimensions == ["craft_direction", "compensation"]
     assert survey_events[0].response.dimension == "compensation"
     assert survey_events[0].response.question == "What's total comp?"
+
+
+def test_survey_request_renders_real_assertion_content_not_placeholder() -> None:
+    """query_assertion_history carries the opening's actual assertions, grouped by
+    every dimension the Surveyor may choose among — not the NOT_YET_AVAILABLE
+    placeholder."""
+    stop = StopAction(reason="Done.")
+    navigator = FakeNavigator(sequence=[[stop]])
+    surveyor = FakeSurveyor(
+        sequence=[ResearchQuestion(dimension="compensation", question="What's total comp?")]
+    )
+    comp_assertion = canned_assertion(target="compensation", chunk="Pays $400k TC.")
+    state = _state(assertions=[comp_assertion], targets=["craft_direction", "compensation"])
+
+    events: list[object] = []
+    dispatch(
+        state,
+        navigator=navigator,
+        surveyor=surveyor,
+        deps=_deps(on_event=events.append),
+    )
+
+    survey_events = [e for e in events if isinstance(e, SurveyEvent)]
+    history = survey_events[0].request.query_assertion_history
+    assert "Pays $400k TC." in history
+    assert "craft_direction" in history
+    assert "unexamined" in history
+    assert history != NOT_YET_AVAILABLE
 
 
 def test_dispatch_rejects_dimension_outside_target_vocabulary() -> None:

@@ -5,9 +5,12 @@ dispatcher's job (it decides what happens on a bad answer), not a parse-time
 concern of this type.
 """
 
+from collections.abc import Iterable
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from screen.types import Assertion
 
 
 class ResearchQuestion(BaseModel):
@@ -17,11 +20,36 @@ class ResearchQuestion(BaseModel):
     question: Annotated[str, Field(min_length=1)]
 
 
-# Placeholder Survey input, shared by `BAMLSurveyor` (what it actually sends)
-# and the dispatcher (what it records as the audit snapshot) so the two can't
-# drift apart. The real renderers (pool-wide/per-opening yield rates, the
-# citation-URL-to-search join) are follow-up cycles (scouting F15, F23-F26,
-# F32, F34) — this steel-threads the Survey prompt's shape first.
-NOT_YET_AVAILABLE = (
-    "(not yet available — yield-rate and query-history rendering land in a follow-up cycle)"
-)
+# Placeholder for the one Survey input `render_assertion_history` doesn't cover yet:
+# per-dimension yield rates. That renderer is a follow-up
+# cycle; this one stays a placeholder until it lands.
+NOT_YET_AVAILABLE = "(not yet available — yield-rate rendering lands in a follow-up cycle)"
+
+
+def render_assertion_history(assertions: Iterable[Assertion], targets: Iterable[str]) -> str:
+    """Render each target's own assertions — fit, verbatim chunk, citation URLs —
+    grouped by dimension, in the order `targets` lists them.
+    An assertion whose target isn't in `targets` is excluded: callers scope the
+    view by what they pass. The Navigator passes its one fixed target; the
+    Surveyor passes every dimension because it is choosing among them.
+
+    A target with no assertions renders as explicitly unexamined rather than
+    being omitted. Omission reads as "nothing to say," which a model cannot
+    distinguish from "already checked and clean" — and that ambiguity is what
+    sends it searching for evidence it already has.
+    """
+    by_target: dict[str, list[Assertion]] = {}
+    for assertion in assertions:
+        by_target.setdefault(assertion.target, []).append(assertion)
+
+    sections: list[str] = []
+    for target in targets:
+        sections.append(f"### {target}")
+        items = by_target.get(target, [])
+        if not items:
+            sections.append("(unexamined — no assertions yet)")
+            continue
+        for item in items:
+            urls = ", ".join(dict.fromkeys(c.url for c in item.citations))
+            sections.append(f"- [{item.fit}] {item.chunk}\n  sources: {urls}")
+    return "\n".join(sections)

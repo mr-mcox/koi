@@ -1,4 +1,4 @@
-"""Live BAML adapter for the DecidePlan function.
+"""Live BAML adapter for the Navigate function.
 
 Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
@@ -6,13 +6,14 @@ Coerces the generated `baml_client.types.StopAction` into the canonical
 
 Target choice is no longer this module's job — the Surveyor (see
 `baml_surveyor.py`) picks `state.primary_target` once per pass, before the
-dispatcher ever calls `plan()`. The deterministic composite-uncertainty
-ranker this module used to own is retired (scouting F16, F29).
+dispatcher ever calls `plan()`.
 """
 
 from screen.baml_client.sync_client import BamlSyncClient, b
+from screen.extract.prompt import RubricText
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext
+from screen.research.question import render_assertion_history
 from screen.research.state import LoopState
 
 
@@ -54,25 +55,35 @@ def last_context_text(state: LoopState) -> str:
 
 
 class BAMLNavigator:
-    """Calls DecidePlan via the generated BAML sync client.
+    """Calls Navigate via the generated BAML sync client.
 
     Trusts `state.primary_target`/`state.research_question` as already set —
     the dispatcher gets them from the Surveyor once per pass, before the loop
-    starts, and this navigator never recomputes either.
+    starts, and this navigator never recomputes either. `rubric` is the
+    process-wide loaded rubric, narrowed per call to just `primary_target`'s
+    text: the dimension is fixed for the whole pass, so the other dimensions'
+    anchors can only distract from it.
     """
 
-    def __init__(self, client: BamlSyncClient = b) -> None:
+    def __init__(self, rubric: RubricText, client: BamlSyncClient = b) -> None:
+        self._rubric = rubric
         self._client = client
 
     def plan(self, state: LoopState) -> list[Action]:
-        generated = self._client.DecidePlan(
+        if state.primary_target is None:
+            raise RuntimeError(
+                "BAMLNavigator.plan() called before the Surveyor set primary_target. "
+                "The dispatcher must survey before the first decide_plan call."
+            )
+        generated = self._client.Navigate(
             company_name=state.company_name,
             opening_title=state.opening_title,
-            rubric_text=state.rubric_text,
-            primary_target=state.primary_target or "",
+            rubric_text=self._rubric.for_dimension(state.primary_target),
+            primary_target=state.primary_target,
             research_question=state.research_question or "",
             last_context_text=last_context_text(state),
             prior_queries=_prior_queries_text(state),
+            assertion_history=render_assertion_history(state.assertions, [state.primary_target]),
         )
         return [_coerce(g) for g in generated]
 
@@ -98,6 +109,6 @@ def _coerce(generated: object) -> Action:
         return SearchAction(query=str(query))
 
     raise RuntimeError(
-        f"BAMLNavigator received unrecognized action tag '{tag}' from DecidePlan. "
-        "Update research.baml and add a coercion branch here."
+        f"BAMLNavigator received unrecognized action tag '{tag}' from Navigate. "
+        "Update navigator.baml and add a coercion branch here."
     )

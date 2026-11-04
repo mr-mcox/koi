@@ -5,7 +5,7 @@
 // Shape 1 invariant (decisions.md E9): this call only reads state and
 // proposes a dimension and a question; it never calls Tavily and never
 // mutates state. The dispatcher decides when it runs (once per pass, before
-// the first DecidePlan) and validates the answer against the live rubric
+// the first Navigate call) and validates the answer against the live rubric
 // vocabulary — a dimension outside it fails the pass loudly rather than
 // being silently remapped.
 

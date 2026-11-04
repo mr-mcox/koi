@@ -1,5 +1,6 @@
-"""Unit tests for BAMLSurveyor's call shape — dimensions text, stub inputs,
-and translating the generated `ResearchQuestion` to the domain type."""
+"""Unit tests for BAMLSurveyor's call shape — dimensions text, rendered
+assertion history, the still-stubbed yield summary, and translating the
+generated `ResearchQuestion` to the domain type."""
 
 from types import SimpleNamespace
 
@@ -38,11 +39,31 @@ def test_baml_surveyor_survey_calls_generated_client_with_stub_inputs() -> None:
     question = surveyor.survey(_state())
 
     assert question == ResearchQuestion(dimension="compensation", question="What is total comp?")
-    assert calls[0] == {
-        "company_name": "Acme Corp",
-        "opening_title": "Staff Software Engineer",
-        "rubric_text": "craft_direction: ...",
-        "dimensions": "craft_direction, compensation",
-        "yield_summary": NOT_YET_AVAILABLE,
-        "query_assertion_history": NOT_YET_AVAILABLE,
-    }
+    call = calls[0]
+    assert call["company_name"] == "Acme Corp"
+    assert call["opening_title"] == "Staff Software Engineer"
+    assert call["rubric_text"] == "craft_direction: ..."
+    assert call["dimensions"] == "craft_direction, compensation"
+    assert call["yield_summary"] == NOT_YET_AVAILABLE
+
+
+def test_baml_surveyor_renders_real_assertion_history_not_a_placeholder() -> None:
+    """query_assertion_history is the real per-dimension render, across every
+    dimension, unlike the Navigator's, which narrows to its one fixed target."""
+    calls: list[dict[str, object]] = []
+
+    def fake_survey(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return SimpleNamespace(dimension="compensation", question="What is total comp?")
+
+    surveyor = BAMLSurveyor(client=SimpleNamespace(Survey=fake_survey))
+    comp_assertion = canned_assertion(target="compensation", chunk="Pays $400k TC.")
+    surveyor.survey(
+        _state(assertions=[comp_assertion], targets=["craft_direction", "compensation"])
+    )
+
+    history = calls[0]["query_assertion_history"]
+    assert history != NOT_YET_AVAILABLE
+    assert "Pays $400k TC." in history
+    assert "craft_direction" in history
+    assert "unexamined" in history

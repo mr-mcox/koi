@@ -23,12 +23,6 @@ class LlmResponseParser:
     def __init__(self, options: DoNotUseDirectlyCallManager):
         self.__options = options
 
-    def DecidePlan(
-        self, llm_response: str, baml_options: BamlCallOptions = {},
-    ) -> typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]:
-        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DecidePlan", llm_response=llm_response, mode="request")
-        return typing.cast(typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]], __result__)
-
     def DigestDimension(
         self, llm_response: str, baml_options: BamlCallOptions = {},
     ) -> str:
@@ -46,6 +40,12 @@ class LlmResponseParser:
     ) -> types.IdentificationResult:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="IdentifyOpening", llm_response=llm_response, mode="request")
         return typing.cast(types.IdentificationResult, __result__)
+
+    def Navigate(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="Navigate", llm_response=llm_response, mode="request")
+        return typing.cast(typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]], __result__)
 
     def ProposeRubricEdit(
         self, llm_response: str, baml_options: BamlCallOptions = {},
@@ -67,12 +67,6 @@ class LlmStreamParser:
     def __init__(self, options: DoNotUseDirectlyCallManager):
         self.__options = options
 
-    def DecidePlan(
-        self, llm_response: str, baml_options: BamlCallOptions = {},
-    ) -> typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]]:
-        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="DecidePlan", llm_response=llm_response, mode="stream")
-        return typing.cast(typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], __result__)
-
     def DigestDimension(
         self, llm_response: str, baml_options: BamlCallOptions = {},
     ) -> str:
@@ -90,6 +84,12 @@ class LlmStreamParser:
     ) -> stream_types.IdentificationResult:
         __result__ = self.__options.merge_options(baml_options).parse_response(function_name="IdentifyOpening", llm_response=llm_response, mode="stream")
         return typing.cast(stream_types.IdentificationResult, __result__)
+
+    def Navigate(
+        self, llm_response: str, baml_options: BamlCallOptions = {},
+    ) -> typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]]:
+        __result__ = self.__options.merge_options(baml_options).parse_response(function_name="Navigate", llm_response=llm_response, mode="stream")
+        return typing.cast(typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], __result__)
 
     def ProposeRubricEdit(
         self, llm_response: str, baml_options: BamlCallOptions = {},

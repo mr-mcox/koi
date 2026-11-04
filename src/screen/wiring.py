@@ -36,7 +36,7 @@ def build_extractor(rubric: RubricText) -> Extractor:
 
 def build_dispatch_deps(rubric: RubricText, environ: Mapping[str, str]) -> RunDispatchDeps:
     return RunDispatchDeps(
-        navigator=BAMLNavigator(),
+        navigator=BAMLNavigator(rubric),
         surveyor=BAMLSurveyor(),
         browser=build_browser(environ),
         extractor=build_extractor(rubric),
@@ -69,7 +69,7 @@ def build_app(environ: Mapping[str, str]) -> FastAPI:
         digester=BAMLDigester(),
         verdict_provider=JevVerdictProvider(load_scoring_config()),
         batch_engine=BatchEngine(
-            navigator_factory=BAMLNavigator,
+            navigator_factory=functools.partial(BAMLNavigator, rubric),
             deps_factory=lambda: build_dispatch_deps(rubric, environ),
         ),
         intake_fn=build_intake_fn(data_root, rubric, environ),

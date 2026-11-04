@@ -1,5 +1,7 @@
-// DecidePlan — the Navigator's call: given a fixed research question and
-// target, decide the next move in a research pass.
+// Navigate — the Navigator's call: given a fixed research question and
+// target, decide the next move in a research pass. The research trace still
+// records every call under the tool name `decide_plan` (decisions.md E8: that
+// literal is frozen in already-written traces and doesn't follow this rename).
 //
 // Shape 1 invariant: BAML generates the plan; the hand-written
 // dispatcher owns every tool call and all state mutation. An LLM call may
@@ -30,7 +32,7 @@ class SearchAction {
 // Closed union for this slice.
 type Action = StopAction | FetchAction | SearchAction
 
-function DecidePlan(
+function Navigate(
   company_name: string,
   opening_title: string,
   rubric_text: string,
@@ -38,6 +40,7 @@ function DecidePlan(
   research_question: string,
   last_context_text: string,
   prior_queries: string,
+  assertion_history: string,
 ) -> Action[] {
   client Fireworks
   prompt #"
@@ -79,8 +82,11 @@ function DecidePlan(
     (e.g. "<company> staff engineer compensation 2024", "<company>
     engineering blog culture"). Avoid repeating a query already in prior
     queries below.
-
-    ## Rubric
+    Before searching or fetching, check whether this already answers the
+    research question below. A dimension marked unexamined has nothing yet;
+    one with assertions may already be answered — don't search for the same
+    thing twice.
+    {{ assertion_history }}
     {{ rubric_text }}
 
     ## Available actions
@@ -104,14 +110,14 @@ function DecidePlan(
   "#
 }
 
-// Smoke test — TDD harness for the DecidePlan prompt.
-// Run with: uv run baml-cli test --from baml_src -i "DecidePlan::"
+// Smoke test — TDD harness for the Navigate prompt.
+// Run with: uv run baml-cli test --from baml_src -i "Navigate::"
 // NOT included in scripts/check.py (costs one model call per run).
 
 // Fixture: last fetch revealed one outbound link to a comp benchmarking page
 // for the primary target — model should fetch the URL.
-test DecidePlan_FetchesWhenContextRevealedUrl {
-  functions [DecidePlan]
+test Navigate_FetchesWhenContextRevealedUrl {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -123,6 +129,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory. Snippet: '...see compensation benchmarks at https://levels.fyi/companies/acme ...'"
   }
   @@assert({{ this|length > 0 }})
@@ -132,8 +139,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 
 // Fixture: last fetch snippet contains multiple candidate outbound links;
 // model must pick exactly one fetch action (not stop, not multiple).
-test DecidePlan_FetchesOneWhenMultipleUrlsAvailable {
-  functions [DecidePlan]
+test Navigate_FetchesOneWhenMultipleUrlsAvailable {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -145,6 +152,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction. Snippet: '...read our engineering blog at https://eng.acme.com and see compensation at https://levels.fyi/companies/acme and culture notes at https://glassdoor.com/acme ...'"
   }
   // Model must return exactly one action
@@ -156,8 +164,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 // Fixture: last fetch snippet contains multiple URLs, but only one is relevant
 // to the primary target; model must ignore the navigation noise and fetch the
 // relevant URL.
-test DecidePlan_FetchesRelevantUrlAmongNoise {
-  functions [DecidePlan]
+test Navigate_FetchesRelevantUrlAmongNoise {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -169,6 +177,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory, mission, agentic, domain. Snippet: '...compensation details: https://example.com/contact-us, https://example.com/home, https://levels.fyi/companies/acme, https://example.com/login, ...'"
   }
   @@assert({{ this|length == 1 }})
@@ -179,8 +188,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 // Fixture: only low-value navigation links are available for the primary
 // target. Model should not fetch a navigation page — it may search or stop,
 // both are fine, but never fetch junk.
-test DecidePlan_AvoidsFetchWhenOnlyLowValueUrlsAvailable {
-  functions [DecidePlan]
+test Navigate_AvoidsFetchWhenOnlyLowValueUrlsAvailable {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -192,6 +201,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp compensation 2024"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory, mission, agentic, domain. Snippet: 'Quick links: https://example.com/home | https://example.com/about | https://example.com/contact | https://example.com/login'"
   }
   @@assert({{ this|length == 1 }})
@@ -200,8 +210,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 
 // Fixture: search context with a promising primary-target hit — model should
 // fetch or search, not stop. This is the search-continuation smoke test.
-test DecidePlan_SearchContextWithUncoveredTarget {
-  functions [DecidePlan]
+test Navigate_SearchContextWithUncoveredTarget {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -213,6 +223,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp staff engineer compensation 2024"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: search for 'Acme Corp staff engineer compensation 2024'. Results:\n1. Levels.fyi — https://levels.fyi/companies/acme\n   Staff engineer total comp at Acme ranges $380k–$450k TC.\n2. Glassdoor — https://glassdoor.com/acme-salaries\n   Engineers report strong salary but unclear equity.\n3. Blind — https://teamblind.com/acme\n   Recent posts on Acme comp and culture."
   }
   @@assert({{ this|length > 0 }})
@@ -225,8 +236,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 // hit, but the navigator never transitioned to fetch and the pass burned its
 // whole turn budget without filing a single assertion. URLs and company details
 // are generic so the fixture can be checked in.
-test DecidePlan_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
-  functions [DecidePlan]
+test Navigate_FetchesInsteadOfSearchingAgainWhenSearchHitIsOnTarget {
+  functions [Navigate]
   args {
     company_name "Acme Logistics Systems"
     opening_title "Staff Software Engineer - Platform Identity"
@@ -238,6 +249,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "mission"
     research_question "Does Acme Logistics Systems' business model extract value from drivers/carriers, or create it?"
     prior_queries "Acme Logistics Systems business model revenue model logistics software, Acme Logistics Systems business model SaaS freight brokerage revenue how they make money"
+    assertion_history "### mission\n(unexamined — no assertions yet)"
     last_context_text "Last action: search for 'Acme Logistics Systems freight brokerage model criticism predatory extractive practices'. Results:\n1. Industry insurer — https://example.com/industry/freight-broker-risks\n   A new business model in the freight broker industry brings new risks as well as opportunities, discussing broker-carrier conflicts of interest.\n2. Trade publication — https://example.com/news/founders-logistics-tms\n   Acme Logistics Systems promises to reduce waste across the entire freight logistics industry.\n3. Trade publication — https://example.com/news/future-freight-broker\n   Discusses brokers extracting yield from the market via automated rate-setting."
   }
   @@assert({{ this|length == 1 }})
@@ -247,8 +259,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 
 // Fixture: last fetch was productive for the primary target and left no
 // further relevant links — model should stop, per the narrow escape valve.
-test DecidePlan_StopsWhenPrimaryTargetLeadIsMinedOut {
-  functions [DecidePlan]
+test Navigate_StopsWhenPrimaryTargetLeadIsMinedOut {
+  functions [Navigate]
   args {
     company_name "Acme Corp"
     opening_title "Staff Software Engineer"
@@ -260,6 +272,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp staff engineer compensation 2024"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text "Last action: fetched https://levels.fyi/companies/acme. Assertions added for targets: compensation. Snippet: 'Staff engineer total comp at Acme ranges $380k-$450k TC. No further breakdown available. Page has no other outbound links.'"
   }
   @@assert({{ this|length > 0 }})
@@ -270,8 +283,8 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
 // Fixture: distinctive company name, no useful URL in context — model must
 // search, and the query it writes must be grounded in the actual company
 // name rather than a generic recombination of the opening title.
-test DecidePlan_SearchQueryGroundedInCompanyName {
-  functions [DecidePlan]
+test Navigate_SearchQueryGroundedInCompanyName {
+  functions [Navigate]
   args {
     company_name "Zylophonic"
     opening_title "Staff Software Engineer, Backend Platform"
@@ -283,6 +296,7 @@ Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive
     primary_target "compensation"
     research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
+    assertion_history "### compensation\n(unexamined — no assertions yet)"
     last_context_text ""
   }
   @@assert({{ this|length > 0 }})

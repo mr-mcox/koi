@@ -1,6 +1,6 @@
 """Hand-written dispatch loop — Shape 1 invariant.
 
-DecidePlan returns a plan; the dispatcher owns every side effect.
+The Navigator returns a plan; the dispatcher owns every side effect.
 Any action tag without a dedicated dispatch branch raises RuntimeError
 rather than falling through, so adding new actions is always explicit.
 
@@ -19,7 +19,7 @@ from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.protocol import Navigator, Surveyor
-from screen.research.question import NOT_YET_AVAILABLE
+from screen.research.question import NOT_YET_AVAILABLE, render_assertion_history
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -85,6 +85,9 @@ def _plan_request(state: LoopState) -> DecidePlanRequest:
         visited_urls=list(state.visited_urls),
         targets_covered=_targets_covered(state),
         target_assertion_counts=_target_assertion_counts(state),
+        assertion_history=render_assertion_history(
+            state.assertions, [state.primary_target] if state.primary_target else []
+        ),
         last_context=(
             state.last_context.model_dump(mode="json") if state.last_context is not None else None
         ),
@@ -98,7 +101,7 @@ def _survey(state: LoopState, surveyor: Surveyor, deps: DispatchDeps) -> LoopSta
 
     A dimension outside the vocabulary fails the pass loudly (RuntimeError)
     rather than being silently remapped — the Surveyor is the only target
-    chooser now (scouting F16), so there is no ranker fallback to catch it.
+    chooser, so there is no deterministic fallback to catch a bad answer.
     """
     question = surveyor.survey(state)
     if question.dimension not in get_args(Target):
@@ -115,7 +118,7 @@ def _survey(state: LoopState, surveyor: Surveyor, deps: DispatchDeps) -> LoopSta
                 opening_title=state.opening_title,
                 dimensions=list(state.targets),
                 yield_summary=NOT_YET_AVAILABLE,
-                query_assertion_history=NOT_YET_AVAILABLE,
+                query_assertion_history=render_assertion_history(state.assertions, state.targets),
             ),
             response=SurveyResponse(dimension=question.dimension, question=question.question),
         )

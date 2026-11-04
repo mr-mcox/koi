@@ -1,7 +1,7 @@
 """Research pass state: LoopState (input, threaded forward through each
 dispatch cycle) and PassSummary (output, reported once per pass).
 
-Budget fields live on LoopState so DecidePlan can see them. The dispatcher
+Budget fields live on LoopState so the Navigator can see them. The dispatcher
 enforces the turn cap (`turns_used >= turn_budget` -> stop). A turn is one
 `search` or `fetch` action, never `stop`/`decide_plan` — that is the
 operator-facing unit, and the only budget the pass tracks.

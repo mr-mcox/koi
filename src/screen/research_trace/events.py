@@ -57,6 +57,11 @@ class DecidePlanRequest(_Payload):
     # `None` means the trace predates per-target counts; stall detection then
     # falls back to `targets_covered` membership.
     target_assertion_counts: dict[str, int] | None = None
+    # `None` means the trace predates this field. What the Navigator actually read
+    # to decide: its fixed target's own assertions (fit, chunk, citation URLs), not
+    # a count. Audit only, like `target_assertion_counts` — replay keys stalls on
+    # counts and membership, never on this text.
+    assertion_history: str | None = None
     # A dumped `SearchContext` or `FetchContext`, which live in `research/` above
     # this layer. Audit only; nothing reads it back.
     last_context: dict[str, Any] | None

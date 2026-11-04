@@ -368,5 +368,50 @@
         "question": "What is total compensation for this role?"
       }
     }
+  },
+  {
+    "shape": "decide_plan, with assertion_history",
+    "line": {
+      "ts": "2026-11-04T12:30:00Z",
+      "tool": "decide_plan",
+      "request": {
+        "opening_id": "op-1",
+        "company_id": "co-1",
+        "company_name": "Example Co",
+        "opening_title": "Staff Engineer",
+        "turns_used": 1,
+        "turn_budget": 8,
+        "primary_target": "compensation",
+        "research_question": "What is total compensation for this role?",
+        "prior_queries": [
+          "Example Co compensation"
+        ],
+        "visited_urls": [
+          "https://example.com/jobs/1"
+        ],
+        "targets_covered": [
+          "compensation"
+        ],
+        "target_assertion_counts": {
+          "compensation": 2
+        },
+        "assertion_history": "### compensation\n- [Strong] Staff engineers earn $380k-$450k TC.\n  sources: https://levels.fyi/example",
+        "last_context": {
+          "url": "https://example.com/jobs/1",
+          "targets_added": [
+            "compensation"
+          ],
+          "snippet": "Synthetic posting."
+        }
+      },
+      "response": {
+        "actions": [
+          {
+            "tag": "stop",
+            "reason": "Done."
+          }
+        ]
+      }
+    }
   }
 ]

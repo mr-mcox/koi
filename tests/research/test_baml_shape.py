@@ -21,5 +21,5 @@ def test_baml_stop_action_fields_match_domain_type() -> None:
         f"BAML StopAction fields diverged from domain type.\n"
         f"In BAML only: {baml_fields - _STOP_ACTION_FIELDS}\n"
         f"In domain only: {_STOP_ACTION_FIELDS - baml_fields}\n"
-        "Re-run `baml-cli generate` or update research.baml to match."
+        "Re-run `baml-cli generate` or update navigator.baml to match."
     )

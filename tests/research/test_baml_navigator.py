@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from screen.browser import SearchHit
+from screen.extract.prompt import RubricText
 from screen.research.actions import FetchAction, SearchAction, StopAction
 from screen.research.baml_navigator import (
     BAMLNavigator,
@@ -23,6 +24,7 @@ from screen.research.baml_navigator import (
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
 from screen.types import Assertion
+from tests.helpers import canned_assertion
 
 
 class _FakeStop:
@@ -52,7 +54,7 @@ def _state(
     **kwargs: object,
 ) -> LoopState:
     # turn_budget/turns_used stay in LoopState (dispatcher's budget guard reads
-    # them) but are not passed to DecidePlan itself — the dispatcher owns budget.
+    # them) but are not passed to Navigate itself — the dispatcher owns budget.
     defaults: dict[str, object] = {
         "opening_id": "op-abc",
         "company_id": "co-xyz",
@@ -68,6 +70,30 @@ def _state(
     }
     defaults.update(kwargs)
     return LoopState(**defaults)  # type: ignore[arg-type]
+
+
+def _fixture_rubric() -> RubricText:
+    return RubricText(
+        {
+            "dimensions": [
+                {
+                    "slug": "compensation",
+                    "label": "Compensation",
+                    "weight": 2,
+                    "definition": "Total comp for the role.",
+                    "fit_anchors": {},
+                },
+                {
+                    "slug": "craft_direction",
+                    "label": "Craft direction",
+                    "weight": 3,
+                    "definition": "Engineering craft and technical direction.",
+                    "fit_anchors": {},
+                },
+            ]
+        },
+        private={},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +216,7 @@ def test_prior_queries_text_joins_in_order() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BAMLNavigator.plan dispatches the generated DecidePlan call
+# BAMLNavigator.plan dispatches the generated Navigate call
 # ---------------------------------------------------------------------------
 
 
@@ -208,7 +234,7 @@ def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(client=SimpleNamespace(DecidePlan=fake_decide_plan))
+    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
     state = _state(
         primary_target="compensation",
         research_question="What is total comp?",
@@ -220,27 +246,86 @@ def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
     assert calls[0] == {
         "company_name": "Acme Corp",
         "opening_title": "Staff Software Engineer",
-        "rubric_text": "craft_direction: ...",
+        "rubric_text": _fixture_rubric().for_dimension("compensation"),
         "primary_target": "compensation",
         "research_question": "What is total comp?",
         "last_context_text": "",
         "prior_queries": "Acme Corp salary",
+        "assertion_history": "### compensation\n(unexamined — no assertions yet)",
     }
 
 
-def test_baml_navigator_plan_blank_when_unset() -> None:
-    """A missing primary_target/research_question renders as an empty string
-    rather than `None` reaching the BAML call — the dispatcher always sets
-    both before calling plan() in production; this pins the direct-call shape
-    tests rely on."""
+def test_baml_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
+    """rubric_text narrows to `primary_target` via `RubricText.for_dimension` —
+    the Navigator has already committed to one dimension this pass, and the rest
+    of the rubric is not shown."""
     calls: list[dict[str, object]] = []
 
     def fake_decide_plan(**kwargs: object) -> list[object]:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(client=SimpleNamespace(DecidePlan=fake_decide_plan))
-    navigator.plan(_state(primary_target=None, research_question=None))
+    rubric = _fixture_rubric()
+    navigator = BAMLNavigator(rubric, client=SimpleNamespace(Navigate=fake_decide_plan))
+    state = _state(primary_target="craft_direction", research_question="How do they ship?")
 
-    assert calls[0]["primary_target"] == ""
+    navigator.plan(state)
+
+    rendered = calls[0]["rubric_text"]
+    assert rendered == rubric.for_dimension("craft_direction")
+    assert "Compensation" not in rendered
+
+
+def test_baml_navigator_plan_raises_when_primary_target_unset() -> None:
+    """plan() called before the Surveyor set primary_target is an invariant
+    violation, not a value to default around — there is no dimension to narrow
+    the rubric to, and silently falling back to the full rubric would hide the
+    bug rather than surface it."""
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        return [_FakeBamlStop()]
+
+    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+
+    with pytest.raises(RuntimeError, match="primary_target"):
+        navigator.plan(_state(primary_target=None, research_question=None))
+
+
+def test_baml_navigator_plan_blank_research_question_when_unset() -> None:
+    """A missing research_question renders as an empty string rather than
+    `None` reaching the BAML call — primary_target is set, so this isolates the
+    research_question fallback from the rubric invariant above."""
+    calls: list[dict[str, object]] = []
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        calls.append(kwargs)
+        return [_FakeBamlStop()]
+
+    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator.plan(_state(primary_target="compensation", research_question=None))
+
     assert calls[0]["research_question"] == ""
+
+
+def test_baml_navigator_plan_scopes_assertion_history_to_the_fixed_target() -> None:
+    """The Navigator sees only its own target's assertions, not the whole
+    opening's — seeing every dimension is the Surveyor's job, not the Navigator's."""
+    calls: list[dict[str, object]] = []
+
+    def fake_decide_plan(**kwargs: object) -> list[object]:
+        calls.append(kwargs)
+        return [_FakeBamlStop()]
+
+    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    craft_assertion = canned_assertion(target="craft_direction", chunk="Ships weekly.")
+    off_target = canned_assertion(target="compensation", chunk="Pays well.")
+    state = _state(
+        assertions=[craft_assertion, off_target],
+        primary_target="craft_direction",
+        research_question="How often do they ship?",
+    )
+
+    navigator.plan(state)
+    history = calls[0]["assertion_history"]
+    assert "Ships weekly." in history
+    assert "Pays well." not in history

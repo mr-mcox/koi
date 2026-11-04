@@ -1,4 +1,4 @@
-"""Navigator — the seam the dispatcher uses to call DecidePlan. Surveyor — the
+"""Navigator — the seam the dispatcher uses to call Navigate. Surveyor — the
 seam the dispatcher uses to call Survey, once per pass, before any Navigator
 turn (decisions.md E9: both read state and propose; the dispatcher owns
 every tool call and all state mutation).
