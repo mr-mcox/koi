@@ -4,6 +4,7 @@ from typing import Any
 
 from screen.browser import BrowserError, SearchHit
 from screen.research.actions import Action, StopAction
+from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState
 
 
@@ -25,6 +26,26 @@ class FakeNavigator:
         if self._index < len(self._sequence) - 1:
             self._index += 1
         return list(result)
+
+
+class FakeSurveyor:
+    """Iterates a sequence of `ResearchQuestion`s, one per survey() call.
+    Defaults to a single fixed question on `craft_direction` if none given.
+    """
+
+    def __init__(self, sequence: list[ResearchQuestion] | None = None) -> None:
+        if sequence is None:
+            sequence = [ResearchQuestion(dimension="craft_direction", question="Fake question.")]
+        if not sequence:
+            raise ValueError("sequence must be non-empty.")
+        self._sequence: list[ResearchQuestion] = sequence
+        self._index = 0
+
+    def survey(self, _state: LoopState) -> ResearchQuestion:
+        result = self._sequence[self._index]
+        if self._index < len(self._sequence) - 1:
+            self._index += 1
+        return result
 
 
 class FakeBrowser:

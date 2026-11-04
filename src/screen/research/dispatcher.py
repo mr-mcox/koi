@@ -11,14 +11,15 @@ an updated LoopState, which is threaded into the next call.
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import get_args
 
 from screen.browser import Browser, BrowserError
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
-from screen.research.baml_navigator import select_primary_target
 from screen.research.context import FetchContext, SearchContext
-from screen.research.protocol import Navigator
+from screen.research.protocol import Navigator, Surveyor
+from screen.research.question import NOT_YET_AVAILABLE
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -32,9 +33,11 @@ from screen.research_trace.events import (
     SearchEvent,
     SearchRequest,
     SearchResponse,
+    SurveyEvent,
+    SurveyRequest,
+    SurveyResponse,
 )
-from screen.score.types import ScoringConfig
-from screen.types import Assertion
+from screen.types import Assertion, Target
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,7 @@ def _plan_request(state: LoopState) -> DecidePlanRequest:
         turns_used=state.turns_used,
         turn_budget=state.turn_budget,
         primary_target=state.primary_target,
+        research_question=state.research_question,
         prior_queries=list(state.prior_queries),
         visited_urls=list(state.visited_urls),
         targets_covered=_targets_covered(state),
@@ -87,26 +91,55 @@ def _plan_request(state: LoopState) -> DecidePlanRequest:
     )
 
 
+def _survey(state: LoopState, surveyor: Surveyor, deps: DispatchDeps) -> LoopState:
+    """Ask the Surveyor once, record the call, validate its answer against the
+    rubric's live `Target` vocabulary, and fold it into state as the fixed
+    `primary_target`/`research_question` for every turn in this pass.
+
+    A dimension outside the vocabulary fails the pass loudly (RuntimeError)
+    rather than being silently remapped — the Surveyor is the only target
+    chooser now (scouting F16), so there is no ranker fallback to catch it.
+    """
+    question = surveyor.survey(state)
+    if question.dimension not in get_args(Target):
+        raise RuntimeError(
+            f"Surveyor chose dimension {question.dimension!r}, which is not one of "
+            f"the rubric's dimensions {list(get_args(Target))}. Fix the prompt or the "
+            "rubric — this is not silently remapped."
+        )
+    deps.on_event(
+        SurveyEvent(
+            ts=datetime.now(UTC),
+            request=SurveyRequest(
+                company_name=state.company_name,
+                opening_title=state.opening_title,
+                dimensions=list(state.targets),
+                yield_summary=NOT_YET_AVAILABLE,
+                query_assertion_history=NOT_YET_AVAILABLE,
+            ),
+            response=SurveyResponse(dimension=question.dimension, question=question.question),
+        )
+    )
+    return state.model_copy(
+        update={"primary_target": question.dimension, "research_question": question.question}
+    )
+
+
 def dispatch(
     state: LoopState,
     *,
     navigator: Navigator,
+    surveyor: Surveyor,
     deps: DispatchDeps,
-    scoring_config: ScoringConfig | None = None,
 ) -> PassSummary:
     """Run one research pass and return a summary.
     Loops until StopAction or search budget exhaustion.
     Raises RuntimeError on empty action lists or unrecognized tags.
 
-    `scoring_config`, when given, selects the pass's `primary_target` once
-    before the loop starts — one target for the whole pass, not re-ranked
-    turn to turn. Omitted, the loop trusts whatever `primary_target` is
-    already on `state` (used by tests).
+    `surveyor` is consulted exactly once, before the loop starts — see
+    `_survey`. Every turn in the pass sees the same dimension/question.
     """
-    current = state
-    if scoring_config is not None:
-        primary_target = select_primary_target(current, scoring_config)
-        current = current.model_copy(update={"primary_target": primary_target})
+    current = _survey(state, surveyor, deps)
 
     while True:
         request = _plan_request(current)

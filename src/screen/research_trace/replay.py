@@ -11,7 +11,7 @@ from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.research_trace.events import DecidePlanEvent, SearchEvent, parse_event
+from screen.research_trace.events import DecidePlanEvent, ExtractEvent, SearchEvent, parse_event
 from screen.research_trace.trace_io import read_research_trace
 from screen.types import Target
 
@@ -176,8 +176,10 @@ def replay_research_trace(path: Path) -> TraceReplay:
             plans.append(event)
         elif isinstance(event, SearchEvent):
             prior_queries.append(event.request.query)
-        else:
+        elif isinstance(event, ExtractEvent):
             visited_urls.extend(result.url for result in event.response.results or [])
+        # SurveyEvent: nothing to fold — the Surveyor runs fresh every pass (F20),
+        # so its output isn't resumable state.
 
     return TraceReplay(
         visited_urls=visited_urls,

@@ -35,6 +35,7 @@ function DecidePlan(
   opening_title: string,
   rubric_text: string,
   primary_target: string,
+  research_question: string,
   last_context_text: string,
   prior_queries: string,
 ) -> Action[] {
@@ -93,6 +94,7 @@ function DecidePlan(
     Company: {{ company_name }}
     Opening: {{ opening_title }}
     Primary target this turn: {{ primary_target }}
+    Research question this pass: {{ research_question }}
     Prior queries: {{ prior_queries }}
     {% if last_context_text %}
     Last action result: {{ last_context_text }}
@@ -119,6 +121,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory. Snippet: '...see compensation benchmarks at https://levels.fyi/companies/acme ...'"
   }
@@ -140,6 +143,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction. Snippet: '...read our engineering blog at https://eng.acme.com and see compensation at https://levels.fyi/companies/acme and culture notes at https://glassdoor.com/acme ...'"
   }
@@ -163,6 +167,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory, mission, agentic, domain. Snippet: '...compensation details: https://example.com/contact-us, https://example.com/home, https://levels.fyi/companies/acme, https://example.com/login, ...'"
   }
@@ -185,6 +190,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp compensation 2024"
     last_context_text "Last action: fetched https://example.com/jobs/42. Assertions added for targets: craft_direction, trajectory, mission, agentic, domain. Snippet: 'Quick links: https://example.com/home | https://example.com/about | https://example.com/contact | https://example.com/login'"
   }
@@ -205,6 +211,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp staff engineer compensation 2024"
     last_context_text "Last action: search for 'Acme Corp staff engineer compensation 2024'. Results:\n1. Levels.fyi — https://levels.fyi/companies/acme\n   Staff engineer total comp at Acme ranges $380k–$450k TC.\n2. Glassdoor — https://glassdoor.com/acme-salaries\n   Engineers report strong salary but unclear equity.\n3. Blind — https://teamblind.com/acme\n   Recent posts on Acme comp and culture."
   }
@@ -229,6 +236,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "mission"
+    research_question "Does Acme Logistics Systems' business model extract value from drivers/carriers, or create it?"
     prior_queries "Acme Logistics Systems business model revenue model logistics software, Acme Logistics Systems business model SaaS freight brokerage revenue how they make money"
     last_context_text "Last action: search for 'Acme Logistics Systems freight brokerage model criticism predatory extractive practices'. Results:\n1. Industry insurer — https://example.com/industry/freight-broker-risks\n   A new business model in the freight broker industry brings new risks as well as opportunities, discussing broker-carrier conflicts of interest.\n2. Trade publication — https://example.com/news/founders-logistics-tms\n   Acme Logistics Systems promises to reduce waste across the entire freight logistics industry.\n3. Trade publication — https://example.com/news/future-freight-broker\n   Discusses brokers extracting yield from the market via automated rate-setting."
   }
@@ -250,6 +258,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "Acme Corp staff engineer compensation 2024"
     last_context_text "Last action: fetched https://levels.fyi/companies/acme. Assertions added for targets: compensation. Snippet: 'Staff engineer total comp at Acme ranges $380k-$450k TC. No further breakdown available. Page has no other outbound links.'"
   }
@@ -272,6 +281,7 @@ Constraint slugs: location, internal_culture.
 Fit: Poor = the claim is negative evidence; Mixed = ambiguous; Strong = positive evidence.
     "#
     primary_target "compensation"
+    research_question "What is total compensation for this role, including equity?"
     prior_queries "(none)"
     last_context_text ""
   }

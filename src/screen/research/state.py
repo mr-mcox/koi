@@ -37,17 +37,17 @@ class LoopState(BaseModel):
     last_context: SearchContext | FetchContext | None = None
     visited_urls: list[str] = []
     prior_queries: list[str] = []
-    # All rubric targets the navigator may be asked to research. Needed so an
-    # unexamined target can outrank a thinly examined one in the uncertainty ranking.
+    # All rubric targets the Surveyor may choose among and the dispatcher
+    # validates its answer against.
     targets: list[str] = []
     # Derived from the research trace on resume: how many contiguous runs on each
-    # target ended without adding an assertion for that target. Multiplied into the
-    # per-target uncertainty ranking so failed targets sink without becoming permanently
-    # unreachable (the S-curve floor stays above zero).
+    # target ended without adding an assertion for that target. One of the
+    # Surveyor's inputs (via a yield-rate summary) once that renderer lands.
     target_stall_counts: dict[str, int] = Field(default_factory=dict)
-    # Transient directive computed by the dispatcher (or navigator in tests) and
-    # passed to DecidePlan so the model knows which target to focus this turn.
+    # Set once per pass by the dispatcher from the Surveyor's answer, then held
+    # fixed for every Navigator turn in the pass.
     primary_target: str | None = None
+    research_question: str | None = None
 
 
 class PassSummary(BaseModel):

@@ -22,7 +22,7 @@ from screen.extract.prompt import (
 from screen.extract.protocol import Extractor
 from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.protocol import Navigator
+from screen.research.protocol import Navigator, Surveyor
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import ResearchTraceEvent
 from screen.research_trace.replay import TraceReplay, replay_research_trace
@@ -67,6 +67,7 @@ class RunDispatchDeps:
     Production instances come from `screen.wiring`."""
 
     navigator: Navigator
+    surveyor: Surveyor
     browser: Browser
     extractor: Extractor
     digester: Digester
@@ -100,7 +101,6 @@ def run_dispatch(
     pass's alone: every pass counts its turns from zero.
     """
     rubric = deps.rubric.full()
-    scoring_config = load_scoring_config()
     targets = all_dimension_slugs()
     replay = (
         resume
@@ -130,13 +130,13 @@ def run_dispatch(
     summary = dispatch(
         state,
         navigator=deps.navigator,
+        surveyor=deps.surveyor,
         deps=DispatchDeps(
             browser=deps.browser,
             extractor=deps.extractor,
             on_event=deps.on_event,
             on_assertions=_persist_assertions,
         ),
-        scoring_config=scoring_config,
     )
     deps.update_digests(
         conn,

@@ -18,17 +18,11 @@ from screen.research.baml_navigator import (
     BAMLNavigator,
     _coerce,
     _prior_queries_text,
-    _target_uncertainty,
     last_context_text,
-    rank_targets,
-    select_primary_target,
 )
 from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
-from screen.score.loader import load_scoring_config
-from screen.score.types import ScoringConfig
 from screen.types import Assertion
-from tests.helpers import canned_assertion
 
 
 class _FakeStop:
@@ -181,11 +175,6 @@ def test_last_context_text_search_context_lists_hit_urls_and_snippets() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _config() -> ScoringConfig:
-    config: ScoringConfig = load_scoring_config()
-    return config
-
-
 # ---------------------------------------------------------------------------
 # _prior_queries_text
 # ---------------------------------------------------------------------------
@@ -200,57 +189,6 @@ def test_prior_queries_text_joins_in_order() -> None:
     assert _prior_queries_text(state) == "Acme salary; Acme culture"
 
 
-def test_rank_targets_prefers_unexamined_target() -> None:
-    """An unexamined target outranks a target with one assertion."""
-    config = _config()
-    state = _state(
-        assertions=[canned_assertion("craft_direction")],
-        targets=["craft_direction", "compensation"],
-    )
-    ranked = rank_targets(state, config)
-    assert ranked[0][0] == "compensation"
-
-
-def test_rank_targets_falls_back_to_assertions() -> None:
-    """When `state.targets` is empty, the ranking derives targets from whatever
-    assertions exist."""
-    config = _config()
-    state = _state(
-        assertions=[canned_assertion("craft_direction")],
-        targets=[],
-    )
-    ranked = dict(rank_targets(state, config))
-    assert "craft_direction" in ranked
-
-
-def test_select_primary_target_picks_top_ranked() -> None:
-    """With no sticky state left to consult, this is just the top of `rank_targets`."""
-    config = _config()
-    state = _state(
-        assertions=[canned_assertion("craft_direction")],
-        targets=["craft_direction", "compensation"],
-    )
-    assert select_primary_target(state, config) == "compensation"
-
-
-def test_rank_targets_suppresses_stalled_target() -> None:
-    """A target with prior unproductive runs ranks below an otherwise more
-    attractive target: without suppression the unexamined stalled target would
-    win, but the S-curve multiplier pushes it below the examined alternative."""
-    config = _config()
-    state = _state(
-        assertions=[canned_assertion("compensation")],
-        targets=["craft_direction", "compensation"],
-        target_stall_counts={"craft_direction": 2},
-    )
-    ranked = rank_targets(state, config)
-    assert ranked[0][0] == "compensation"
-    # Sanity check the base signal: unexamined craft_direction outranks examined compensation.
-    assert _target_uncertainty("craft_direction", n_by_target={}) > _target_uncertainty(
-        "compensation", n_by_target={"compensation": 1.0}
-    )
-
-
 # ---------------------------------------------------------------------------
 # BAMLNavigator.plan dispatches the generated DecidePlan call
 # ---------------------------------------------------------------------------
@@ -261,10 +199,9 @@ class _FakeBamlStop:
     reason = "Mock stop."
 
 
-def test_baml_navigator_plan_uses_state_primary_target() -> None:
-    """The navigator passes the primary_target already set on LoopState to the
-    generated BAML client without recomputing it, using only the lean set of
-    fields DecidePlan actually needs."""
+def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
+    """The navigator passes primary_target/research_question already set on
+    LoopState straight through, never recomputing either."""
     calls: list[dict[str, object]] = []
 
     def fake_decide_plan(**kwargs: object) -> list[object]:
@@ -272,7 +209,11 @@ def test_baml_navigator_plan_uses_state_primary_target() -> None:
         return [_FakeBamlStop()]
 
     navigator = BAMLNavigator(client=SimpleNamespace(DecidePlan=fake_decide_plan))
-    state = _state(primary_target="compensation", prior_queries=["Acme Corp salary"])
+    state = _state(
+        primary_target="compensation",
+        research_question="What is total comp?",
+        prior_queries=["Acme Corp salary"],
+    )
     actions = navigator.plan(state)
     assert len(actions) == 1
     assert actions[0].tag == "stop"
@@ -281,35 +222,17 @@ def test_baml_navigator_plan_uses_state_primary_target() -> None:
         "opening_title": "Staff Software Engineer",
         "rubric_text": "craft_direction: ...",
         "primary_target": "compensation",
+        "research_question": "What is total comp?",
         "last_context_text": "",
         "prior_queries": "Acme Corp salary",
     }
 
 
-def test_baml_navigator_plan_computes_primary_target_from_config() -> None:
-    """Without a primary_target on state, the navigator uses the config to
-    select the top-ranked target before calling DecidePlan."""
-    calls: list[dict[str, object]] = []
-
-    def fake_decide_plan(**kwargs: object) -> list[object]:
-        calls.append(kwargs)
-        return [_FakeBamlStop()]
-
-    navigator = BAMLNavigator(config=_config(), client=SimpleNamespace(DecidePlan=fake_decide_plan))
-    state = _state(
-        assertions=[canned_assertion("craft_direction")],
-        targets=["craft_direction", "compensation"],
-    )
-    actions = navigator.plan(state)
-
-    assert actions[0].tag == "stop"
-    assert calls[0]["primary_target"] == "compensation"
-
-
-def test_baml_navigator_plan_fallback_to_craft_direction() -> None:
-    """If neither state nor the navigator carries a config, the navigator falls
-    back to a hard-coded 'craft_direction' primary target so DecidePlan always has a
-    value."""
+def test_baml_navigator_plan_blank_when_unset() -> None:
+    """A missing primary_target/research_question renders as an empty string
+    rather than `None` reaching the BAML call — the dispatcher always sets
+    both before calling plan() in production; this pins the direct-call shape
+    tests rely on."""
     calls: list[dict[str, object]] = []
 
     def fake_decide_plan(**kwargs: object) -> list[object]:
@@ -317,7 +240,7 @@ def test_baml_navigator_plan_fallback_to_craft_direction() -> None:
         return [_FakeBamlStop()]
 
     navigator = BAMLNavigator(client=SimpleNamespace(DecidePlan=fake_decide_plan))
-    state = _state(primary_target=None)
-    navigator.plan(state)
+    navigator.plan(_state(primary_target=None, research_question=None))
 
-    assert calls[0]["primary_target"] == "craft_direction"
+    assert calls[0]["primary_target"] == ""
+    assert calls[0]["research_question"] == ""

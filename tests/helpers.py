@@ -17,7 +17,8 @@ from screen.extract.prompt import RubricText
 from screen.intake.fakes import FakeIdentifier
 from screen.research.actions import StopAction
 from screen.research.batch import BatchEngine, RunDispatchDeps
-from screen.research.fakes import FakeBrowser, FakeNavigator
+from screen.research.fakes import FakeBrowser, FakeNavigator, FakeSurveyor
+from screen.research.question import ResearchQuestion
 from screen.store.repo import append_assertions, upsert_company, upsert_opening
 from screen.types import (
     Assertion,
@@ -130,6 +131,12 @@ def fake_navigator(reason: str = "All rubric dimensions addressed.") -> FakeNavi
     return FakeNavigator(sequence=[[StopAction(reason=reason)]])
 
 
+def fake_surveyor(
+    dimension: str = "craft_direction", question: str = "Fake question."
+) -> FakeSurveyor:
+    return FakeSurveyor(sequence=[ResearchQuestion(dimension=dimension, question=question)])
+
+
 def fake_digester() -> FakeDigester:
     return FakeDigester(["Synthetic digest."])
 
@@ -137,6 +144,7 @@ def fake_digester() -> FakeDigester:
 def fake_dispatch_deps(**overrides: Any) -> RunDispatchDeps:
     deps = RunDispatchDeps(
         navigator=fake_navigator(),
+        surveyor=fake_surveyor(),
         browser=FakeBrowser(),
         extractor=fake_extractor(),
         digester=fake_digester(),

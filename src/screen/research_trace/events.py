@@ -48,6 +48,9 @@ class DecidePlanRequest(_Payload):
     primary_target: str | None = None
     active_target: str | None = None
     active_target_actions: int | None = None
+    # Absent before the Surveyor existed; present on every pass since (audit
+    # only — replay keys stalls on `primary_target`, not this).
+    research_question: str | None = None
     prior_queries: list[str]
     visited_urls: list[str]
     targets_covered: list[str]
@@ -78,6 +81,23 @@ class SearchResponse(_Payload):
 
 class ExtractRequest(_Payload):
     urls: list[str]
+
+
+class SurveyRequest(_Payload):
+    """Snapshot of what the Surveyor chose from, for the audit trail. Omits
+    `rubric_text` like `DecidePlanRequest` does — static per pass, and large.
+    """
+
+    company_name: str
+    opening_title: str
+    dimensions: list[str]
+    yield_summary: str
+    query_assertion_history: str
+
+
+class SurveyResponse(_Payload):
+    dimension: str
+    question: str
 
 
 class ExtractResult(_Payload):
@@ -123,8 +143,17 @@ class ExtractEvent(_Event):
     response: ExtractResponse
 
 
+class SurveyEvent(_Event):
+    """The Surveyor's own audit record, once per pass, before the first
+    `decide_plan` — not a budget-consuming turn."""
+
+    tool: Literal["survey"] = "survey"
+    request: SurveyRequest
+    response: SurveyResponse
+
+
 type ResearchTraceEvent = Annotated[
-    DecidePlanEvent | SearchEvent | ExtractEvent, Field(discriminator="tool")
+    DecidePlanEvent | SearchEvent | ExtractEvent | SurveyEvent, Field(discriminator="tool")
 ]
 
 _EVENT_ADAPTER: TypeAdapter[ResearchTraceEvent] = TypeAdapter(ResearchTraceEvent)

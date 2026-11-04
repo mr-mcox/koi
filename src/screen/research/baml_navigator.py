@@ -4,20 +4,16 @@ Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
 `tests/research/test_baml_shape.py` pins this at test time.
 
-Also owns the deterministic composite-uncertainty ranking that picks the
-navigator's `primary_target` for each turn. The ranking is pure: it reads the
-current assertions and operator rulings, never a stored history.
+Target choice is no longer this module's job — the Surveyor (see
+`baml_surveyor.py`) picks `state.primary_target` once per pass, before the
+dispatcher ever calls `plan()`. The deterministic composite-uncertainty
+ranker this module used to own is retired (scouting F16, F29).
 """
-
-import math
 
 from screen.baml_client.sync_client import BamlSyncClient, b
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext
 from screen.research.state import LoopState
-from screen.score.bandit import target_suppression
-from screen.score.types import ScoringConfig
-from screen.types import Assertion, Provenance
 
 
 def _prior_queries_text(state: LoopState) -> str:
@@ -57,77 +53,24 @@ def last_context_text(state: LoopState) -> str:
     return "\n".join(lines)
 
 
-def _assertion_weight_by_target(
-    assertions: list[Assertion], provenance_weight: dict[Provenance, float]
-) -> dict[str, float]:
-    """Provenance-weighted effective count per target."""
-    counts: dict[str, float] = {}
-    for a in assertions:
-        counts[a.target] = counts.get(a.target, 0.0) + provenance_weight.get(a.provenance, 0.0)
-    return counts
-
-
-def _target_uncertainty(
-    target: str,
-    *,
-    n_by_target: dict[str, float],
-) -> float:
-    """Composite uncertainty for one target: assertion-derived half-width from the
-    provenance-weighted count. An unexamined target (n=0) is maximally uncertain."""
-    n = n_by_target.get(target, 0.0)
-    return 1.0 / math.sqrt(n + 1.0)
-
-
-def rank_targets(state: LoopState, config: ScoringConfig) -> list[tuple[str, float]]:
-    """Rank all known targets by composite uncertainty, descending.
-    Ties are broken by target slug for deterministic ordering. Targets with
-    prior unproductive runs are suppressed by an S-curve multiplier reconstructed
-    from the research trace, so a stalled target ranks below an equally
-    unexamined target on the next pass.
-    """
-    n_by_target = _assertion_weight_by_target(state.assertions, config.provenance_weight)
-    targets = state.targets or list(n_by_target)
-    stalls = state.target_stall_counts or {}
-    uncertainties = {
-        target: _target_uncertainty(target, n_by_target=n_by_target)
-        * target_suppression(stalls.get(target, 0))
-        for target in targets
-    }
-    return sorted(uncertainties.items(), key=lambda item: (-item[1], item[0]))
-
-
-def select_primary_target(state: LoopState, config: ScoringConfig) -> str:
-    """Pick the target the pass should focus on, once per pass — the dispatcher
-    calls this before the loop starts and holds the result for every turn.
-    """
-    ranked = rank_targets(state, config)
-    return ranked[0][0] if ranked else "craft_direction"
-
-
 class BAMLNavigator:
     """Calls DecidePlan via the generated BAML sync client.
 
-    If `state.primary_target` is already set (the dispatcher picks it once,
-    before the loop starts), it is passed through. Otherwise this navigator
-    computes it from the composite signal itself — useful for direct tests
-    without the full dispatcher loop.
+    Trusts `state.primary_target`/`state.research_question` as already set —
+    the dispatcher gets them from the Surveyor once per pass, before the loop
+    starts, and this navigator never recomputes either.
     """
 
-    def __init__(self, config: ScoringConfig | None = None, client: BamlSyncClient = b) -> None:
-        self._config = config
+    def __init__(self, client: BamlSyncClient = b) -> None:
         self._client = client
 
     def plan(self, state: LoopState) -> list[Action]:
-        primary_target = state.primary_target
-        if primary_target is None and self._config is not None:
-            primary_target = select_primary_target(state, self._config)
-        if primary_target is None:
-            primary_target = "craft_direction"
         generated = self._client.DecidePlan(
             company_name=state.company_name,
             opening_title=state.opening_title,
             rubric_text=state.rubric_text,
-            primary_target=primary_target,
+            primary_target=state.primary_target or "",
+            research_question=state.research_question or "",
             last_context_text=last_context_text(state),
             prior_queries=_prior_queries_text(state),
         )

@@ -20,7 +20,7 @@ from .globals import DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIM
 class TypeBuilder(type_builder.TypeBuilder):
     def __init__(self):
         super().__init__(classes=set(
-          ["Assertion","Citation","FetchAction","IdentificationResult","RecalibrationProposal","SearchAction","StopAction",]
+          ["Assertion","Citation","FetchAction","IdentificationResult","RecalibrationProposal","ResearchQuestion","SearchAction","StopAction",]
         ), enums=set(
           []
         ), runtime=DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME)
@@ -31,7 +31,7 @@ class TypeBuilder(type_builder.TypeBuilder):
 
 
     # #########################################################################
-    # Generated classes 7
+    # Generated classes 8
     # #########################################################################
 
     @property
@@ -55,6 +55,10 @@ class TypeBuilder(type_builder.TypeBuilder):
         return RecalibrationProposalViewer(self)
 
     @property
+    def ResearchQuestion(self) -> "ResearchQuestionViewer":
+        return ResearchQuestionViewer(self)
+
+    @property
     def SearchAction(self) -> "SearchActionViewer":
         return SearchActionViewer(self)
 
@@ -70,7 +74,7 @@ class TypeBuilder(type_builder.TypeBuilder):
 
 
 # #########################################################################
-# Generated classes 7
+# Generated classes 8
 # #########################################################################
 
 class AssertionAst:
@@ -332,6 +336,49 @@ class RecalibrationProposalProperties:
     @property
     def look_for(self) -> type_builder.ClassPropertyViewer:
         return type_builder.ClassPropertyViewer(self.__bldr.property("look_for"))
+    
+    
+
+
+class ResearchQuestionAst:
+    def __init__(self, tb: type_builder.TypeBuilder):
+        _tb = tb._tb # type: ignore (we know how to use this private attribute)
+        self._bldr = _tb.class_("ResearchQuestion")
+        self._properties: typing.Set[str] = set([  "dimension",  "question",  ])
+        self._props = ResearchQuestionProperties(self._bldr, self._properties)
+
+    def type(self) -> baml_py.FieldType:
+        return self._bldr.field()
+
+    @property
+    def props(self) -> "ResearchQuestionProperties":
+        return self._props
+
+
+class ResearchQuestionViewer(ResearchQuestionAst):
+    def __init__(self, tb: type_builder.TypeBuilder):
+        super().__init__(tb)
+
+    
+    def list_properties(self) -> typing.List[typing.Tuple[str, type_builder.ClassPropertyViewer]]:
+        return [(name, type_builder.ClassPropertyViewer(self._bldr.property(name))) for name in self._properties]
+    
+
+
+class ResearchQuestionProperties:
+    def __init__(self, bldr: baml_py.ClassBuilder, properties: typing.Set[str]):
+        self.__bldr = bldr
+        self.__properties = properties # type: ignore (we know how to use this private attribute) # noqa: F821
+
+    
+    
+    @property
+    def dimension(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("dimension"))
+    
+    @property
+    def question(self) -> type_builder.ClassPropertyViewer:
+        return type_builder.ClassPropertyViewer(self.__bldr.property("question"))
     
     
 

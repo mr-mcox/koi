@@ -23,7 +23,7 @@ class StreamState(BaseModel, typing.Generic[StreamStateValueT]):
     value: StreamStateValueT
     state: typing_extensions.Literal["Pending", "Incomplete", "Complete"]
 # #########################################################################
-# Generated classes (7)
+# Generated classes (8)
 # #########################################################################
 
 class Assertion(BaseModel):
@@ -58,6 +58,10 @@ class RecalibrationProposal(BaseModel):
     fit_anchor_strong: typing.Optional[str] = Field(default=None, description='New fit_anchor_strong value, or null if unchanged.')
     look_for: typing.Optional[str] = Field(default=None, description='New look_for value, or null if unchanged.')
 
+class ResearchQuestion(BaseModel):
+    dimension: typing.Optional[str] = Field(default=None, description='Exactly one dimension slug, copied verbatim from the list given.')
+    question: typing.Optional[str] = Field(default=None, description='A specific, answerable research question for that dimension — not a restatement of its name.')
+
 class SearchAction(BaseModel):
     tag: typing.Optional[str] = Field(default=None, description='Always \'search\'.')
     query: typing.Optional[str] = Field(default=None, description='The search query to issue. Must be non-empty.')
@@ -75,7 +79,7 @@ Action: typing_extensions.TypeAlias = typing.Optional[typing.Union["StopAction",
 
 
 # #########################################################################
-# Model rebuilds (7)
+# Model rebuilds (8)
 # #########################################################################
 # Resolve string forward references now that every model above is defined so
 # class declaration order never breaks Pydantic construction (issue #793).
@@ -86,5 +90,6 @@ Citation.model_rebuild()
 FetchAction.model_rebuild()
 IdentificationResult.model_rebuild()
 RecalibrationProposal.model_rebuild()
+ResearchQuestion.model_rebuild()
 SearchAction.model_rebuild()
 StopAction.model_rebuild()

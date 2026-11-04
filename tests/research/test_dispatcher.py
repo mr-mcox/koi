@@ -20,7 +20,8 @@ from pydantic import ConfigDict
 from screen.extract.fakes import FakeExtractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.fakes import FakeBrowser, FakeNavigator
+from screen.research.fakes import FakeBrowser, FakeNavigator, FakeSurveyor
+from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -29,8 +30,8 @@ from screen.research_trace.events import (
     ExtractResult,
     SearchEvent,
     SearchRequest,
+    SurveyEvent,
 )
-from screen.score.loader import load_scoring_config
 from screen.types import Assertion
 from tests.helpers import canned_assertion
 
@@ -86,6 +87,7 @@ def test_dispatch_stop_returns_pass_summary() -> None:
     summary = dispatch(
         state,
         navigator=FakeNavigator(sequence=[[stop]]),
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -107,6 +109,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
     dispatch(
         state,
         navigator=FakeNavigator(sequence=[[stop]]),
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -130,6 +133,7 @@ def test_dispatch_threads_budget_counters() -> None:
     summary = dispatch(
         state,
         navigator=FakeNavigator(),
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -150,6 +154,7 @@ def test_dispatch_unknown_tag_raises_runtime_error() -> None:
         dispatch(
             _state(),
             navigator=navigator,
+            surveyor=FakeSurveyor(),
             deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
@@ -161,6 +166,7 @@ def test_dispatch_empty_action_list_raises_runtime_error() -> None:
         dispatch(
             _state(),
             navigator=navigator,
+            surveyor=FakeSurveyor(),
             deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
         )
 
@@ -189,6 +195,7 @@ def test_search_action_happy_path() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -239,6 +246,7 @@ def test_budget_guard_fires() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
     )
 
@@ -272,6 +280,7 @@ def test_fetch_action_happy_path() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
@@ -317,6 +326,7 @@ def test_fetch_action_duplicate_skipped() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=extractor, on_event=events.append),
     )
 
@@ -349,6 +359,7 @@ def test_fetch_action_zero_assertions_continues() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=extractor, on_event=_noop),
     )
 
@@ -359,13 +370,11 @@ def test_fetch_action_zero_assertions_continues() -> None:
     assert summary.stopped_reason == "Nothing more to do."
 
 
-def test_dispatch_computes_primary_target_once_before_loop() -> None:
-    """The pass selects one target up front and holds it for every turn —
-    `scoring_config` is consulted once, not re-ranked turn to turn, even as
-    new assertions land that would shift the ranking."""
-    config = load_scoring_config()
+def test_dispatch_surveys_once_before_loop_and_threads_question() -> None:
+    """The pass asks the Surveyor exactly once, before the first DecidePlan,
+    and every DecidePlan call in the pass sees the same dimension/question —
+    not re-surveyed turn to turn."""
     url = "https://example.com/acme-comp"
-    new_assertion = canned_assertion(target="craft_direction")
     browser = FakeBrowser(fetch_fixtures={url: {"raw_content": "Acme pays well."}})
     stop = StopAction(reason="Done.")
     navigator = FakeNavigator(
@@ -374,10 +383,9 @@ def test_dispatch_computes_primary_target_once_before_loop() -> None:
             [stop],
         ]
     )
-
-    # Both targets start unexamined, tied; "compensation" wins the tie-break.
-    # A fetch adds a craft_direction assertion, which would flip a per-turn
-    # re-rank toward compensation staying ahead — but only if ranking ran again.
+    surveyor = FakeSurveyor(
+        sequence=[ResearchQuestion(dimension="compensation", question="What's total comp?")]
+    )
     state = _state(assertions=[], targets=["craft_direction", "compensation"])
     recorded: list[LoopState] = []
     original_plan = navigator.plan
@@ -388,15 +396,38 @@ def test_dispatch_computes_primary_target_once_before_loop() -> None:
 
     navigator.plan = recording_plan  # type: ignore[method-assign]
 
+    events: list[object] = []
     dispatch(
         state,
         navigator=navigator,
-        deps=_deps(browser=browser, extractor=_fake_extractor([[new_assertion]]), on_event=_noop),
-        scoring_config=config,
+        surveyor=surveyor,
+        deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
-
     assert recorded[0].primary_target == "compensation"
+    assert recorded[0].research_question == "What's total comp?"
     assert recorded[1].primary_target == "compensation"
+    assert recorded[1].research_question == "What's total comp?"
+
+    survey_events = [e for e in events if isinstance(e, SurveyEvent)]
+    assert len(survey_events) == 1
+    assert survey_events[0].request.dimensions == ["craft_direction", "compensation"]
+    assert survey_events[0].response.dimension == "compensation"
+    assert survey_events[0].response.question == "What's total comp?"
+
+
+def test_dispatch_rejects_dimension_outside_target_vocabulary() -> None:
+    """A Surveyor answer outside the rubric's Target vocabulary fails the
+    pass loudly rather than being silently remapped."""
+    surveyor = FakeSurveyor(
+        sequence=[ResearchQuestion(dimension="not_a_real_dimension", question="Huh?")]
+    )
+    with pytest.raises(RuntimeError, match="not_a_real_dimension"):
+        dispatch(
+            _state(),
+            navigator=FakeNavigator(),
+            surveyor=surveyor,
+            deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
+        )
 
 
 def test_search_action_browser_error_recorded_and_continues() -> None:
@@ -419,6 +450,7 @@ def test_search_action_browser_error_recorded_and_continues() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -452,6 +484,7 @@ def test_fetch_action_browser_error_recorded_and_continues() -> None:
     summary = dispatch(
         state,
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=events.append),
     )
 
@@ -494,6 +527,7 @@ def test_fetch_action_browser_error_marks_url_visited() -> None:
     dispatch(
         _state(assertions=[]),
         navigator=navigator,
+        surveyor=FakeSurveyor(),
         deps=_deps(browser=browser, extractor=_fake_extractor(), on_event=_noop),
     )
 

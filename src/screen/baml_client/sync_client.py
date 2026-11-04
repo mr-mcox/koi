@@ -94,18 +94,18 @@ class BamlSyncClient:
     def parse_stream(self):
       return self.__llm_stream_parser
 
-    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,last_context_text: str,prior_queries: str,
+    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,
         baml_options: BamlCallOptions = {},
     ) -> typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]:
         # Check if on_tick is provided
         if 'on_tick' in baml_options:
-            __stream__ = self.stream.DecidePlan(company_name=company_name,opening_title=opening_title,rubric_text=rubric_text,primary_target=primary_target,last_context_text=last_context_text,prior_queries=prior_queries,
+            __stream__ = self.stream.DecidePlan(company_name=company_name,opening_title=opening_title,rubric_text=rubric_text,primary_target=primary_target,research_question=research_question,last_context_text=last_context_text,prior_queries=prior_queries,
                 baml_options=baml_options)
             return __stream__.get_final_response()
         else:
             # Original non-streaming code
             __result__ = self.__options.merge_options(baml_options).call_function_sync(function_name="DecidePlan", args={
-                "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"last_context_text": last_context_text,"prior_queries": prior_queries,
+                "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,
             })
             return typing.cast(typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]], __result__.cast_to(types, types, stream_types, False, __runtime__))
     def DigestDimension(self, assertions_json: str,rubric_text: str,
@@ -164,6 +164,20 @@ class BamlSyncClient:
                 "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,"scoring_rule_text": scoring_rule_text,"private_values_text": private_values_text,
             })
             return typing.cast(types.RecalibrationProposal, __result__.cast_to(types, types, stream_types, False, __runtime__))
+    def Survey(self, company_name: str,opening_title: str,rubric_text: str,dimensions: str,yield_summary: str,query_assertion_history: str,
+        baml_options: BamlCallOptions = {},
+    ) -> types.ResearchQuestion:
+        # Check if on_tick is provided
+        if 'on_tick' in baml_options:
+            __stream__ = self.stream.Survey(company_name=company_name,opening_title=opening_title,rubric_text=rubric_text,dimensions=dimensions,yield_summary=yield_summary,query_assertion_history=query_assertion_history,
+                baml_options=baml_options)
+            return __stream__.get_final_response()
+        else:
+            # Original non-streaming code
+            __result__ = self.__options.merge_options(baml_options).call_function_sync(function_name="Survey", args={
+                "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"dimensions": dimensions,"yield_summary": yield_summary,"query_assertion_history": query_assertion_history,
+            })
+            return typing.cast(types.ResearchQuestion, __result__.cast_to(types, types, stream_types, False, __runtime__))
     
 
 
@@ -173,11 +187,11 @@ class BamlStreamClient:
     def __init__(self, options: DoNotUseDirectlyCallManager):
         self.__options = options
 
-    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,last_context_text: str,prior_queries: str,
+    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.BamlSyncStream[typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]]:
         __ctx__, __result__ = self.__options.merge_options(baml_options).create_sync_stream(function_name="DecidePlan", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"last_context_text": last_context_text,"prior_queries": prior_queries,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,
         })
         return baml_py.BamlSyncStream[typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]](
           __result__,
@@ -233,6 +247,18 @@ class BamlStreamClient:
           lambda x: typing.cast(types.RecalibrationProposal, x.cast_to(types, types, stream_types, False, __runtime__)),
           __ctx__,
         )
+    def Survey(self, company_name: str,opening_title: str,rubric_text: str,dimensions: str,yield_summary: str,query_assertion_history: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.BamlSyncStream[stream_types.ResearchQuestion, types.ResearchQuestion]:
+        __ctx__, __result__ = self.__options.merge_options(baml_options).create_sync_stream(function_name="Survey", args={
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"dimensions": dimensions,"yield_summary": yield_summary,"query_assertion_history": query_assertion_history,
+        })
+        return baml_py.BamlSyncStream[stream_types.ResearchQuestion, types.ResearchQuestion](
+          __result__,
+          lambda x: typing.cast(stream_types.ResearchQuestion, x.cast_to(types, types, stream_types, True, __runtime__)),
+          lambda x: typing.cast(types.ResearchQuestion, x.cast_to(types, types, stream_types, False, __runtime__)),
+          __ctx__,
+        )
     
 
 class BamlHttpRequestClient:
@@ -241,11 +267,11 @@ class BamlHttpRequestClient:
     def __init__(self, options: DoNotUseDirectlyCallManager):
         self.__options = options
 
-    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,last_context_text: str,prior_queries: str,
+    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="DecidePlan", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"last_context_text": last_context_text,"prior_queries": prior_queries,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,
         }, mode="request")
         return __result__
     def DigestDimension(self, assertions_json: str,rubric_text: str,
@@ -274,6 +300,13 @@ class BamlHttpRequestClient:
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="ProposeRubricEdit", args={
             "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,"scoring_rule_text": scoring_rule_text,"private_values_text": private_values_text,
+        }, mode="request")
+        return __result__
+    def Survey(self, company_name: str,opening_title: str,rubric_text: str,dimensions: str,yield_summary: str,query_assertion_history: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.baml_py.HTTPRequest:
+        __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="Survey", args={
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"dimensions": dimensions,"yield_summary": yield_summary,"query_assertion_history": query_assertion_history,
         }, mode="request")
         return __result__
     
@@ -284,11 +317,11 @@ class BamlHttpStreamRequestClient:
     def __init__(self, options: DoNotUseDirectlyCallManager):
         self.__options = options
 
-    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,last_context_text: str,prior_queries: str,
+    def DecidePlan(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="DecidePlan", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"last_context_text": last_context_text,"prior_queries": prior_queries,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,
         }, mode="stream")
         return __result__
     def DigestDimension(self, assertions_json: str,rubric_text: str,
@@ -317,6 +350,13 @@ class BamlHttpStreamRequestClient:
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="ProposeRubricEdit", args={
             "current_rubric_text": current_rubric_text,"current_cases_text": current_cases_text,"history_text": history_text,"scoring_rule_text": scoring_rule_text,"private_values_text": private_values_text,
+        }, mode="stream")
+        return __result__
+    def Survey(self, company_name: str,opening_title: str,rubric_text: str,dimensions: str,yield_summary: str,query_assertion_history: str,
+        baml_options: BamlCallOptions = {},
+    ) -> baml_py.baml_py.HTTPRequest:
+        __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="Survey", args={
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"dimensions": dimensions,"yield_summary": yield_summary,"query_assertion_history": query_assertion_history,
         }, mode="stream")
         return __result__
     

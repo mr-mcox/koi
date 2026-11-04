@@ -1,15 +1,18 @@
-"""Tests for Navigator structural typing and FakeNavigator.
+"""Tests for Navigator/Surveyor structural typing and their fakes.
 - FakeNavigator satisfies Navigator via runtime_checkable
 - FakeNavigator returns its configured action list unchanged
 - default FakeNavigator returns [StopAction()]
 - FakeNavigator in sequence mode advances per call and repeats last
+- FakeSurveyor satisfies Surveyor via runtime_checkable
+- FakeSurveyor in sequence mode advances per call and repeats last
 """
 
 import pytest
 
 from screen.research.actions import FetchAction, SearchAction, StopAction
-from screen.research.fakes import FakeNavigator
-from screen.research.protocol import Navigator
+from screen.research.fakes import FakeNavigator, FakeSurveyor
+from screen.research.protocol import Navigator, Surveyor
+from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState
 from screen.types import Assertion, Citation
 
@@ -118,3 +121,34 @@ def test_fake_navigator_sequence_mode_with_action_types() -> None:
 def test_fake_navigator_empty_sequence_raises() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         FakeNavigator(sequence=[])
+
+
+# ---------------------------------------------------------------------------
+# FakeSurveyor
+# ---------------------------------------------------------------------------
+
+
+def test_fake_surveyor_satisfies_protocol() -> None:
+    surveyor = FakeSurveyor()
+    assert isinstance(surveyor, Surveyor)
+
+
+def test_fake_surveyor_default_returns_craft_direction() -> None:
+    surveyor = FakeSurveyor()
+    question = surveyor.survey(_state())
+    assert question.dimension == "craft_direction"
+
+
+def test_fake_surveyor_sequence_mode_advances_per_call() -> None:
+    first = ResearchQuestion(dimension="craft_direction", question="Q1")
+    second = ResearchQuestion(dimension="compensation", question="Q2")
+    surveyor = FakeSurveyor(sequence=[first, second])
+    assert surveyor.survey(_state()) == first
+    assert surveyor.survey(_state()) == second
+    # Repeats the last once exhausted.
+    assert surveyor.survey(_state()) == second
+
+
+def test_fake_surveyor_empty_sequence_raises() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        FakeSurveyor(sequence=[])

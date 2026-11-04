@@ -31,6 +31,9 @@ type_map = {
     "types.RecalibrationProposal": types.RecalibrationProposal,
     "stream_types.RecalibrationProposal": stream_types.RecalibrationProposal,
 
+    "types.ResearchQuestion": types.ResearchQuestion,
+    "stream_types.ResearchQuestion": stream_types.ResearchQuestion,
+
     "types.SearchAction": types.SearchAction,
     "stream_types.SearchAction": stream_types.SearchAction,
 
