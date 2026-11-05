@@ -21,7 +21,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakeNavigator, FakeSurveyor
-from screen.research.question import NOT_YET_AVAILABLE, ResearchQuestion
+from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -466,7 +466,6 @@ def test_survey_request_renders_real_assertion_content_not_placeholder() -> None
     assert "Pays $400k TC." in history
     assert "craft_direction" in history
     assert "unexamined" in history
-    assert history != NOT_YET_AVAILABLE
 
 
 def test_dispatch_rejects_dimension_outside_target_vocabulary() -> None:

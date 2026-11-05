@@ -19,7 +19,7 @@ from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.context import FetchContext, SearchContext
 from screen.research.protocol import Navigator, Surveyor
-from screen.research.question import NOT_YET_AVAILABLE, render_assertion_history
+from screen.research.question import render_assertion_history, render_yield_summary
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
     DecidePlanEvent,
@@ -117,7 +117,9 @@ def _survey(state: LoopState, surveyor: Surveyor, deps: DispatchDeps) -> LoopSta
                 company_name=state.company_name,
                 opening_title=state.opening_title,
                 dimensions=list(state.targets),
-                yield_summary=NOT_YET_AVAILABLE,
+                yield_summary=render_yield_summary(
+                    state.opening_id, state.pool_yield, state.target_stall_counts
+                ),
                 query_assertion_history=render_assertion_history(state.assertions, state.targets),
             ),
             response=SurveyResponse(dimension=question.dimension, question=question.question),

@@ -5,11 +5,13 @@ dispatcher's job (it decides what happens on a bad answer), not a parse-time
 concern of this type.
 """
 
+import math
 from collections.abc import Iterable
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from screen.research_trace.replay import TargetYield
 from screen.types import Assertion
 
 
@@ -20,10 +22,39 @@ class ResearchQuestion(BaseModel):
     question: Annotated[str, Field(min_length=1)]
 
 
-# Placeholder for the one Survey input `render_assertion_history` doesn't cover yet:
-# per-dimension yield rates. That renderer is a follow-up
-# cycle; this one stays a placeholder until it lands.
-NOT_YET_AVAILABLE = "(not yet available — yield-rate rendering lands in a follow-up cycle)"
+def half_width_per_dimension(pool_yield: dict[str, TargetYield]) -> dict[str, float]:
+    """Compute frequentist 90% confidence interval margin around the pool rate."""
+    margins: dict[str, float] = {}
+    for target, y in pool_yield.items():
+        if y.runs == 0:  # pragma: no cover — fold_target_yield drops empty targets
+            margins[target] = 0.0
+            continue  # pragma: no cover — fold_target_yield drops empty targets
+        p = y.yielded / y.runs
+        # 90% CI for proportion is 1.645 * sqrt(p * (1 - p) / n)
+        margins[target] = 1.645 * math.sqrt(p * (1 - p) / y.runs)
+    return margins
+
+
+def render_yield_summary(
+    opening_id: str, pool_yield: dict[str, TargetYield], stalls: dict[str, int]
+) -> str:
+    """Render per-dimension yield rates paired with pool-wide baseline."""
+    lines: list[str] = []
+    # Using sorted keys to make rendering deterministic
+    for target in sorted(pool_yield.keys()):
+        y = pool_yield[target]
+        pool_rate = (y.yielded / y.runs) * 100 if y.runs > 0 else 0.0
+        stall_count = stalls.get(target, 0)
+
+        if y.runs == 0:
+            lines.append(f"{target}: no pool baseline yet")
+            continue
+
+        lines.append(
+            f"{target} ({pool_rate:.1f}%): 0 yielded of {stall_count} attempts on {opening_id}, pool baseline {pool_rate:.1f}%"
+        )
+
+    return "\n".join(lines)
 
 
 def render_assertion_history(assertions: Iterable[Assertion], targets: Iterable[str]) -> str:

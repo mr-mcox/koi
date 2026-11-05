@@ -5,7 +5,7 @@ generated `ResearchQuestion` to the domain type."""
 from types import SimpleNamespace
 
 from screen.research.baml_surveyor import BAMLSurveyor
-from screen.research.question import NOT_YET_AVAILABLE, ResearchQuestion
+from screen.research.question import ResearchQuestion, render_yield_summary
 from screen.research.state import LoopState
 from tests.helpers import canned_assertion
 
@@ -36,7 +36,8 @@ def test_baml_surveyor_survey_calls_generated_client_with_stub_inputs() -> None:
         return SimpleNamespace(dimension="compensation", question="What is total comp?")
 
     surveyor = BAMLSurveyor(client=SimpleNamespace(Survey=fake_survey))
-    question = surveyor.survey(_state())
+    state = _state()
+    question = surveyor.survey(state)
 
     assert question == ResearchQuestion(dimension="compensation", question="What is total comp?")
     call = calls[0]
@@ -44,7 +45,9 @@ def test_baml_surveyor_survey_calls_generated_client_with_stub_inputs() -> None:
     assert call["opening_title"] == "Staff Software Engineer"
     assert call["rubric_text"] == "craft_direction: ..."
     assert call["dimensions"] == "craft_direction, compensation"
-    assert call["yield_summary"] == NOT_YET_AVAILABLE
+    assert call["yield_summary"] == render_yield_summary(
+        state.opening_id, state.pool_yield, state.target_stall_counts
+    )
 
 
 def test_baml_surveyor_renders_real_assertion_history_not_a_placeholder() -> None:
@@ -63,7 +66,7 @@ def test_baml_surveyor_renders_real_assertion_history_not_a_placeholder() -> Non
     )
 
     history = calls[0]["query_assertion_history"]
-    assert history != NOT_YET_AVAILABLE
+
     assert "Pays $400k TC." in history
     assert "craft_direction" in history
     assert "unexamined" in history

@@ -36,18 +36,18 @@ but yields 60% pool-wide, that's an unexamined hypothesis, not a stall signal.
 
 ## Done When
 
-- [ ] `render_yield_summary(opening_id, pool_yield, stalls)` → renders per-dimension
+- [x] `render_yield_summary(opening_id, pool_yield, stalls)` → renders per-dimension
   yield rates paired with pool-wide baseline, one-liner per dimension, scoped to
   the current opening's stall counts
-- [ ] `half_width_per_dimension(opening_yield)` → computes a simple Bayesian
+- [x] `half_width_per_dimension(opening_yield)` → computes a simple Bayesian
   posterior width (pool prior + this-opening likelihood) or a frequentist confidence
   interval, so the Surveyor knows which dimension's rate is most uncertain
-- [ ] Both renderers are tested; `question.py` no longer uses `NOT_YET_AVAILABLE`
+- [x] Both renderers are tested; `question.py` no longer uses `NOT_YET_AVAILABLE`
   placeholder for `yield_summary`
-- [ ] `dispatcher._survey_request(state)` passes actual `yield_summary` built from
+- [x] `dispatcher._survey_request(state)` passes actual `yield_summary` built from
   the opening's events
-- [ ] Test traces with new `yield_summary` field added to `SurveyRequest`
-- [ ] `uv run python scripts/check.py` passes
+- [x] Test traces with new `yield_summary` field added to `SurveyRequest`
+- [x] `uv run python scripts/check.py` passes
 
 ## Approach
 

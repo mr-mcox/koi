@@ -19,7 +19,7 @@ Target choice is a deterministic ranker handing `DecidePlan` an opaque slug, so 
   - [x] rubric ✓
   - [x] past queries + assertion text ✓ (`render_assertion_history`)
   - [x] yield aggregation ✓ (`fold_target_yield`)
-  - [ ] yield_summary rendering and half_width per dimension → parked in `surveyor-yield-context.md`
+  - [x] yield_summary rendering and half_width per dimension ✓
 - [x] Yield aggregation counts only slugs in the current `Target` vocabulary and is computed from existing `decide_plan` events with no new trace field → `tests/research_trace/` test over `trace_shapes.json` plus a retired-slug line
 - [x] A dimension the step names outside the `Target` vocabulary fails the pass loudly; it is not silently remapped → dispatcher test
 - [x] `rank_targets`, `select_primary_target` and `active_target_action_cap` are gone; one per-pass budget remains → `grep -rn` shows no hits in `src/`

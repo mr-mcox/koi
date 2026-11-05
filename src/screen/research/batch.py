@@ -24,9 +24,14 @@ from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import Navigator, Surveyor
 from screen.research.state import LoopState, PassSummary
-from screen.research_trace.events import ResearchTraceEvent
-from screen.research_trace.replay import TraceReplay, replay_research_trace
-from screen.research_trace.trace_io import read_page_content, record_event, research_trace_path_for
+from screen.research_trace.events import DecidePlanEvent, ResearchTraceEvent, parse_event
+from screen.research_trace.replay import TraceReplay, fold_target_yield, replay_research_trace
+from screen.research_trace.trace_io import (
+    read_page_content,
+    read_research_trace,
+    record_event,
+    research_trace_path_for,
+)
 from screen.score.bandit import aggregate_uncertainty, boundary_weight, draw_opening
 from screen.score.loader import load_scoring_config
 from screen.score.types import ScoringConfig
@@ -74,6 +79,7 @@ class RunDispatchDeps:
     rubric: RubricText
     on_event: Callable[[ResearchTraceEvent], None] = field(default=_noop_on_event)
     update_digests: Callable[..., None] = field(default=update_digests_for_opening)
+    research_trace: Path | None = None
 
 
 def run_dispatch(
@@ -107,6 +113,17 @@ def run_dispatch(
         if resume is not None
         else TraceReplay(visited_urls=[], prior_queries=[], target_stalls={})
     )
+
+    plans: list[DecidePlanEvent] = []
+    if hasattr(deps, "research_trace") and deps.research_trace:
+        try:
+            for line in read_research_trace(deps.research_trace):
+                e = parse_event(line.strip())
+                if isinstance(e, DecidePlanEvent):
+                    plans.append(e)
+        except FileNotFoundError:  # pragma: no cover — traces might not exist on first run
+            pass
+    yields = fold_target_yield(plans)
     state = LoopState(
         opening_id=opening_id,
         company_id=company_id,
@@ -122,6 +139,7 @@ def run_dispatch(
         prior_queries=replay.prior_queries,
         targets=targets,
         target_stall_counts=replay.target_stalls,
+        pool_yield=yields,
     )
 
     def _persist_assertions(new_assertions: list[Assertion]) -> None:
@@ -172,7 +190,9 @@ def resume_opening(
 
     assertions = assertions_for_opening(conn, opening.id)
     dispatch_deps = dataclasses.replace(
-        deps, on_event=functools.partial(record_event, research_trace_path)
+        deps,
+        on_event=functools.partial(record_event, research_trace_path),
+        research_trace=research_trace_path,
     )
     summary = run_dispatch(
         conn,

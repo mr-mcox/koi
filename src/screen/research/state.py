@@ -12,6 +12,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 from screen.research.context import FetchContext, SearchContext
+from screen.research_trace.replay import TargetYield
 from screen.types import Assertion
 
 
@@ -44,6 +45,7 @@ class LoopState(BaseModel):
     # target ended without adding an assertion for that target. One of the
     # Surveyor's inputs (via a yield-rate summary) once that renderer lands.
     target_stall_counts: dict[str, int] = Field(default_factory=dict)
+    pool_yield: dict[str, TargetYield] = Field(default_factory=dict)
     # Set once per pass by the dispatcher from the Surveyor's answer, then held
     # fixed for every Navigator turn in the pass.
     primary_target: str | None = None

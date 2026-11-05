@@ -1,11 +1,14 @@
 """Live BAML adapter for the Survey function.
-`yield_summary` is still `NOT_YET_AVAILABLE`; see that constant's docstring
-for why and what replaces it. `query_assertion_history` is real: every
+`query_assertion_history` is real: every
 dimension's own assertions, rendered by `render_assertion_history`.
 """
 
 from screen.baml_client.sync_client import BamlSyncClient, b
-from screen.research.question import NOT_YET_AVAILABLE, ResearchQuestion, render_assertion_history
+from screen.research.question import (
+    ResearchQuestion,
+    render_assertion_history,
+    render_yield_summary,
+)
 from screen.research.state import LoopState
 
 
@@ -25,7 +28,9 @@ class BAMLSurveyor:
             opening_title=state.opening_title,
             rubric_text=state.rubric_text,
             dimensions=_dimensions_text(state),
-            yield_summary=NOT_YET_AVAILABLE,
+            yield_summary=render_yield_summary(
+                state.opening_id, state.pool_yield, state.target_stall_counts
+            ),
             query_assertion_history=render_assertion_history(state.assertions, state.targets),
         )
         return ResearchQuestion(dimension=generated.dimension, question=generated.question)
