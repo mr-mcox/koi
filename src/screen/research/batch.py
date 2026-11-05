@@ -22,7 +22,7 @@ from screen.extract.prompt import (
 from screen.extract.protocol import Extractor
 from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
-from screen.research.protocol import Navigator, Surveyor
+from screen.research.protocol import LinkScorer, Navigator, Surveyor
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import DecidePlanEvent, ResearchTraceEvent, parse_event
 from screen.research_trace.replay import TraceReplay, fold_target_yield, replay_research_trace
@@ -77,6 +77,8 @@ class RunDispatchDeps:
     extractor: Extractor
     digester: Digester
     rubric: RubricText
+    link_scorer: LinkScorer | None = None
+    link_allowed: Callable[[str], bool] | None = None
     on_event: Callable[[ResearchTraceEvent], None] = field(default=_noop_on_event)
     update_digests: Callable[..., None] = field(default=update_digests_for_opening)
     research_trace: Path | None = None
@@ -111,7 +113,7 @@ def run_dispatch(
     replay = (
         resume
         if resume is not None
-        else TraceReplay(visited_urls=[], prior_queries=[], target_stalls={})
+        else TraceReplay(visited_urls=[], prior_queries=[], target_stalls={}, unvisited_links=[])
     )
 
     plans: list[DecidePlanEvent] = []
@@ -140,6 +142,7 @@ def run_dispatch(
         targets=targets,
         target_stall_counts=replay.target_stalls,
         pool_yield=yields,
+        unvisited_links=replay.unvisited_links,
     )
 
     def _persist_assertions(new_assertions: list[Assertion]) -> None:
@@ -154,6 +157,8 @@ def run_dispatch(
             extractor=deps.extractor,
             on_event=deps.on_event,
             on_assertions=_persist_assertions,
+            link_scorer=deps.link_scorer,
+            link_allowed=deps.link_allowed,
         ),
     )
     deps.update_digests(

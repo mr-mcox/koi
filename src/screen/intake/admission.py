@@ -10,6 +10,23 @@ from urllib.parse import urlparse
 # the refusal instead of retrying into it. Suffix-matched on domain boundaries.
 DECLINED_HOSTS: tuple[str, ...] = ("hiringcafe.com",)
 
+# Large aggregator/job-board hosts whose pages are mostly site chrome (nav menus,
+# "similar jobs" sidebars, login/signup links, logo images) repeated across every
+# page from that host — never company content. Distinct from DECLINED_HOSTS: these
+# hosts *do* answer automated fetches, the markdown they return is just not signal.
+# Measured on live research traces (outbound-link-backlog scouting F14, F15): the
+# backlog's pre-score candidate cap drops the link a human would follow once pages
+# from these hosts flood the link pool; filtering these hosts out fixed every
+# observed case.
+AGGREGATOR_CHROME_HOSTS: tuple[str, ...] = (
+    "linkedin.com",
+    "hiringcafe.com",
+    "levels.fyi",
+    "remoterocketship.com",
+    "img.logo.dev",
+    "startup.jobs",
+)
+
 _ATS_EXAMPLES = "Greenhouse, Lever, Ashby, Workday"
 
 

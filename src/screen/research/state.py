@@ -41,6 +41,8 @@ class LoopState(BaseModel):
     # All rubric targets the Surveyor may choose among and the dispatcher
     # validates its answer against.
     targets: list[str] = []
+    # Passed in from TraceReplay to be scored once per pass
+    unvisited_links: list[tuple[str, str]] = Field(default_factory=list[tuple[str, str]])
     # Derived from the research trace on resume: how many contiguous runs on each
     # target ended without adding an assertion for that target. One of the
     # Surveyor's inputs (via a yield-rate summary) once that renderer lands.
@@ -50,6 +52,8 @@ class LoopState(BaseModel):
     # fixed for every Navigator turn in the pass.
     primary_target: str | None = None
     research_question: str | None = None
+    # Derived from TraceReplay.unvisited_links and scored by the link scorer
+    link_backlog: list[str] = Field(default_factory=list)
 
 
 class PassSummary(BaseModel):

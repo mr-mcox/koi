@@ -105,6 +105,42 @@ def test_replay_ignores_extract_with_no_results(tmp_path: Path) -> None:
     assert replay.visited_urls == []
 
 
+def test_replay_collects_markdown_links_from_raw_content(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    raw = (
+        "See our [engineering blog](https://acme.com/blog) and "
+        "[careers](https://acme.com/careers#openings)."
+    )
+    append_line(path, _extract_event("https://acme.com", raw_content=raw).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.unvisited_links == [
+        ("engineering blog", "https://acme.com/blog"),
+        ("careers", "https://acme.com/careers"),
+    ]
+
+
+def test_replay_excludes_non_http_links(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl"
+    raw = "Email [us](mailto:jobs@acme.com) or see [site](https://acme.com/about)."
+    append_line(path, _extract_event("https://acme.com", raw_content=raw).model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.unvisited_links == [("site", "https://acme.com/about")]
+
+
+def test_replay_excludes_links_already_visited_in_the_trace(tmp_path: Path) -> None:
+    """A link later fetched in the same trace is no longer a backlog candidate —
+    it has already been explored, so re-surfacing it would waste a turn."""
+    path = tmp_path / "trace.jsonl"
+    raw = "See [careers](https://acme.com/careers)."
+    append_line(path, _extract_event("https://acme.com", raw_content=raw).model_dump_json())
+    append_line(path, _extract_event("https://acme.com/careers").model_dump_json())
+
+    replay = replay_research_trace(path)
+    assert replay.unvisited_links == []
+
+
 def test_replay_skips_blank_lines(tmp_path: Path) -> None:
     path = tmp_path / "trace.jsonl"
     path.write_text("\n\n" + _search_event("Acme comp").model_dump_json() + "\n", encoding="utf-8")

@@ -136,18 +136,18 @@ class BamlSyncClient:
                 "page_content": page_content,
             })
             return typing.cast(types.IdentificationResult, __result__.cast_to(types, types, stream_types, False, __runtime__))
-    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,
+    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,link_backlog: typing.List[str],
         baml_options: BamlCallOptions = {},
     ) -> typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]:
         # Check if on_tick is provided
         if 'on_tick' in baml_options:
-            __stream__ = self.stream.Navigate(company_name=company_name,opening_title=opening_title,rubric_text=rubric_text,primary_target=primary_target,research_question=research_question,last_context_text=last_context_text,prior_queries=prior_queries,assertion_history=assertion_history,
+            __stream__ = self.stream.Navigate(company_name=company_name,opening_title=opening_title,rubric_text=rubric_text,primary_target=primary_target,research_question=research_question,last_context_text=last_context_text,prior_queries=prior_queries,assertion_history=assertion_history,link_backlog=link_backlog,
                 baml_options=baml_options)
             return __stream__.get_final_response()
         else:
             # Original non-streaming code
             __result__ = self.__options.merge_options(baml_options).call_function_sync(function_name="Navigate", args={
-                "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,
+                "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,"link_backlog": link_backlog,
             })
             return typing.cast(typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]], __result__.cast_to(types, types, stream_types, False, __runtime__))
     def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
@@ -223,11 +223,11 @@ class BamlStreamClient:
           lambda x: typing.cast(types.IdentificationResult, x.cast_to(types, types, stream_types, False, __runtime__)),
           __ctx__,
         )
-    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,
+    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,link_backlog: typing.List[str],
         baml_options: BamlCallOptions = {},
     ) -> baml_py.BamlSyncStream[typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]]:
         __ctx__, __result__ = self.__options.merge_options(baml_options).create_sync_stream(function_name="Navigate", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,"link_backlog": link_backlog,
         })
         return baml_py.BamlSyncStream[typing.List[typing.Union["stream_types.StopAction", "stream_types.FetchAction", "stream_types.SearchAction"]], typing.List[typing.Union["types.StopAction", "types.FetchAction", "types.SearchAction"]]](
           __result__,
@@ -288,11 +288,11 @@ class BamlHttpRequestClient:
             "page_content": page_content,
         }, mode="request")
         return __result__
-    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,
+    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,link_backlog: typing.List[str],
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="Navigate", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,"link_backlog": link_backlog,
         }, mode="request")
         return __result__
     def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,
@@ -338,11 +338,11 @@ class BamlHttpStreamRequestClient:
             "page_content": page_content,
         }, mode="stream")
         return __result__
-    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,
+    def Navigate(self, company_name: str,opening_title: str,rubric_text: str,primary_target: str,research_question: str,last_context_text: str,prior_queries: str,assertion_history: str,link_backlog: typing.List[str],
         baml_options: BamlCallOptions = {},
     ) -> baml_py.baml_py.HTTPRequest:
         __result__ = self.__options.merge_options(baml_options).create_http_request_sync(function_name="Navigate", args={
-            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,
+            "company_name": company_name,"opening_title": opening_title,"rubric_text": rubric_text,"primary_target": primary_target,"research_question": research_question,"last_context_text": last_context_text,"prior_queries": prior_queries,"assertion_history": assertion_history,"link_backlog": link_backlog,
         }, mode="stream")
         return __result__
     def ProposeRubricEdit(self, current_rubric_text: str,current_cases_text: str,history_text: str,scoring_rule_text: str,private_values_text: typing.Optional[str] = None,

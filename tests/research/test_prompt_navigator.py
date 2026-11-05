@@ -1,6 +1,6 @@
-"""Unit tests for BAMLNavigator coercion and context-rendering logic.
+"""Unit tests for PromptNavigator coercion and context-rendering logic.
 
-BAMLNavigator._coerce is exercised directly to cover the error branch
+PromptNavigator._coerce is exercised directly to cover the error branch
 without requiring a live BAML call.
 
 last_context_text() is a pure function; it is tested with known inputs so
@@ -15,13 +15,13 @@ import pytest
 from screen.browser import SearchHit
 from screen.extract.prompt import RubricText
 from screen.research.actions import FetchAction, SearchAction, StopAction
-from screen.research.baml_navigator import (
-    BAMLNavigator,
+from screen.research.context import FetchContext, SearchContext
+from screen.research.prompt_navigator import (
+    PromptNavigator,
     _coerce,
     _prior_queries_text,
     last_context_text,
 )
-from screen.research.context import FetchContext, SearchContext
 from screen.research.state import LoopState
 from screen.types import Assertion
 from tests.helpers import canned_assertion
@@ -216,7 +216,7 @@ def test_prior_queries_text_joins_in_order() -> None:
 
 
 # ---------------------------------------------------------------------------
-# BAMLNavigator.plan dispatches the generated Navigate call
+# PromptNavigator.plan dispatches the generated Navigate call
 # ---------------------------------------------------------------------------
 
 
@@ -225,7 +225,7 @@ class _FakeBamlStop:
     reason = "Mock stop."
 
 
-def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
+def test_prompt_navigator_plan_passes_through_state_unchanged() -> None:
     """The navigator passes primary_target/research_question already set on
     LoopState straight through, never recomputing either."""
     calls: list[dict[str, object]] = []
@@ -234,7 +234,9 @@ def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(
+        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
+    )
     state = _state(
         primary_target="compensation",
         research_question="What is total comp?",
@@ -252,10 +254,11 @@ def test_baml_navigator_plan_passes_through_state_unchanged() -> None:
         "last_context_text": "",
         "prior_queries": "Acme Corp salary",
         "assertion_history": "### compensation\n(unexamined — no assertions yet)",
+        "link_backlog": [],
     }
 
 
-def test_baml_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
+def test_prompt_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
     """rubric_text narrows to `primary_target` via `RubricText.for_dimension` —
     the Navigator has already committed to one dimension this pass, and the rest
     of the rubric is not shown."""
@@ -266,7 +269,7 @@ def test_baml_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
         return [_FakeBamlStop()]
 
     rubric = _fixture_rubric()
-    navigator = BAMLNavigator(rubric, client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(rubric, client=SimpleNamespace(Navigate=fake_decide_plan))
     state = _state(primary_target="craft_direction", research_question="How do they ship?")
 
     navigator.plan(state)
@@ -276,7 +279,7 @@ def test_baml_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
     assert "Compensation" not in rendered
 
 
-def test_baml_navigator_plan_raises_when_primary_target_unset() -> None:
+def test_prompt_navigator_plan_raises_when_primary_target_unset() -> None:
     """plan() called before the Surveyor set primary_target is an invariant
     violation, not a value to default around — there is no dimension to narrow
     the rubric to, and silently falling back to the full rubric would hide the
@@ -285,13 +288,15 @@ def test_baml_navigator_plan_raises_when_primary_target_unset() -> None:
     def fake_decide_plan(**kwargs: object) -> list[object]:
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(
+        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
+    )
 
     with pytest.raises(RuntimeError, match="primary_target"):
         navigator.plan(_state(primary_target=None, research_question=None))
 
 
-def test_baml_navigator_plan_blank_research_question_when_unset() -> None:
+def test_prompt_navigator_plan_blank_research_question_when_unset() -> None:
     """A missing research_question renders as an empty string rather than
     `None` reaching the BAML call — primary_target is set, so this isolates the
     research_question fallback from the rubric invariant above."""
@@ -301,13 +306,15 @@ def test_baml_navigator_plan_blank_research_question_when_unset() -> None:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(
+        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
+    )
     navigator.plan(_state(primary_target="compensation", research_question=None))
 
     assert calls[0]["research_question"] == ""
 
 
-def test_baml_navigator_plan_scopes_assertion_history_to_the_fixed_target() -> None:
+def test_prompt_navigator_plan_scopes_assertion_history_to_the_fixed_target() -> None:
     """The Navigator sees only its own target's assertions, not the whole
     opening's — seeing every dimension is the Surveyor's job, not the Navigator's."""
     calls: list[dict[str, object]] = []
@@ -316,7 +323,9 @@ def test_baml_navigator_plan_scopes_assertion_history_to_the_fixed_target() -> N
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = BAMLNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(
+        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
+    )
     craft_assertion = canned_assertion(target="craft_direction", chunk="Ships weekly.")
     off_target = canned_assertion(target="compensation", chunk="Pays well.")
     state = _state(

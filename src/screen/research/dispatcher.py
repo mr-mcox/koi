@@ -17,8 +17,9 @@ from screen.browser import Browser, BrowserError
 from screen.extract.extract import extract_assertions
 from screen.extract.protocol import Extractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
+from screen.research.backlog import rank_link_backlog
 from screen.research.context import FetchContext, SearchContext
-from screen.research.protocol import Navigator, Surveyor
+from screen.research.protocol import LinkScorer, Navigator, Surveyor
 from screen.research.question import render_assertion_history, render_yield_summary
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
@@ -43,12 +44,19 @@ from screen.types import Assertion, Target
 @dataclass(frozen=True)
 class DispatchDeps:
     """The dispatch loop's effect ports, bundled so a new hook touches this one type
-    instead of every handler's signature and every call site that relays it."""
+    instead of every handler's signature and every call site that relays it.
+
+    `link_scorer`/`link_allowed` are the backlog-ranking seam: when both are set,
+    the loop ranks the unvisited links replayed from prior passes once, before the
+    first navigator turn, and hands the navigator the surviving shortlist.
+    """
 
     browser: Browser
     extractor: Extractor
     on_event: Callable[[ResearchTraceEvent], None]
     on_assertions: Callable[[list[Assertion]], None] | None = None
+    link_scorer: LinkScorer | None = None
+    link_allowed: Callable[[str], bool] | None = None
 
 
 def _targets_covered(state: LoopState) -> list[str]:
@@ -145,6 +153,10 @@ def dispatch(
     `_survey`. Every turn in the pass sees the same dimension/question.
     """
     current = _survey(state, surveyor, deps)
+
+    if current.unvisited_links and deps.link_scorer is not None:
+        ranked = rank_link_backlog(current, deps.link_scorer, deps.link_allowed)
+        current = current.model_copy(update={"link_backlog": ranked})
 
     while True:
         request = _plan_request(current)

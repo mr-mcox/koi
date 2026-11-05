@@ -9,9 +9,10 @@ from screen.browser import TavilyBrowser
 from screen.digest.baml_digester import BAMLDigester
 from screen.extract.baml_extractor import BAMLExtractor
 from screen.extract.prompt import MissingPrivateConfigError
-from screen.research.baml_navigator import BAMLNavigator
+from screen.research.jev_link_scorer import JevLinkScorer
+from screen.research.prompt_navigator import PromptNavigator
 from screen.verdict.jev_verdict_provider import JevVerdictProvider
-from screen.wiring import build_app, build_dispatch_deps
+from screen.wiring import _url_allowed, build_app, build_dispatch_deps
 from tests.helpers import SYNTHETIC_PRIVATE, synthetic_rubric
 
 
@@ -31,10 +32,34 @@ def test_app_uses_the_live_adapters_against_the_configured_data_dir(tmp_path: Pa
 def test_dispatch_deps_use_the_live_adapters() -> None:
     deps = build_dispatch_deps(synthetic_rubric(), {"TAVILY_API_KEY": "k"})
 
-    assert isinstance(deps.navigator, BAMLNavigator)
+    assert isinstance(deps.navigator, PromptNavigator)
+    assert isinstance(deps.link_scorer, JevLinkScorer)
     assert isinstance(deps.browser, TavilyBrowser)
     assert isinstance(deps.extractor, BAMLExtractor)
     assert isinstance(deps.digester, BAMLDigester)
+
+
+def test_dispatch_deps_carry_the_host_filter_used_for_backlog_links() -> None:
+    """Backlog ranking enforces the same host-block list intake uses at submit
+    (W7) — a backlog link never nominates a host already refused."""
+    deps = build_dispatch_deps(synthetic_rubric(), {"TAVILY_API_KEY": "k"})
+    assert deps.link_allowed is not None
+    assert deps.link_allowed("https://hiringcafe.com/jobs/1") is False
+
+
+def test_url_allowed_rejects_declined_hosts_and_accepts_others() -> None:
+    """The predicate wiring hands the backlog ranker mirrors intake's declined-host
+    list (W7), so a backlog never nominates a host intake would refuse."""
+    assert _url_allowed("https://hiringcafe.com/jobs/1") is False
+    assert _url_allowed("https://acme.com/careers") is True
+
+
+def test_url_allowed_rejects_aggregator_chrome_hosts() -> None:
+    """Large aggregator/job-board hosts are site chrome, not company content
+    (outbound-link-backlog scouting F14, F15) — excluded before the backlog's
+    100-candidate pre-score cap sees them."""
+    assert _url_allowed("https://www.linkedin.com/jobs/view/123") is False
+    assert _url_allowed("https://www.levels.fyi/companies/acme/salaries") is False
 
 
 def test_app_refuses_to_build_without_the_compensation_baseline(tmp_path: Path) -> None:

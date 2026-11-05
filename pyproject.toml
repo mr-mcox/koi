@@ -54,6 +54,9 @@ omit = [
     # Live assertion classifier: calls the paid TypeSafe (Jev) API, no unit test coverage
     # by design — tests inject a fake AssertionClassifier via the Protocol.
     "src/screen/verdict/jev_assertion_classifier.py",
+    # Live link scorer: calls the paid TypeSafe (Jev) API, no unit test coverage by
+    # design — tests inject a fake LinkScorer via the Protocol.
+    "src/screen/research/jev_link_scorer.py",
 ]
 
 [tool.coverage.report]

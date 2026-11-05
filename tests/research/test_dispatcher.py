@@ -21,6 +21,7 @@ from screen.extract.fakes import FakeExtractor
 from screen.research.actions import Action, FetchAction, SearchAction, StopAction
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.fakes import FakeBrowser, FakeNavigator, FakeSurveyor
+from screen.research.protocol import LinkScore, LinkScorer
 from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
@@ -68,16 +69,35 @@ def _fake_extractor(results: list[list[Assertion]] | None = None) -> FakeExtract
     return FakeExtractor(results or [[]])
 
 
+class _RecordingLinkScorer:
+    """Records the links it was handed; scores every one at 1.0."""
+
+    def __init__(self) -> None:
+        self.calls: list[list[tuple[str, str]]] = []
+
+    def score_links(
+        self,
+        rubric_text: str,
+        primary_target: str,
+        research_question: str,
+        links: list[tuple[str, str]],
+    ) -> list[LinkScore]:
+        self.calls.append(links)
+        return [LinkScore(url=url, p_relevant=1.0) for _text, url in links]
+
+
 def _deps(
     *,
     browser: FakeBrowser | None = None,
     extractor: FakeExtractor | None = None,
     on_event: object = _noop,
+    link_scorer: LinkScorer | None = None,
 ) -> DispatchDeps:
     return DispatchDeps(
         browser=browser if browser is not None else FakeBrowser(),
         extractor=extractor if extractor is not None else _fake_extractor(),
         on_event=on_event,  # type: ignore[arg-type]
+        link_scorer=link_scorer,
     )
 
 
@@ -585,3 +605,86 @@ def test_fetch_action_browser_error_marks_url_visited() -> None:
     )
 
     assert url in recorded[1].visited_urls
+
+
+def test_dispatch_scores_backlog_once_before_loop_and_threads_it() -> None:
+    """When the pass starts with unvisited_links (from a resumed trace), the
+    dispatcher scores them exactly once, before the first Navigate call, and the
+    resulting link_backlog is visible to every turn."""
+    stop = StopAction(reason="Done.")
+    navigator = FakeNavigator(sequence=[[stop]])
+    scorer = _RecordingLinkScorer()
+
+    recorded: list[LoopState] = []
+    original_plan = navigator.plan
+
+    def recording_plan(s: LoopState) -> list[Action]:
+        recorded.append(s)
+        return original_plan(s)
+
+    navigator.plan = recording_plan  # type: ignore[method-assign]
+
+    links = [("Engineering blog", "https://acme.com/blog")]
+    state = _state(assertions=[], unvisited_links=links)
+
+    dispatch(
+        state,
+        navigator=navigator,
+        surveyor=FakeSurveyor(),
+        deps=_deps(
+            browser=FakeBrowser(),
+            extractor=_fake_extractor(),
+            on_event=_noop,
+            link_scorer=scorer,
+        ),
+    )
+
+    assert scorer.calls == [links]
+    assert recorded[0].link_backlog == ["https://acme.com/blog"]
+
+
+def test_dispatch_skips_backlog_scoring_when_no_unvisited_links() -> None:
+    """No unvisited_links means no scoring call at all — a fresh pass with
+    nothing carried over from a prior trace never pays for scoring."""
+    stop = StopAction(reason="Done.")
+    navigator = FakeNavigator(sequence=[[stop]])
+    scorer = _RecordingLinkScorer()
+
+    dispatch(
+        _state(assertions=[], unvisited_links=[]),
+        navigator=navigator,
+        surveyor=FakeSurveyor(),
+        deps=_deps(
+            browser=FakeBrowser(),
+            extractor=_fake_extractor(),
+            on_event=_noop,
+            link_scorer=scorer,
+        ),
+    )
+
+    assert scorer.calls == []
+
+
+def test_dispatch_leaves_backlog_empty_without_a_link_scorer() -> None:
+    """The scorer is the only thing that can rank the backlog; with none wired
+    the loop must run with an empty backlog rather than an unranked one."""
+    stop = StopAction(reason="Done.")
+    navigator = FakeNavigator(sequence=[[stop]])
+
+    recorded: list[LoopState] = []
+    original_plan = navigator.plan
+
+    def recording_plan(s: LoopState) -> list[Action]:
+        recorded.append(s)
+        return original_plan(s)
+
+    navigator.plan = recording_plan  # type: ignore[method-assign]
+
+    dispatch(
+        _state(assertions=[], unvisited_links=[("Blog", "https://acme.com/blog")]),
+        navigator=navigator,
+        surveyor=FakeSurveyor(),
+        deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=_noop),
+    )
+
+    assert recorded[0].link_backlog == []

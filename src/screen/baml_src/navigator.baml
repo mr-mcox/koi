@@ -41,6 +41,7 @@ function Navigate(
   last_context_text: string,
   prior_queries: string,
   assertion_history: string,
+  link_backlog: string[],
 ) -> Action[] {
   client Fireworks
   prompt #"
@@ -102,6 +103,12 @@ function Navigate(
     Primary target this turn: {{ primary_target }}
     Research question this pass: {{ research_question }}
     Prior queries: {{ prior_queries }}
+    {% if link_backlog %}
+    Backlog (promising unvisited links from prior turns):
+    {% for link in link_backlog %}
+    - {{ link }}
+    {% endfor %}
+    {% endif %}
     {% if last_context_text %}
     Last action result: {{ last_context_text }}
     {% endif %}

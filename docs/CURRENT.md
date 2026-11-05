@@ -1,1 +1,1 @@
-docs/features/research-target-opportunity/surveyor-yield-context.md
+docs/features/outbound-link-backlog/scouting.md

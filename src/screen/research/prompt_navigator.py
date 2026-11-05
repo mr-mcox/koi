@@ -1,4 +1,4 @@
-"""Live BAML adapter for the Navigate function.
+"""Live prompt adapter for the Navigate function.
 
 Coerces the generated `baml_client.types.StopAction` into the canonical
 `screen.research.actions.StopAction`. Field names match field-for-field;
@@ -54,7 +54,7 @@ def last_context_text(state: LoopState) -> str:
     return "\n".join(lines)
 
 
-class BAMLNavigator:
+class PromptNavigator:
     """Calls Navigate via the generated BAML sync client.
 
     Trusts `state.primary_target`/`state.research_question` as already set —
@@ -72,7 +72,7 @@ class BAMLNavigator:
     def plan(self, state: LoopState) -> list[Action]:
         if state.primary_target is None:
             raise RuntimeError(
-                "BAMLNavigator.plan() called before the Surveyor set primary_target. "
+                "PromptNavigator.plan() called before the Surveyor set primary_target. "
                 "The dispatcher must survey before the first decide_plan call."
             )
         generated = self._client.Navigate(
@@ -84,6 +84,7 @@ class BAMLNavigator:
             last_context_text=last_context_text(state),
             prior_queries=_prior_queries_text(state),
             assertion_history=render_assertion_history(state.assertions, [state.primary_target]),
+            link_backlog=state.link_backlog,
         )
         return [_coerce(g) for g in generated]
 
@@ -109,6 +110,6 @@ def _coerce(generated: object) -> Action:
         return SearchAction(query=str(query))
 
     raise RuntimeError(
-        f"BAMLNavigator received unrecognized action tag '{tag}' from Navigate. "
+        f"PromptNavigator received unrecognized action tag '{tag}' from Navigate. "
         "Update navigator.baml and add a coercion branch here."
     )

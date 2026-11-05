@@ -6,6 +6,7 @@ never a second, independently-persisted copy that could drift from what the
 trace says actually happened.
 """
 
+import re
 from pathlib import Path
 from typing import get_args
 
@@ -27,6 +28,9 @@ class TraceReplay(BaseModel):
 
     visited_urls: list[str]
     prior_queries: list[str]
+    unvisited_links: list[tuple[str, str]] = Field(
+        default_factory=list[tuple[str, str]]
+    )  # (text, url)
     # Contiguous unproductive active-target runs per target, reconstructed from
     # decide_plan events so a resume can suppress dead-end targets without a DB column.
     target_stalls: dict[str, int] = Field(default_factory=dict)
@@ -162,11 +166,24 @@ def _fold_target_stalls(plans: list[DecidePlanEvent]) -> dict[str, int]:
     return _count_stalls(runs, plans)
 
 
+def _extract_links(raw_content: str) -> list[tuple[str, str]]:
+    """Markdown `[text](url)` links in a fetched page's stored content,
+    http(s) only, fragment stripped (F5: the measured shape live traces hold).
+    """
+    links: list[tuple[str, str]] = []
+    for match in re.finditer(r"\[([^\]]+)\]\(([^)]+)\)", raw_content):
+        link_text: str = match.group(1).strip()
+        url: str = match.group(2).split("#")[0]
+        if url.startswith("http"):
+            links.append((link_text, url))
+    return links
+
+
 def replay_research_trace(path: Path) -> TraceReplay:
     visited_urls: list[str] = []
     prior_queries: list[str] = []
+    unvisited_links: list[tuple[str, str]] = []
     plans: list[DecidePlanEvent] = []
-
     for raw_line in read_research_trace(path):
         line = raw_line.strip()
         if not line:
@@ -177,12 +194,16 @@ def replay_research_trace(path: Path) -> TraceReplay:
         elif isinstance(event, SearchEvent):
             prior_queries.append(event.request.query)
         elif isinstance(event, ExtractEvent):
-            visited_urls.extend(result.url for result in event.response.results or [])
+            for result in event.response.results or []:
+                visited_urls.append(result.url)
+                unvisited_links.extend(_extract_links(result.raw_content))
         # SurveyEvent: nothing to fold — the Surveyor runs fresh every pass (F20),
         # so its output isn't resumable state.
-
+    visited_set = set(visited_urls)
+    unvisited_links = [link for link in unvisited_links if link[1] not in visited_set]
     return TraceReplay(
         visited_urls=visited_urls,
         prior_queries=prior_queries,
+        unvisited_links=unvisited_links,
         target_stalls=_fold_target_stalls(plans),
     )
