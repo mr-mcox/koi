@@ -1,6 +1,6 @@
 // Survey — the Surveyor's call: given everything known about one opening and
 // how research has gone on it so far, pick the one rubric dimension worth
-// investigating this pass and frame a specific question for it.
+// investigating this pass and frame a specific research question for it.
 //
 // Shape 1 invariant (decisions.md E9): this call only reads state and
 // proposes a dimension and a question; it never calls Tavily and never
@@ -8,10 +8,17 @@
 // the first Navigate call) and validates the answer against the live rubric
 // vocabulary — a dimension outside it fails the pass loudly rather than
 // being silently remapped.
+//
+// Framing: hypothesis-first (chosen 2026-11-04 over search-ready-question and
+// gap-description after a live multi-turn comparison — scouting F45, F49).
+// `question` carries a falsifiable claim, not a restated question: measured
+// against the other two framings, this produced the most genuine per-pass
+// evidence diversity (distinct pages, distinct sites, named specifics) rather
+// than re-querying the same target or fixating on one repeated guess.
 
 class ResearchQuestion {
   dimension string @description("Exactly one dimension slug, copied verbatim from the list given.")
-  question string @description("A specific, answerable research question for that dimension — not a restatement of its name.")
+  question string @description("A specific, falsifiable hypothesis for that dimension — a claim you expect evidence to confirm or refute, with reasoning — not a restatement of its name and not a search query.")
 }
 
 function Survey(
@@ -24,13 +31,15 @@ function Survey(
 ) -> ResearchQuestion {
   client Fireworks
   prompt #"
-    You are surveying a job opening to decide what to research next.
+    You are surveying a job opening to decide where research effort is most
+    likely to pay off this pass.
 
     ## Your job
-    Pick exactly one rubric dimension worth investigating this pass, and
-    frame a specific research question for it — not just the dimension's
-    name, but what you actually want to find out and why it would move this
-    opening's standing.
+    Form a hypothesis about where there is real opportunity to learn
+    something that would change this opening's standing — a specific,
+    falsifiable claim about what you expect to find and why, grounded in one
+    rubric dimension. This is not a search query: it is the thing you are
+    trying to confirm or refute.
 
     ## Available dimensions
     {{ dimensions }}
@@ -41,7 +50,7 @@ function Survey(
     ## How research has gone on this opening so far
     {{ yield_summary }}
 
-    ## Past queries and what they found
+    ## What's already known, per dimension
     {{ query_assertion_history }}
 
     ## State
@@ -50,8 +59,9 @@ function Survey(
 
     Favor a dimension that is unexamined or has stalled elsewhere over one
     already well covered. Return exactly one dimension, chosen verbatim from
-    the list above, and a question specific enough that a web search query
-    could be built from it directly.
+    the list above, and a hypothesis: a specific claim you expect evidence to
+    confirm or refute, with your reasoning for why it's the most promising
+    unknown right now.
 
     {{ ctx.output_format }}
   "#

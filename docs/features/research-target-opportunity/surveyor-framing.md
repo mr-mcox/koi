@@ -4,7 +4,7 @@ type: bearing
 date: 2026-11-04
 commit: aa6b3ab
 branch: main
-status: orienting
+status: done
 parent: ./bearing.md
 scouting: ./scouting.md
 ---
@@ -22,14 +22,16 @@ can actually act on the differences. Terrain: [scouting.md](./scouting.md)
 
 ## Done When
 
-- [ ] `navigator-context.md` is `done` → read its status
-- [ ] The three framings from `scratch/research-target-opportunity/survey_spike_compare.py`
+- [x] `navigator-context.md` is `done` → read its status (relaxed via operator, scouting F48)
+- [x] The three framings from `scratch/research-target-opportunity/survey_spike_compare.py`
       are re-run against the same 4 scenarios with the context-aware navigator, and their
       actions across a full multi-turn pass (not just turn 1) are compared
-      → **needs you**: read the re-run output
-- [ ] One framing is chosen and written into `survey.baml`'s prompt → scouting entry
-      recording the choice and what it rules out
-- [ ] `uv run python scripts/check.py` passes
+      → `scratch/research-target-opportunity/survey_spike_multiturn_compare.py`, results in
+      `survey_spike_multiturn_results.json` → scouting F49
+- [x] One framing is chosen and written into `survey.baml`'s prompt → **B (hypothesis-first)**,
+      operator, 2026-11-04 — optimizing for per-pass evidence diversity over efficient
+      convergence, see scouting F50
+- [x] `uv run python scripts/check.py` passes
 
 ## Approach
 

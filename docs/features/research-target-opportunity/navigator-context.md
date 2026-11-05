@@ -29,13 +29,17 @@ framing question cannot be answered — every variant produces the same navigato
 - [x] The Navigator's `rubric_text` is the active dimension's text alone, via
       `RubricText.for_dimension`; the Surveyor keeps the full rubric, since it has no
       active dimension until it chooses one → builder test on each call's rendered text
-- [ x A dimension with no assertions renders as explicitly unexamined, never as absent or
+- [x] A dimension with no assertions renders as explicitly unexamined, never as absent or
       empty → builder test
 - [x] Re-running the F39 trace's opening shape produces fewer near-duplicate queries than
-      the 47.8% corpus baseline → **needs you**: live run, compare against scouting F37
-- [ x The BAML function and its file carry the Navigator name; the `decide_plan` trace
+      the 47.8% corpus baseline → **relaxed, operator, 2026-11-04**: F46/F47 landed at
+      62.5% and 80.0% respectively — real improvement over the 87% outlier and real
+      yield where there was none (0 → 10-12 assertions), but neither cleared the 47.8%
+      corpus baseline. Operator accepts the partial win rather than reopening; see
+      Recalibrate When below for the model-tier path if this needs revisiting.
+- [x] The BAML function and its file carry the Navigator name; the `decide_plan` trace
       literal does not change → `grep -rn` plus `trace_shapes.json` still loading
-- [ ] `uv run python scripts/check.py` passes
+- [x] `uv run python scripts/check.py` passes
 
 ## Approach
 
@@ -76,6 +80,10 @@ Test-first by default. Exempt:
   parent bearing's summarizing trigger fires (→ parent §Recalibrate When).
 - If near-duplicate queries stay near the 47.8% baseline with full content in hand, stop:
   the bottleneck is model tier, not context, and F44 becomes the live question.
+  **Did not fire** (operator, 2026-11-04): 62.5%/80.0% read as real movement off the 87%
+  outlier, not "stayed near baseline." If the framing re-run in `surveyor-framing.md`
+  still converges or thrash resurfaces, F44 (model tier bump) is the next thing to try,
+  not a reopen of this bearing.
 - If renaming the BAML function forces any change to a persisted trace field, stop
   (decisions E8 escalation).
 

@@ -14,14 +14,18 @@ Target choice is a deterministic ranker handing `DecidePlan` an opaque slug, so 
 
 ## Done When
 
-- [ ] Each research opportunity (intake pass or batch block) makes exactly one question-step call before the first `DecidePlan`, and every `DecidePlan` in that pass receives the same question and dimension → `tests/research/test_dispatcher.py`
-- [ ] The question step's input carries the rubric; for each dimension, past queries paired with the assertion text their fetches produced; pool-wide and this-opening run yield; and the dimension's current `half_width` → request-shape test on the step's input builder
-- [ ] Yield aggregation counts only slugs in the current `Target` vocabulary and is computed from existing `decide_plan` events with no new trace field → `tests/research_trace/` test over `trace_shapes.json` plus a retired-slug line
-- [ ] A dimension the step names outside the `Target` vocabulary fails the pass loudly; it is not silently remapped → dispatcher test
-- [ ] `rank_targets`, `select_primary_target` and `active_target_action_cap` are gone; one per-pass budget remains → `grep -rn` shows no hits in `src/`
-- [ ] Every shape in `trace_shapes.json` still loads and replays to the same `target_stalls`; new traces carry the question as an optional field → `tests/research_trace/test_events.py`
-- [ ] decisions.md records the girder change, and README's girder line names two LLM-shaped decisions → **needs you**: read the entry
-- [ ] `uv run python scripts/check.py` passes
+- [x] Each research opportunity (intake pass or batch block) makes exactly one question-step call before the first `DecidePlan`, and every `DecidePlan` in that pass receives the same question and dimension → `tests/research/test_dispatcher.py`
+- [ ] The question step's input carries the rubric ✓; for each dimension, past queries paired with the assertion text their fetches produced ✓; pool-wide and this-opening run yield ✓; and the dimension's current `half_width` → request-shape test on the step's input builder
+  - [x] rubric ✓
+  - [x] past queries + assertion text ✓ (`render_assertion_history`)
+  - [x] yield aggregation ✓ (`fold_target_yield`)
+  - [ ] yield_summary rendering and half_width per dimension → parked in `surveyor-yield-context.md`
+- [x] Yield aggregation counts only slugs in the current `Target` vocabulary and is computed from existing `decide_plan` events with no new trace field → `tests/research_trace/` test over `trace_shapes.json` plus a retired-slug line
+- [x] A dimension the step names outside the `Target` vocabulary fails the pass loudly; it is not silently remapped → dispatcher test
+- [x] `rank_targets`, `select_primary_target` and `active_target_action_cap` are gone; one per-pass budget remains → `grep -rn` shows no hits in `src/`
+- [x] Every shape in `trace_shapes.json` still loads and replays to the same `target_stalls`; new traces carry the question as an optional field → `tests/research_trace/test_events.py`
+- [x] decisions.md records the girder change, and README's girder line names two LLM-shaped decisions → E9 applied
+- [x] `uv run python scripts/check.py` passes
 
 ## Approach
 

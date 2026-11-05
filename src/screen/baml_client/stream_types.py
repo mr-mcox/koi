@@ -60,7 +60,7 @@ class RecalibrationProposal(BaseModel):
 
 class ResearchQuestion(BaseModel):
     dimension: typing.Optional[str] = Field(default=None, description='Exactly one dimension slug, copied verbatim from the list given.')
-    question: typing.Optional[str] = Field(default=None, description='A specific, answerable research question for that dimension — not a restatement of its name.')
+    question: typing.Optional[str] = Field(default=None, description='A specific, falsifiable hypothesis for that dimension — a claim you expect evidence to confirm or refute, with reasoning — not a restatement of its name and not a search query.')
 
 class SearchAction(BaseModel):
     tag: typing.Optional[str] = Field(default=None, description='Always \'search\'.')

@@ -78,7 +78,7 @@ class RecalibrationProposal(BaseModel):
 
 class ResearchQuestion(BaseModel):
     dimension: str = Field(description='Exactly one dimension slug, copied verbatim from the list given.')
-    question: str = Field(description='A specific, answerable research question for that dimension — not a restatement of its name.')
+    question: str = Field(description='A specific, falsifiable hypothesis for that dimension — a claim you expect evidence to confirm or refute, with reasoning — not a restatement of its name and not a search query.')
 
 class SearchAction(BaseModel):
     tag: str = Field(description='Always \'search\'.')

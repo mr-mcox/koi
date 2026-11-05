@@ -1,1 +1,1 @@
-docs/features/research-target-opportunity/navigator-context.md
+docs/features/research-target-opportunity/surveyor-yield-context.md
