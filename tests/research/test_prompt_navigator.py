@@ -230,13 +230,11 @@ def test_prompt_navigator_plan_passes_through_state_unchanged() -> None:
     LoopState straight through, never recomputing either."""
     calls: list[dict[str, object]] = []
 
-    def fake_decide_plan(**kwargs: object) -> list[object]:
+    def fake_navigate(**kwargs: object) -> list[object]:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = PromptNavigator(
-        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
-    )
+    navigator = PromptNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_navigate))
     state = _state(
         primary_target="compensation",
         research_question="What is total comp?",
@@ -264,12 +262,12 @@ def test_prompt_navigator_plan_rubric_text_is_the_fixed_target_alone() -> None:
     of the rubric is not shown."""
     calls: list[dict[str, object]] = []
 
-    def fake_decide_plan(**kwargs: object) -> list[object]:
+    def fake_navigate(**kwargs: object) -> list[object]:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
     rubric = _fixture_rubric()
-    navigator = PromptNavigator(rubric, client=SimpleNamespace(Navigate=fake_decide_plan))
+    navigator = PromptNavigator(rubric, client=SimpleNamespace(Navigate=fake_navigate))
     state = _state(primary_target="craft_direction", research_question="How do they ship?")
 
     navigator.plan(state)
@@ -285,12 +283,10 @@ def test_prompt_navigator_plan_raises_when_primary_target_unset() -> None:
     the rubric to, and silently falling back to the full rubric would hide the
     bug rather than surface it."""
 
-    def fake_decide_plan(**kwargs: object) -> list[object]:
+    def fake_navigate(**kwargs: object) -> list[object]:
         return [_FakeBamlStop()]
 
-    navigator = PromptNavigator(
-        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
-    )
+    navigator = PromptNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_navigate))
 
     with pytest.raises(RuntimeError, match="primary_target"):
         navigator.plan(_state(primary_target=None, research_question=None))
@@ -302,13 +298,11 @@ def test_prompt_navigator_plan_blank_research_question_when_unset() -> None:
     research_question fallback from the rubric invariant above."""
     calls: list[dict[str, object]] = []
 
-    def fake_decide_plan(**kwargs: object) -> list[object]:
+    def fake_navigate(**kwargs: object) -> list[object]:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = PromptNavigator(
-        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
-    )
+    navigator = PromptNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_navigate))
     navigator.plan(_state(primary_target="compensation", research_question=None))
 
     assert calls[0]["research_question"] == ""
@@ -319,13 +313,11 @@ def test_prompt_navigator_plan_scopes_assertion_history_to_the_fixed_target() ->
     opening's — seeing every dimension is the Surveyor's job, not the Navigator's."""
     calls: list[dict[str, object]] = []
 
-    def fake_decide_plan(**kwargs: object) -> list[object]:
+    def fake_navigate(**kwargs: object) -> list[object]:
         calls.append(kwargs)
         return [_FakeBamlStop()]
 
-    navigator = PromptNavigator(
-        _fixture_rubric(), client=SimpleNamespace(Navigate=fake_decide_plan)
-    )
+    navigator = PromptNavigator(_fixture_rubric(), client=SimpleNamespace(Navigate=fake_navigate))
     craft_assertion = canned_assertion(target="craft_direction", chunk="Ships weekly.")
     off_target = canned_assertion(target="compensation", chunk="Pays well.")
     state = _state(

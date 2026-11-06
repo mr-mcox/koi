@@ -25,10 +25,10 @@ from screen.research.protocol import LinkScore, LinkScorer
 from screen.research.question import ResearchQuestion
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
-    DecidePlanEvent,
     ExtractEvent,
     ExtractRequest,
     ExtractResult,
+    NavigateEvent,
     SearchEvent,
     SearchRequest,
     SurveyEvent,
@@ -118,8 +118,8 @@ def test_dispatch_stop_returns_pass_summary() -> None:
     assert summary.stopped_reason == "All rubric dimensions addressed."
 
 
-def test_decide_plan_event_records_request_and_response() -> None:
-    """Every navigator.plan() call is recorded as a decide_plan event: the
+def test_navigate_event_records_request_and_response() -> None:
+    """Every navigator.plan() call is recorded as a Navigate event: the
     request carries the state snapshot the navigator saw, the response carries
     the action(s) it returned."""
     stop = StopAction(reason="Nothing left to check.")
@@ -133,7 +133,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
         deps=_deps(browser=FakeBrowser(), extractor=_fake_extractor(), on_event=events.append),
     )
 
-    plan_events = [e for e in events if isinstance(e, DecidePlanEvent)]
+    plan_events = [e for e in events if isinstance(e, NavigateEvent)]
     assert len(plan_events) == 1
     event = plan_events[0]
 
@@ -148,7 +148,7 @@ def test_decide_plan_event_records_request_and_response() -> None:
     assert event.response.actions == [{"tag": "stop", "reason": "Nothing left to check."}]
 
 
-def test_decide_plan_request_carries_assertion_history_for_the_fixed_target() -> None:
+def test_navigate_request_carries_assertion_history_for_the_fixed_target() -> None:
     """The Navigator's request carries its own target's assertion content — fit,
     chunk, citation URLs — not just the counts. Scoped to
     `primary_target` alone, unlike the Surveyor's history across every dimension."""
@@ -167,7 +167,7 @@ def test_decide_plan_request_carries_assertion_history_for_the_fixed_target() ->
         deps=_deps(on_event=events.append),
     )
 
-    plan_events = [e for e in events if isinstance(e, DecidePlanEvent)]
+    plan_events = [e for e in events if isinstance(e, NavigateEvent)]
     history = plan_events[0].request.assertion_history
     assert history is not None
     assert "Ships weekly." in history
@@ -248,7 +248,7 @@ def test_search_action_happy_path() -> None:
     # browser.search was called with the right query
     assert browser.search_calls == [query]
 
-    # tavily_search event was recorded (alongside decide_plan audit events)
+    # tavily_search event was recorded (alongside Navigate audit events)
     search_events = [e for e in events if isinstance(e, SearchEvent)]
     assert len(search_events) == 1
     event = search_events[0]
@@ -333,7 +333,7 @@ def test_fetch_action_happy_path() -> None:
     # browser.fetch was called with the right URL
     assert browser.fetch_calls == [url]
 
-    # tavily_extract event was recorded (alongside decide_plan audit events)
+    # tavily_extract event was recorded (alongside Navigate audit events)
     extract_events = [e for e in events if isinstance(e, ExtractEvent)]
     assert len(extract_events) == 1
     event = extract_events[0]
@@ -378,7 +378,7 @@ def test_fetch_action_duplicate_skipped() -> None:
 
     # browser.fetch was NOT called
     assert browser.fetch_calls == []
-    # no tavily_extract event was recorded (decide_plan audit events still are)
+    # no tavily_extract event was recorded (Navigate audit events still are)
     extract_events = [e for e in events if isinstance(e, ExtractEvent)]
     assert extract_events == []
     # summary still valid

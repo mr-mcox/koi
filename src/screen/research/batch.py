@@ -24,7 +24,7 @@ from screen.pool import rank_screening_pool
 from screen.research.dispatcher import DispatchDeps, dispatch
 from screen.research.protocol import LinkScorer, Navigator, Surveyor
 from screen.research.state import LoopState, PassSummary
-from screen.research_trace.events import DecidePlanEvent, ResearchTraceEvent, parse_event
+from screen.research_trace.events import NavigateEvent, ResearchTraceEvent, parse_event
 from screen.research_trace.replay import TraceReplay, fold_target_yield, replay_research_trace
 from screen.research_trace.trace_io import (
     read_page_content,
@@ -116,12 +116,12 @@ def run_dispatch(
         else TraceReplay(visited_urls=[], prior_queries=[], target_stalls={}, unvisited_links=[])
     )
 
-    plans: list[DecidePlanEvent] = []
+    plans: list[NavigateEvent] = []
     if hasattr(deps, "research_trace") and deps.research_trace:
         try:
             for line in read_research_trace(deps.research_trace):
                 e = parse_event(line.strip())
-                if isinstance(e, DecidePlanEvent):
+                if isinstance(e, NavigateEvent):
                     plans.append(e)
         except FileNotFoundError:  # pragma: no cover — traces might not exist on first run
             pass

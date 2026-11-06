@@ -73,7 +73,7 @@ class PromptNavigator:
         if state.primary_target is None:
             raise RuntimeError(
                 "PromptNavigator.plan() called before the Surveyor set primary_target. "
-                "The dispatcher must survey before the first decide_plan call."
+                "The dispatcher must survey before the first Navigate call."
             )
         generated = self._client.Navigate(
             company_name=state.company_name,

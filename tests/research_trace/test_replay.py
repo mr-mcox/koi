@@ -2,7 +2,8 @@
 
 Reconstructs what a fresh LoopState needs to continue a pass rather than
 restart it: visited_urls, prior_queries, target_stalls. The trace's
-tool vocabulary is closed (tavily_extract, tavily_search, decide_plan),
+tool vocabulary is closed (tavily_extract, tavily_search, decide_plan — the
+Navigate event's frozen wire literal),
 so replay is a fold over a fixed set of event shapes, not an open parse.
 """
 
@@ -10,13 +11,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from screen.research_trace.events import (
-    DecidePlanEvent,
-    DecidePlanRequest,
-    DecidePlanResponse,
     ExtractEvent,
     ExtractRequest,
     ExtractResponse,
     ExtractResult,
+    NavigateEvent,
+    NavigateRequest,
+    NavigateResponse,
     SearchEvent,
     SearchRequest,
     SearchResponse,
@@ -51,10 +52,10 @@ def _plan_event(
     active_target: str | None = None,
     targets_covered: list[str] | None = None,
     target_assertion_counts: dict[str, int] | None = None,
-) -> DecidePlanEvent:
-    return DecidePlanEvent(
+) -> NavigateEvent:
+    return NavigateEvent(
         ts=datetime.now(UTC),
-        request=DecidePlanRequest(
+        request=NavigateRequest(
             opening_id="op-1",
             company_id="co-1",
             company_name="Example Co",
@@ -67,7 +68,7 @@ def _plan_event(
             target_assertion_counts=target_assertion_counts,
             last_context=None,
         ),
-        response=DecidePlanResponse(actions=[{"tag": "stop", "reason": "done"}]),
+        response=NavigateResponse(actions=[{"tag": "stop", "reason": "done"}]),
     )
 
 

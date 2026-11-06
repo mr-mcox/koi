@@ -28,7 +28,7 @@ class _Payload(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
 
-class DecidePlanRequest(_Payload):
+class NavigateRequest(_Payload):
     """Snapshot of what the navigator decided from. `replay` rebuilds stall state
     from `active_target`, `primary_target`, `targets_covered` and
     `target_assertion_counts`; the rest is audit trail.
@@ -67,7 +67,7 @@ class DecidePlanRequest(_Payload):
     last_context: dict[str, Any] | None
 
 
-class DecidePlanResponse(_Payload):
+class NavigateResponse(_Payload):
     # Dumped `Action`s, which live in `research/`. Audit only.
     actions: list[dict[str, Any]]
 
@@ -90,7 +90,7 @@ class ExtractRequest(_Payload):
 
 class SurveyRequest(_Payload):
     """Snapshot of what the Surveyor chose from, for the audit trail. Omits
-    `rubric_text` like `DecidePlanRequest` does — static per pass, and large.
+    `rubric_text` like `NavigateRequest` does — static per pass, and large.
     """
 
     company_name: str
@@ -128,12 +128,16 @@ class _Event(BaseModel):
     ts: Annotated[datetime, Field(description="UTC ISO timestamp of event emission.")]
 
 
-class DecidePlanEvent(_Event):
-    """The navigator's own audit record; not a budget-consuming turn."""
+class NavigateEvent(_Event):
+    """The navigator's own audit record; not a budget-consuming turn.
+
+    The wire literal stays `decide_plan` after the Navigate rename: decisions E8
+    freezes payload names, and every already-written trace discriminates on it.
+    """
 
     tool: Literal["decide_plan"] = "decide_plan"
-    request: DecidePlanRequest
-    response: DecidePlanResponse
+    request: NavigateRequest
+    response: NavigateResponse
 
 
 class SearchEvent(_Event):
@@ -150,7 +154,7 @@ class ExtractEvent(_Event):
 
 class SurveyEvent(_Event):
     """The Surveyor's own audit record, once per pass, before the first
-    `decide_plan` — not a budget-consuming turn."""
+    Navigate call — not a budget-consuming turn."""
 
     tool: Literal["survey"] = "survey"
     request: SurveyRequest
@@ -158,7 +162,7 @@ class SurveyEvent(_Event):
 
 
 type ResearchTraceEvent = Annotated[
-    DecidePlanEvent | SearchEvent | ExtractEvent | SurveyEvent, Field(discriminator="tool")
+    NavigateEvent | SearchEvent | ExtractEvent | SurveyEvent, Field(discriminator="tool")
 ]
 
 _EVENT_ADAPTER: TypeAdapter[ResearchTraceEvent] = TypeAdapter(ResearchTraceEvent)

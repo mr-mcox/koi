@@ -78,9 +78,9 @@ def test_identify_research_trace_leaves_trace_at_final_path(tmp_path: Path) -> N
     assert research_trace_path.exists()
 
 
-def test_identify_research_trace_records_decide_plan_event(tmp_path: Path) -> None:
+def test_identify_research_trace_records_navigate_event(tmp_path: Path) -> None:
     """The loop's dispatch pass wires on_event to the research trace file, not the
-    no-op default — decide_plan events must land alongside tavily_extract."""
+    no-op default — Navigate events must land alongside tavily_extract."""
     url = "https://example.com/jobs/42"
     research_trace_path = tmp_path / "research_traces" / "abcdef0123456789.jsonl"
     seed_research_trace(research_trace_path, "Synthetic content.", url)

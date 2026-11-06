@@ -11,11 +11,11 @@ import pytest
 from pydantic import ValidationError
 
 from screen.research_trace.events import (
-    DecidePlanEvent,
     ExtractEvent,
     ExtractRequest,
     ExtractResponse,
     ExtractResult,
+    NavigateEvent,
     SearchEvent,
     parse_event,
 )
@@ -115,6 +115,6 @@ def test_dumped_event_parses_back_equal() -> None:
 
 def test_event_is_frozen() -> None:
     event = parse_event(json.dumps(_SHAPES[0]["line"]))
-    assert isinstance(event, DecidePlanEvent)
+    assert isinstance(event, NavigateEvent)
     with pytest.raises(ValidationError):
         event.ts = datetime.now(UTC)

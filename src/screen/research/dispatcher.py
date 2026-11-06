@@ -23,13 +23,13 @@ from screen.research.protocol import LinkScorer, Navigator, Surveyor
 from screen.research.question import render_assertion_history, render_yield_summary
 from screen.research.state import LoopState, PassSummary
 from screen.research_trace.events import (
-    DecidePlanEvent,
-    DecidePlanRequest,
-    DecidePlanResponse,
     ExtractEvent,
     ExtractRequest,
     ExtractResponse,
     ExtractResult,
+    NavigateEvent,
+    NavigateRequest,
+    NavigateResponse,
     ResearchTraceEvent,
     SearchEvent,
     SearchRequest,
@@ -74,13 +74,13 @@ def _target_assertion_counts(state: LoopState) -> dict[str, int]:
     return counts
 
 
-def _plan_request(state: LoopState) -> DecidePlanRequest:
+def _plan_request(state: LoopState) -> NavigateRequest:
     """Snapshot of what the navigator had to decide from, for the audit trail.
 
     Omits `page_content` and `rubric_text` — static per pass, and large;
     everything here is what actually varies turn to turn.
     """
-    return DecidePlanRequest(
+    return NavigateRequest(
         opening_id=state.opening_id,
         company_id=state.company_id,
         company_name=state.company_name,
@@ -162,10 +162,10 @@ def dispatch(
         request = _plan_request(current)
         actions = navigator.plan(current)
         deps.on_event(
-            DecidePlanEvent(
+            NavigateEvent(
                 ts=datetime.now(UTC),
                 request=request,
-                response=DecidePlanResponse(actions=[a.model_dump(mode="json") for a in actions]),
+                response=NavigateResponse(actions=[a.model_dump(mode="json") for a in actions]),
             )
         )
         if not actions:

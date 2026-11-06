@@ -12,7 +12,7 @@ from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from screen.research_trace.events import DecidePlanEvent, ExtractEvent, SearchEvent, parse_event
+from screen.research_trace.events import ExtractEvent, NavigateEvent, SearchEvent, parse_event
 from screen.research_trace.trace_io import read_research_trace
 from screen.types import Target
 
@@ -32,16 +32,16 @@ class TraceReplay(BaseModel):
         default_factory=list[tuple[str, str]]
     )  # (text, url)
     # Contiguous unproductive active-target runs per target, reconstructed from
-    # decide_plan events so a resume can suppress dead-end targets without a DB column.
+    # Navigate events so a resume can suppress dead-end targets without a DB column.
     target_stalls: dict[str, int] = Field(default_factory=dict)
 
 
-def _run_target(event: DecidePlanEvent) -> str | None:
+def _run_target(event: NavigateEvent) -> str | None:
     req = event.request
     return req.active_target or req.primary_target
 
 
-def _counts(event: DecidePlanEvent) -> dict[str, int] | None:
+def _counts(event: NavigateEvent) -> dict[str, int] | None:
     """Callers fall back to membership-only comparison when this is `None`
     rather than guessing counts, which would manufacture false stalls for a
     target that grew past its first assertion between two runs.
@@ -49,14 +49,14 @@ def _counts(event: DecidePlanEvent) -> dict[str, int] | None:
     return event.request.target_assertion_counts
 
 
-def _covered(event: DecidePlanEvent) -> set[str]:
+def _covered(event: NavigateEvent) -> set[str]:
     return set(event.request.targets_covered)
 
 
 def _segment_target_runs(
-    plans: list[DecidePlanEvent],
+    plans: list[NavigateEvent],
 ) -> list[tuple[int, int, str | None]]:
-    """Group contiguous decide_plan events that share the same active target."""
+    """Group contiguous Navigate events that share the same active target."""
     runs: list[tuple[int, int, str | None]] = []
     if not plans:
         return runs
@@ -86,7 +86,7 @@ def _is_stall_by_membership(target: str, start: set[str], end: set[str]) -> bool
 
 
 def _run_boundary_counts(
-    plans: list[DecidePlanEvent], idx: int
+    plans: list[NavigateEvent], idx: int
 ) -> tuple[dict[str, int] | None, set[str]]:
     event = plans[idx]
     return _counts(event), _covered(event)
@@ -94,7 +94,7 @@ def _run_boundary_counts(
 
 def _count_stalls(
     runs: list[tuple[int, int, str | None]],
-    plans: list[DecidePlanEvent],
+    plans: list[NavigateEvent],
 ) -> dict[str, int]:
     """Count runs whose target showed no productive growth.
 
@@ -123,7 +123,7 @@ class TargetYield(BaseModel):
     """How often research on one rubric dimension actually produced an assertion.
 
     `runs` and `yielded` are counted the same way `target_stalls` counts stalls
-    (contiguous `decide_plan` runs sharing a target) — `yielded` is simply the
+    (contiguous Navigate runs sharing a target) — `yielded` is simply the
     non-stalled runs, so the two stay consistent by construction.
     """
 
@@ -133,7 +133,7 @@ class TargetYield(BaseModel):
     yielded: int
 
 
-def fold_target_yield(plans: list[DecidePlanEvent]) -> dict[str, TargetYield]:
+def fold_target_yield(plans: list[NavigateEvent]) -> dict[str, TargetYield]:
     """Per-target run/yield counts, restricted to the current rubric's `Target`
     vocabulary. A trace may carry runs on a slug the rubric has since retired
     (e.g. `non_scoring:obtainability`) — those are dropped rather than
@@ -154,9 +154,9 @@ def fold_target_yield(plans: list[DecidePlanEvent]) -> dict[str, TargetYield]:
     }
 
 
-def _fold_target_stalls(plans: list[DecidePlanEvent]) -> dict[str, int]:
-    """Count unproductive contiguous runs per target from decide_plan events.
-    A "run" is a maximal sequence of decide_plan events whose `active_target`
+def _fold_target_stalls(plans: list[NavigateEvent]) -> dict[str, int]:
+    """Count unproductive contiguous runs per target from Navigate events.
+    A "run" is a maximal sequence of Navigate events whose `active_target`
     (falling back to `primary_target`) is the same target. A run is a stall for
     that target when its assertion count is no higher by the run's end than it
     was at the run's start — whether or not the target already had assertions
@@ -183,13 +183,13 @@ def replay_research_trace(path: Path) -> TraceReplay:
     visited_urls: list[str] = []
     prior_queries: list[str] = []
     unvisited_links: list[tuple[str, str]] = []
-    plans: list[DecidePlanEvent] = []
+    plans: list[NavigateEvent] = []
     for raw_line in read_research_trace(path):
         line = raw_line.strip()
         if not line:
             continue
         event = parse_event(line)
-        if isinstance(event, DecidePlanEvent):
+        if isinstance(event, NavigateEvent):
             plans.append(event)
         elif isinstance(event, SearchEvent):
             prior_queries.append(event.request.query)
